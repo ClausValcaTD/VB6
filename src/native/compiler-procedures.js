@@ -1,3 +1,4 @@
+import {preparePrivateErrorScope,enterPrivateErrorScope,leavePrivateErrorScope} from './private-error-scope.js';
 /** Native compiler procedures lowering. Kept separate from PE linkage and runtime kernels. */
 import {BinarySection} from './pe32.js';
 import {X86} from './x86.js';
@@ -7,7 +8,7 @@ export const nativeCompilerProcedureMethods={
   procedure(context) {
     this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=this.optimizedNativeProcedure(context), end=context.label+':return';
     // Lower first so temporary text buffers are stack-local, including recursive calls.
-    x.sequence=outer.sequence;context.stringTemps=[];context.variantTemps=[];context.arrayPins=[];context.nativeOwnedTemps=[];this.prepareNativeFlow(context);
+    x.sequence=outer.sequence;context.stringTemps=[];context.variantTemps=[];context.arrayPins=[];context.nativeOwnedTemps=[];this.prepareNativeFlow(context);preparePrivateErrorScope(this,context);
     for (let i = 0; i < code.length; i++) {
       this.typeCache=new WeakMap();
       const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
@@ -67,7 +68,7 @@ export const nativeCompilerProcedureMethods={
     x.label(context.label + ':' + code.length).label(end);
     if(context.variantReturn){
       this.rawStorageAddress(context.returnValue);x.push().push({argument:8}).call('native:variant:copy');
-    }else if(context.returnValue&&key(context.returnValue.type)==='string'){
+    }else if(context.returnValue&&(key(context.returnValue.type)==='string'||context.returnValue.nativeCollectionRef)){
       this.rawStorageAddress(context.returnValue);x.emit(0x8b,0x00);x.push();this.rawStorageAddress(context.returnValue);x.emit(0xc7,0x00,0,0,0,0,0x58);
     }else if(context.returnValue)this.load(context.returnValue);else x.value(0);
     const cleanup=context.label+':cleanup';x.jump(cleanup);
@@ -75,12 +76,12 @@ export const nativeCompilerProcedureMethods={
     x.label(cleanup).push().call(context.label+':clear-strings');
     for(const reference of context.nativeOwnedTemps.filter(r=>r.blockScoped))this.clearNativeOwnedPointer(reference);
     for(const variable of context.locals.values())if(!variable.label&&!variable.parameter){if(variable.nativeArray)this.destroyArrayStorage(variable);else if(key(variable.type)==='string')this.clearStringStorage(variable);else if(key(variable.type)==='variant')this.clearVariantStorage(variable);}
-    x.emit(0x58);this.leaveErrorFrame();if(context.returnValue&&key(context.returnValue.type)==='currency')x.emit(0x8b,0x50,4,0x8b,0x00);if(context.returnValue&&REAL_TYPES.has(key(context.returnValue.type)))x.emit(0xdd,0x00);x.leave(context.argumentBytes);
+    x.emit(0x58);leavePrivateErrorScope(this,context);this.leaveErrorFrame();if(context.returnValue&&key(context.returnValue.type)==='currency')x.emit(0x8b,0x50,4,0x8b,0x00);if(context.returnValue&&REAL_TYPES.has(key(context.returnValue.type)))x.emit(0xdd,0x00);x.leave(context.argumentBytes);
     this.emitErrorDispatch(context);
     x.label(context.label+':clear-strings');for(const reference of context.nativeOwnedTemps.filter(r=>!r.blockScoped))this.clearNativeOwnedPointer(reference);for(const pin of context.arrayPins)this.releaseArrayPin(pin);for(const variable of context.stringTemps)this.clearStringStorage(variable);for(const variable of context.variantTemps)this.clearVariantStorage(variable);x.emit(0xc3);
     this.instruction=null;this.x=outer;outer.sequence=x.sequence;const unitStart=this.text.length;outer.label(context.label).enter(context.size);
     for(const variable of [...context.locals.values(),...context.stringTemps,...context.variantTemps,...context.arrayPins,...context.nativeOwnedTemps.map(x=>x.variable)])if(!variable.parameter&&!variable.label)this.zeroStorage(variable);
-    this.enterErrorFrame(context);
+    this.enterErrorFrame(context);enterPrivateErrorScope(this,context);
     for(const variable of context.locals.values())if(variable.ownedParameter){
       if(key(variable.type)==='variant'){outer.push({argument:variable.incomingOffset});this.rawStorageAddress(variable);outer.push().call('native:variant:copy');}
       else outer.value({argument:variable.incomingOffset}).push().call('native:string:copy').emit(0x89,0x85).imm(variable.offset);

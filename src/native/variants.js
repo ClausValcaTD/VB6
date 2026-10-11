@@ -38,6 +38,7 @@ export const nativeVariantMethods={
     if(node.kind!=='call'||node.callee.kind!=='id'||this.resolveProcedure(node.callee))return null;
     const name=key(node.callee.name).replace(/\$$/,'');
     if(['cvar','cverr','cdec'].includes(name))return 'variant';
+    if(['len','lenb'].includes(name)&&node.args.length===1&&this.type(node.args[0])==='variant')return 'variant';
     if(Object.hasOwn(predicates,name)||['ismissing','isnumeric','isdate','isarray','isobject'].includes(name))return 'boolean';
     if(name==='vartype')return 'integer';if(name==='typename')return 'string';
     if(['abs','fix','int'].includes(name)&&node.args.length===1&&this.type(node.args[0])==='variant')return 'variant';
@@ -49,7 +50,7 @@ export const nativeVariantMethods={
     const array=this.variable(node);
     if(array?.nativeArray&&!array.elementOf){this.boxNativeArray(array);return;}
     if(type==='variant'){this.expression(node);return;}
-    const tag=NATIVE_VARIANT_TYPES[type];if(tag===undefined)this.fail('Native Variant cannot box '+type);
+    const tag=NATIVE_VARIANT_TYPES[type];if(tag===undefined)this.fail('Native Variant cannot box '+type+' expression');
     this.expression(node);x.push();
     const view=this.arrayWorkspace(16,'variant-view');this.zeroStorage(view);this.rawStorageAddress(view);x.popOperand('edx').mov(at('eax'),tag);
     if(type==='single')x.emit(0xdd,0x02,0xd9,0x58,8); // immutable R8 snapshot -> VT_R4 payload
@@ -100,6 +101,16 @@ export const nativeVariantMethods={
     if(this.nativeRichFormatNull(node,name))return true;
     const x=this.x,args=node.args;
     const one=()=>{if(args.length!==1||['missing','named'].includes(args[0]?.kind))this.fail(name+' expects one positional argument');};
+    if(['len','lenb'].includes(name)&&args.length===1&&this.type(args[0])==='variant'){
+      // Variant Len is the displayed String length, not the VARIANT storage
+      // width. Null propagates rather than raising an implicit conversion error.
+      // https://learn.microsoft.com/office/vba/language/reference/user-interface-help/len-function
+      one();this.boxVariant(args[0]);const nil=x.unique(),done=x.unique();
+      x.cmp(mem16({base:'eax'}),1).branch('e',nil);this.unboxVariant('string');
+      x.push().invoke('oleaut32.dll','SysStringLen');if(name==='lenb')x.shift('shl','eax',1);
+      x.push();this.variantSeed(3);x.popOperand('edx').mov(at('eax',8),'edx').jump(done);
+      x.label(nil);this.variantSeed(1);x.label(done);return true;
+    }
     if(name==='cvar'){one();this.boxVariant(args[0]);return true;}
     if(name==='cverr'){
       one();this.numeric(args[0]);x.compare(0).branch('l','error:5').compare(65535).branch('g','error:5').push();

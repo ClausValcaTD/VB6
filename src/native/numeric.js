@@ -162,7 +162,8 @@ export const nativeNumericMethods = {
       }else if(p.byRef){
         const {pin,temporary}=this.nativeReferenceArgument(p,node,omitted);
         if(pin)callPins.push(pin);if(temporary&&key(temporary.type)==='string')callStrings.push(temporary);
-      }else if(key(p.type)==='variant'){this.boxVariant(node);}
+      }else if(['collection','vba.collection'].includes(key(p.type))){this.collectionValue(node);}
+      else if(key(p.type)==='variant'){this.boxVariant(node);}
       else if(key(p.type)==='currency'){slot.type=p.type;this.currencyExpression(node);this.storeCurrency(slot);slots[i]=slot;return;}
       else if(key(p.type)==='date'){slot.type=p.type;this.dateExpression(node);this.storeDate(slot);slots[i]=slot;return;}
       else if(REAL_TYPES.has(key(p.type))){slot.type=p.type;this.floatExpression(node,key(p.type)==='single');this.storeFloat(slot);slots[i]=slot;return;}
