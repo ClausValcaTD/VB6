@@ -10,7 +10,7 @@ const E='native:error:',P=E+'private:',arg=argument=>({argument});
 const names=['pending','number','description','source','helpfile','helpcontext','erl','lastdllerror','description-owner','source-owner','helpfile-owner'];
 const owners=[8,9,10],at=(base,displacement=0)=>mem32({base,displacement});
 export function preparePrivateErrorScope(c,context){
- if(!context.module.deferredNativeKernel)return;
+ if(!context.module.deferredNativeKernel||context.proc.nativeTransparentErr)return;
  c.nativePrivateErrorScopes=true;
  context.privateErrorScope=c.arrayWorkspace(names.length*4,'private-error-state');
 }

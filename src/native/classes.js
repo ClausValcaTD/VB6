@@ -215,7 +215,7 @@ export const nativeClassMethods={
    const variable=this.variable(ins.target);
    if(variable?.nativeInstanceField&&variable.nativeReceiverNode){
     this.address(variable);const address=this.arrayWorkspace(4,'class-field-destination');x.mov(slot(address),'eax');
-    const v={...variable,nativeInstanceField:null,nativeReceiverNode:null,owner:null,nativeKernelPointer:arg(address.offset)};
+    const v={...variable,nativeInstanceField:null,nativeEventOwnerOffset:variable.nativeInstanceField?variable.nativeFieldOffset:undefined,nativeReceiverNode:null,owner:variable.owner,nativeKernelPointer:arg(address.offset)};
     if(v.nativeClassRef&&!ins.objectSet)this.fail('Native class reference assignment requires Set');
     if(ins.objectSet&&!v.nativeClassRef&&!v.nativeCollectionRef)this.fail('Set requires object reference storage');
     this.storageExpression(v,ins.expr);this.store(v);return true;
@@ -286,6 +286,7 @@ export const nativeClassMethods={
    .dec(at('esi')).branch('e',free).mov(at('esi',8),3).jump(done).label(free);
   for(const d of this.nativeClassTypes.values()){
    const next=x.unique();x.cmp(at('esi',4),d.id).branch('ne',next);
+   this.detachNativeEventFields(d);
    for(const f of d.fields){const a=at('esi',f.nativeFieldOffset);
     if(f.nativeClassRef||f.nativeCollectionRef){x.pushOperand(a).mov(a,0).call(f.nativeClassRef?this.classProcedure('Release'):this.collectionProcedure('CollectionRelease'));}
     else if(key(f.type)==='string'){x.pushOperand(a).mov(a,0).invoke('oleaut32.dll','SysFreeString');}
@@ -293,7 +294,7 @@ export const nativeClassMethods={
    }
    x.jump(done+':free').label(next);
   }
-  x.label(done+':free').pushOperand('esi').push(0).api('kernel32.dll','GetProcessHeap').push().invoke('kernel32.dll','HeapFree')
+  x.label(done+':free');this.disposeNativeEventSource();x.pushOperand('esi').push(0).api('kernel32.dll','GetProcessHeap').push().invoke('kernel32.dll','HeapFree')
    .label(done).value(0).leave(4);
  }
 };
