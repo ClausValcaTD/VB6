@@ -86,7 +86,7 @@ export const nativeCollectionMethods={
   return storage.zeroStorage.call(this,variable);
  },
  disposeNativeControls(module){for(const v of module.globals.values())if(v.nativeCollectionRef)this.clearCollectionStorage({...v,owner:null});return controls.disposeNativeControls.call(this,module);},
- shutdownNativePictures(){for(const m of this.modules.values())for(const v of m.globals.values())if(v.nativeCollectionRef)this.clearCollectionStorage({...v,owner:null});return controls.shutdownNativePictures.call(this);},
+ shutdownNativePictures(){for(const m of this.modules.values())if(!m.nativeClass)for(const v of m.globals.values())if(v.nativeCollectionRef)this.clearCollectionStorage({...v,owner:null});return controls.shutdownNativePictures.call(this);},
  anyReferenceArgument(node){
   if(this.variable(node)?.nativeCollectionRef)this.fail('Native Collection storage has no external As Any object ABI; an explicit raw pointer is required for private memory inspection');
   return records.anyReferenceArgument.call(this,node);
@@ -153,7 +153,7 @@ export const nativeCollectionMethods={
  expression(node){if(this.collectionOperation(node))return;return expressions.expression.call(this,node);},
  prepareNativeFlow(context){
   flow.prepareNativeFlow.call(this,context);
-  for(const variable of context.locals.values())if(variable.nativeCollectionRef){
+  for(const variable of context.locals.values())if(variable.nativeCollectionRef&&!variable.nativeInstanceField){
    if(variable.parameter){
     if(variable.byRef)continue;
     variable.incomingCollectionOffset=variable.offset;variable.parameter=false;variable.offset=this.arrayWorkspace(4,'collection-parameter').offset;

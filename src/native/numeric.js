@@ -162,7 +162,8 @@ export const nativeNumericMethods = {
       }else if(p.byRef){
         const {pin,temporary}=this.nativeReferenceArgument(p,node,omitted);
         if(pin)callPins.push(pin);if(temporary&&key(temporary.type)==='string')callStrings.push(temporary);
-      }else if(['collection','vba.collection'].includes(key(p.type))){this.collectionValue(node);}
+      }else if(this.nativeClassDescriptor(p.type)){this.nativeClassValue(node,this.nativeClassDescriptor(p.type));}
+      else if(['collection','vba.collection'].includes(key(p.type))){this.collectionValue(node);}
       else if(key(p.type)==='variant'){this.boxVariant(node);}
       else if(key(p.type)==='currency'){slot.type=p.type;this.currencyExpression(node);this.storeCurrency(slot);slots[i]=slot;return;}
       else if(key(p.type)==='date'){slot.type=p.type;this.dateExpression(node);this.storeDate(slot);slots[i]=slot;return;}
@@ -171,6 +172,7 @@ export const nativeNumericMethods = {
       x.push();this.rawStorageAddress(slot);x.emit(0x5a,0x89,0x10);slots[i]=slot;
     });
     for(const slot of [...slots].reverse()){this.rawStorageAddress(slot);if(slot.nativeBytes===8)x.emit(0xff,0x70,4);x.emit(0xff,0x30);}
+    if(target.instanceOffset)x.push(target.nativeInstanceArgument);
     let variantResult=null;
     if(target.variantReturn){variantResult=this.temporaryVariant();this.rawStorageAddress(variantResult);x.push();}
     if(target.proc)x.call(target.label);else x.invoke(target.dll,target.symbol);

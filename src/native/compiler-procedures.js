@@ -1,3 +1,4 @@
+import {nativeStringStatement} from './string-statements.js';
 import {preparePrivateErrorScope,enterPrivateErrorScope,leavePrivateErrorScope} from './private-error-scope.js';
 /** Native compiler procedures lowering. Kept separate from PE linkage and runtime kernels. */
 import {BinarySection} from './pe32.js';
@@ -13,7 +14,7 @@ export const nativeCompilerProcedureMethods={
       this.typeCache=new WeakMap();
       const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
       if(!context.module.nativeInternal)this.sourceMap.push({symbol:context.label + ':' + i,source:ins.source,line:ins.line,procedure:ins.procedure});
-      if(this.errorInstruction(ins,context)||this.surfaceInstruction(ins)||this.nativeFlowInstruction(ins,context,i))continue;
+      if(this.errorInstruction(ins,context)||nativeStringStatement(this,ins)||this.surfaceInstruction(ins)||this.nativeFlowInstruction(ins,context,i))continue;
       if (ins.op === 'dim') { for (const decl of ins.decls) if (!decl.constant && decl.initial) { this.storageExpression(context.locals.get(key(decl.name)),decl.initial); this.store(context.locals.get(key(decl.name))); } }
       else if (ins.op === 'assign') {
         if(ins.objectSet){
@@ -68,25 +69,26 @@ export const nativeCompilerProcedureMethods={
     x.label(context.label + ':' + code.length).label(end);
     if(context.variantReturn){
       this.rawStorageAddress(context.returnValue);x.push().push({argument:8}).call('native:variant:copy');
-    }else if(context.returnValue&&(key(context.returnValue.type)==='string'||context.returnValue.nativeCollectionRef)){
+    }else if(context.returnValue&&(key(context.returnValue.type)==='string'||context.returnValue.nativeCollectionRef||context.returnValue.nativeClassRef)){
       this.rawStorageAddress(context.returnValue);x.emit(0x8b,0x00);x.push();this.rawStorageAddress(context.returnValue);x.emit(0xc7,0x00,0,0,0,0,0x58);
     }else if(context.returnValue)this.load(context.returnValue);else x.value(0);
     const cleanup=context.label+':cleanup';x.jump(cleanup);
     x.label(context.label+':error-return').value(context.returnValue&&key(context.returnValue.type)==='currency'?this.currencyLiteral('0'):context.returnValue&&REAL_TYPES.has(key(context.returnValue.type))?this.floatLiteral(0):0);
     x.label(cleanup).push().call(context.label+':clear-strings');
     for(const reference of context.nativeOwnedTemps.filter(r=>r.blockScoped))this.clearNativeOwnedPointer(reference);
-    for(const variable of context.locals.values())if(!variable.label&&!variable.parameter){if(variable.nativeArray)this.destroyArrayStorage(variable);else if(key(variable.type)==='string')this.clearStringStorage(variable);else if(key(variable.type)==='variant')this.clearVariantStorage(variable);}
+    for(const variable of context.locals.values())if(!variable.label&&!variable.parameter&&!variable.nativeInstanceField){if(variable.nativeArray)this.destroyArrayStorage(variable);else if(key(variable.type)==='string')this.clearStringStorage(variable);else if(key(variable.type)==='variant')this.clearVariantStorage(variable);}
     x.emit(0x58);leavePrivateErrorScope(this,context);this.leaveErrorFrame();if(context.returnValue&&key(context.returnValue.type)==='currency')x.emit(0x8b,0x50,4,0x8b,0x00);if(context.returnValue&&REAL_TYPES.has(key(context.returnValue.type)))x.emit(0xdd,0x00);x.leave(context.argumentBytes);
     this.emitErrorDispatch(context);
     x.label(context.label+':clear-strings');for(const reference of context.nativeOwnedTemps.filter(r=>!r.blockScoped))this.clearNativeOwnedPointer(reference);for(const pin of context.arrayPins)this.releaseArrayPin(pin);for(const variable of context.stringTemps)this.clearStringStorage(variable);for(const variable of context.variantTemps)this.clearVariantStorage(variable);x.emit(0xc3);
     this.instruction=null;this.x=outer;outer.sequence=x.sequence;const unitStart=this.text.length;outer.label(context.label).enter(context.size);
-    for(const variable of [...context.locals.values(),...context.stringTemps,...context.variantTemps,...context.arrayPins,...context.nativeOwnedTemps.map(x=>x.variable)])if(!variable.parameter&&!variable.label)this.zeroStorage(variable);
+    for(const variable of [...context.locals.values(),...context.stringTemps,...context.variantTemps,...context.arrayPins,...context.nativeOwnedTemps.map(x=>x.variable)])if(!variable.parameter&&!variable.label&&!variable.nativeInstanceField)this.zeroStorage(variable);
     this.enterErrorFrame(context);enterPrivateErrorScope(this,context);
     for(const variable of context.locals.values())if(variable.ownedParameter){
       if(key(variable.type)==='variant'){outer.push({argument:variable.incomingOffset});this.rawStorageAddress(variable);outer.push().call('native:variant:copy');}
       else outer.value({argument:variable.incomingOffset}).push().call('native:string:copy').emit(0x89,0x85).imm(variable.offset);
     }
     for(const variable of context.locals.values()){
+      if(variable.nativeInstanceField)continue;
       if(!variable.label || variable.nativeArray)this.initializeFixedString(variable);
       else if(variable.fixedLength||variable.nativeRecord?.hasFixedStrings){const done=outer.unique();outer.value(mem(variable.initialized)).test().branch('ne',done);this.initializeFixedString(variable);outer.value(1).store(variable.initialized).label(done);}
     }
