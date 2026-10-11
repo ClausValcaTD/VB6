@@ -111,6 +111,7 @@ export const nativeErrorMethods = {
 };
 
 export function emitNativeErrorHelpers(compiler) {
+  const descriptions=new Map([...DESCRIPTIONS,...(compiler.nativeAdditionalErrors||[])]);
   const x=compiler.x, unknown=x.unique(),sourceDone=x.unique();
   x.label(E+'clear').enter();
   for(const name of NATIVE_ERROR_TEXT_FIELDS)x.api('oleaut32.dll','SysFreeString',[mem(E+name+'-owner')]);
@@ -122,9 +123,9 @@ export function emitNativeErrorHelpers(compiler) {
   const valid=x.unique();
   x.label(E+'validate-number').test().branch('s',valid).compare(1).branch('l','error:5').compare(65535).branch('g','error:5').label(valid).emit(0xc3);
   x.label(E+'description-for');
-  for(const [number,text]of DESCRIPTIONS){const next=x.unique();x.compare(number).branch('ne',next).value(compiler.string(text)).emit(0xc3).label(next);}
+  for(const [number,text]of descriptions){const next=x.unique();x.compare(number).branch('ne',next).value(compiler.string(text)).emit(0xc3).label(next);}
   x.value(compiler.string('Application-defined or object-defined error')).emit(0xc3);
-  for(const number of DESCRIPTIONS.keys())x.label('error:'+number).value(number).jump(E+'raise');
+  for(const number of descriptions.keys())x.label('error:'+number).value(number).jump(E+'raise');
   x.label(E+'raise');
   const ordinary=x.unique();x.test().branch('s',ordinary).compare(1).branch('l',unknown).compare(65535).branch('le',ordinary).label(unknown).value(5).label(ordinary);
   x.push().call(E+'clear').emit(0x58).store(E+'number').call(E+'description-for').store(E+'description');
@@ -137,7 +138,7 @@ export function emitNativeErrorHelpers(compiler) {
   // Disable non-local transfers before constructing the final diagnostic itself.
   x.value(0).store(E+'frame');
   const fatalReady=x.unique();
-  for(const number of DESCRIPTIONS.keys()){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string('Run-time error '+number)).jump(fatalReady).label(next);}
+  for(const number of descriptions.keys()){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string('Run-time error '+number)).jump(fatalReady).label(next);}
   x.value(compiler.string('Run-time error (application-defined)'));
   x.label(fatalReady).emit(0x89,0xc3).push(16).push(compiler.errorTitle).emit(0x53).push(0).invoke('user32.dll','MessageBoxW').api('kernel32.dll','ExitProcess',[mem(E+'number')]);
 }

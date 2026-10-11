@@ -30,8 +30,8 @@ export class NativeX86Machine {
  function(args,callback,name='vtable'){const address=this.nextHook;this.nextHook+=16;this.hooks.set(address,{args,callback,name});return address;}
  symbol(name){assert.ok(this.labels.has(name),'missing symbol '+name);return this.labels.get(name);}
  push(value){this.registers[4]-=4;this.memory.write(this.registers[4],value);}pop(){const v=this.memory.read(this.registers[4]);this.registers[4]+=4;return v;}
- invoke(name,args=[]){const stack=this.get('esp');for(const [i,n]of ['ebx','esi','edi','ebp'].entries())this.set(n,0x12340000+i);const before=['ebx','esi','edi','ebp'].map(r=>this.get(r));for(const v of [...args].reverse())this.push(v);this.push(0x7ffffffe);this.ip=this.symbol(name);let steps=0;
-  while(this.ip!==0x7ffffffe){if(++steps>2000000)throw new Error('Native helper exceeded instruction budget');this.step();}
+ invoke(name,args=[],{maxInstructions=2000000}={}){assert.ok(Number.isInteger(maxInstructions)&&maxInstructions>=1&&maxInstructions<=20000000,'bounded instruction budget');const stack=this.get('esp');for(const [i,n]of ['ebx','esi','edi','ebp'].entries())this.set(n,0x12340000+i);const before=['ebx','esi','edi','ebp'].map(r=>this.get(r));for(const v of [...args].reverse())this.push(v);this.push(0x7ffffffe);this.ip=this.symbol(name);let steps=0;
+  while(this.ip!==0x7ffffffe){if(++steps>maxInstructions)throw new Error('Native helper exceeded instruction budget');this.step();}
   assert.equal(this.get('esp'),stack,'stdcall argument cleanup');assert.deepEqual(['ebx','esi','edi','ebp'].map(r=>this.get(r)),before,'callee-save registers');return this.get('eax');
  }
  byte(){return this.memory.read(this.ip++,8);}word(){const n=this.memory.read(this.ip,16);this.ip+=2;return n;}dword(){const n=this.memory.read(this.ip);this.ip+=4;return n;}

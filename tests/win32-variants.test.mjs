@@ -34,7 +34,7 @@ for(const code of ['Dim value\nvalue=Null','Dim value As Variant\nvalue=CDec("0.
 });
 for(const [source,pattern]of [
  ['Dim v As Variant\nDim n As Long\nTakesLong v',/exact declared type/],
- ['Dim v As Object',/Native storage/],
+ ['Dim v As Object,x As Variant\nx=v',/cannot box object/],
  ['Dim v As Variant\nv=New Collection',/expression|procedure|storage/]
 ])test('unsupported Variant boundary remains explicit: '+source.split('\n').at(-1),()=>assert.throws(()=>compileWin32(project(source,'Sub TakesLong(ByRef n As Long)\nEnd Sub')),pattern));
 test('Variant hidden result counts against the stdcall argument byte limit',()=>{

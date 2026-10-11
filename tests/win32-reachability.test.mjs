@@ -49,7 +49,7 @@ test('compiler pruning is opt-in, reports optimized-out source locations and pre
  assert.deepEqual(a.report.sourceMap.map(({rva,optimizedOut,...s})=>s),b.report.sourceMap.map(({rva,optimizedOut,...s})=>s));
  assert.deepEqual(b.bytes,compileWin32(p,{optimization:2,pruneUnusedProcedures:true}).bytes);
  assert.ok(b.report.sections.find(s=>s.name==='.text').size<a.report.sections.find(s=>s.name==='.text').size);
- assert.throws(()=>compileWin32(project('Sub Main()\nEnd Sub\nPrivate Sub Dead()\nDim x As Object\nEnd Sub'),{optimization:2,pruneUnusedProcedures:true}),/storage/);
+ assert.throws(()=>compileWin32(project('Sub Main()\nEnd Sub\nPrivate Sub Dead()\nDim x As Object\nSet x=CreateObject("Unknown.Component")\nEnd Sub'),{optimization:2,pruneUnusedProcedures:true}),/COM\/Object|procedure is not/);
  for(const options of [{optimization:0,pruneUnusedProcedures:true},{optimization:1,pruneUnusedProcedures:true},{optimization:2,pruneUnusedProcedures:'yes'}])assert.throws(()=>compileWin32(p,options),/pruneUnused/);
  assert.equal(parseWin32Options(['--optimization','2','--prune-unused-procedures']).pruneUnusedProcedures,true);
 });

@@ -162,7 +162,8 @@ export const nativeNumericMethods = {
       }else if(p.byRef){
         const {pin,temporary}=this.nativeReferenceArgument(p,node,omitted);
         if(pin)callPins.push(pin);if(temporary&&key(temporary.type)==='string')callStrings.push(temporary);
-      }else if(this.nativeClassDescriptor(p.type)){this.nativeClassValue(node,this.nativeClassDescriptor(p.type));}
+      }else if(this.nativeObjectType(p.type)){this.nativeControlValue(node);this.checkNativeControlKind(this.nativeControlKind(p.type));}
+      else if(this.nativeClassDescriptor(p.type)){this.nativeClassValue(node,this.nativeClassDescriptor(p.type));}
       else if(['collection','vba.collection'].includes(key(p.type))){this.collectionValue(node);}
       else if(key(p.type)==='variant'){this.boxVariant(node);}
       else if(key(p.type)==='currency'){slot.type=p.type;this.currencyExpression(node);this.storeCurrency(slot);slots[i]=slot;return;}

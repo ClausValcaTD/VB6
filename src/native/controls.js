@@ -118,6 +118,7 @@ export const nativeControlMethods={
       this.initializeNativeGrid(control);this.initializeNativeChart(control);this.initializeNativeControlPictures(control);this.createNativeControlCollections(control);this.createNativeFileControl(control);this.initializeNativeRichText(control);this.initializeNativeSurface(control);
       if(control.tooltip)this.createNativeTooltip(module,control);
     }
+    this.initializeDynamicControls(module);
     this.initializeNativeImageBindings(module);
     for(const control of module.controls.values())this.applyNativeTabPages(control);
   },

@@ -17,7 +17,7 @@ export class NativeX86FloatingMachine extends NativeX86Machine{
  writeFP(address,value,width=64){const r=this.memory.region(address,width/8,true),v=new DataView(r.bytes.buffer);if(width===64)v.setFloat64(address-r.address,value,true);else v.setFloat32(address-r.address,value,true);}
  pushFP(value){assert.ok(this.fp.length<8,'x87 stack overflow');this.fp.unshift(value);}
  popFP(){assert.ok(this.fp.length,'x87 stack underflow');return this.fp.shift();}
- invoke(name,args=[]){const before=[...this.fp],cw=this.fpControl;const result=super.invoke(name,args);assert.deepEqual(this.fp,before,'no escaped x87 expression values');assert.equal(this.fpControl,cw,'restore x87 control word');return result;}
+ invoke(name,args=[],options){const before=[...this.fp],cw=this.fpControl;const result=super.invoke(name,args,options);assert.deepEqual(this.fp,before,'no escaped x87 expression values');assert.equal(this.fpControl,cw,'restore x87 control word');return result;}
  step(){
   if(this.hooks.has(this.ip))return super.step();
   const op=this.memory.read(this.ip,8);

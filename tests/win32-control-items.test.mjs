@@ -46,7 +46,9 @@ test('recognition does not mutate shared source declarations or silently accept 
   assert.equal(decl.type,'Object');assert.equal(result.nativeItem.kind,'node');
   assert.equal(nativeEventItemStorage({},decl,module,{...proc,name:'Unrelated'}),null);
   const p=newProject('UnknownObject');p.modules[0].code='Private value As Object';
-  assert.throws(()=>compileWin32(p),/Native storage/);
+  assert.ok(compileWin32(p).bytes.length,'null Object slots may now own intrinsic control references');
+  p.modules[0].code+='\nSub Form_Load()\nSet value=CreateObject("Unknown.Component")\nEnd Sub';
+  assert.throws(()=>compileWin32(p),/COM\/Object|procedure is not/,'arbitrary COM remains diagnosed');
 });
 test('With SelectedItem is lowered and selected item access is not an HWND caption read',()=>{
   const p=gallery();p.modules[0].code='Private Sub Form_Load()\nDim s As String\nWith TabStrip1.SelectedItem\n s=.Caption\nEnd With\nEnd Sub';

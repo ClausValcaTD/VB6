@@ -7,10 +7,10 @@ import {PE32Image} from '../../src/native/pe32.js';
 import {compileWin32} from '../../src/native/compiler.js';
 import {newProject} from '../../src/project/model.js';
 import {NativeX86FloatingMachine,roundEven} from './native-x86-floating.mjs';
-export function collectionMachine(t,code,optimization=1,extraModules=[]){
+export function collectionMachine(t,code,optimization=1,extraModules=[],projectOverride=null){
  let linked;const finish=PE32Image.prototype.finish;
  const mock=t.mock.method(PE32Image.prototype,'finish',function(...args){return linked=finish.apply(this,args);});
- const result=compileWin32({...newProject('CollectionChecks'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code},...extraModules]},{optimization});mock.mock.restore();
+ const result=compileWin32(projectOverride||{...newProject('CollectionChecks'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code},...extraModules]},{optimization});mock.mock.restore();
  const vm=new NativeX86FloatingMachine(linked),m=vm.memory,failures=new Map();
  vm.hooks.delete(vm.symbol('native:error:raise'));
  const read=p=>{const tag=m.read(p,16),ptr=m.read(p+8);assert.ok([0,1,2,3,4,5,7,8,10,11,17].includes(tag),'supported scalar test tag '+tag);return {tag,value:tag===8?m.bstr(ptr):[5,7].includes(tag)?vm.readFP(p+8):tag===4?vm.readFP(p+8,32):tag===17?ptr&255:tag===2||tag===11?(ptr<<16)>>16:ptr|0};};

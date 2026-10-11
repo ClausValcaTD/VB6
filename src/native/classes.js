@@ -288,7 +288,8 @@ export const nativeClassMethods={
    const next=x.unique();x.cmp(at('esi',4),d.id).branch('ne',next);
    this.detachNativeEventFields(d);
    for(const f of d.fields){const a=at('esi',f.nativeFieldOffset);
-    if(f.nativeClassRef||f.nativeCollectionRef){x.pushOperand(a).mov(a,0).call(f.nativeClassRef?this.classProcedure('Release'):this.collectionProcedure('CollectionRelease'));}
+    if(f.nativeControlRef){x.pushOperand(a).mov(a,0).call(this.controlProcedure('Release'));}
+    else if(f.nativeClassRef||f.nativeCollectionRef){x.pushOperand(a).mov(a,0).call(f.nativeClassRef?this.classProcedure('Release'):this.collectionProcedure('CollectionRelease'));}
     else if(key(f.type)==='string'){x.pushOperand(a).mov(a,0).invoke('oleaut32.dll','SysFreeString');}
     else if(key(f.type)==='variant'){x.lea('eax',a).push().call('native:variant:clear');}
    }

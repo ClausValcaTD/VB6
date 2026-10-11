@@ -69,7 +69,7 @@ export const nativeCompilerProcedureMethods={
     x.label(context.label + ':' + code.length).label(end);
     if(context.variantReturn){
       this.rawStorageAddress(context.returnValue);x.push().push({argument:8}).call('native:variant:copy');
-    }else if(context.returnValue&&(key(context.returnValue.type)==='string'||context.returnValue.nativeCollectionRef||context.returnValue.nativeClassRef)){
+    }else if(context.returnValue&&(key(context.returnValue.type)==='string'||context.returnValue.nativeCollectionRef||context.returnValue.nativeClassRef||context.returnValue.nativeControlRef)){
       this.rawStorageAddress(context.returnValue);x.emit(0x8b,0x00);x.push();this.rawStorageAddress(context.returnValue);x.emit(0xc7,0x00,0,0,0,0,0x58);
     }else if(context.returnValue)this.load(context.returnValue);else x.value(0);
     const cleanup=context.label+':cleanup';x.jump(cleanup);

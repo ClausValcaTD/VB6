@@ -1,3 +1,5 @@
+import {nativeEventsSampleFixture} from './win32-events-sample-fixture.mjs';
+import {nativeDynamicControlFixtures} from './win32-dynamic-control-fixtures.mjs';
 import {nativeEventFixtures} from './win32-event-fixtures.mjs';
 import {nativeCompatibilitySampleFixture} from './win32-compatibility-sample-fixture.mjs';
 import {nativeClassFixtures} from './win32-class-fixtures.mjs';
@@ -264,7 +266,7 @@ Private Declare Function DeleteFileW Lib "kernel32" (ByVal path As Long) As Long
  selectionChanges=selectionChanges+1
 End Sub`);
 }
-export function nativeControlFixtures(){return [...nativeEventFixtures(fixture),nativeCompatibilitySampleFixture(),...nativeClassFixtures(fixture),...nativeCollectionFixtures(fixture),nativeSurfacePictureFixture(fixture),...nativeSurfaceDrawingFixtures(fixture),nativeSurfaceFixture(fixture),nativeSurfaceLifetimeFixture(fixture),nativeErrorArgumentFixture(fixture),nativeMathControlFixture(fixture),nativeRecordStringFixture(fixture),nativeFileControlFixture(fixture),nativeListControlFixture(fixture),commonItemControlFixture(fixture),rangeControlFixture(),contentControlFixture(),editControlFixture(),fileControlFixture(),drawingControlFixture(),richTextControlFixture(),...advancedNativeControlFixtures(fixture),...gridControlFixtures(),...gridEditControlFixtures(),chartControlFixture(),...tabControlFixtures()];}
+export function nativeControlFixtures(){return [nativeEventsSampleFixture(),...nativeDynamicControlFixtures(fixture),...nativeEventFixtures(fixture),nativeCompatibilitySampleFixture(),...nativeClassFixtures(fixture),...nativeCollectionFixtures(fixture),nativeSurfacePictureFixture(fixture),...nativeSurfaceDrawingFixtures(fixture),nativeSurfaceFixture(fixture),nativeSurfaceLifetimeFixture(fixture),nativeErrorArgumentFixture(fixture),nativeMathControlFixture(fixture),nativeRecordStringFixture(fixture),nativeFileControlFixture(fixture),nativeListControlFixture(fixture),commonItemControlFixture(fixture),rangeControlFixture(),contentControlFixture(),editControlFixture(),fileControlFixture(),drawingControlFixture(),richTextControlFixture(),...advancedNativeControlFixtures(fixture),...gridControlFixtures(),...gridEditControlFixtures(),chartControlFixture(),...tabControlFixtures()];}
 export function buildControlFixtures(directory='reports/native-controls'){
   fs.mkdirSync(directory,{recursive:true});const builds=[];
   for(const {project,checks}of nativeControlFixtures())for(const optimization of [0,1,2]){

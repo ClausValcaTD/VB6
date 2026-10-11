@@ -21,7 +21,7 @@ export const nativeCompilerStateMethods={
       if (proc.external) continue;
       this.preparingProcedure=proc;
       if (!['sub','function'].includes(proc.kind)) this.fail('Native AOT does not lower property procedures', module);
-      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType)) && key(proc.returnType)!=='string' && !REAL_TYPES.has(key(proc.returnType)) && !['currency','variant','collection','vba.collection'].includes(key(proc.returnType)) && !this.nativeClassDescriptor(proc.returnType)) this.fail('Native functions must return a supported scalar: ' + proc.name, module);
+      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType)) && key(proc.returnType)!=='string' && !REAL_TYPES.has(key(proc.returnType)) && !['currency','variant','collection','vba.collection'].includes(key(proc.returnType)) && !this.nativeClassDescriptor(proc.returnType) && !this.nativeObjectType(proc.returnType)) this.fail('Native functions must return a supported scalar: ' + proc.name, module);
       const context = {module:result,proc,label:'proc:' + module.name + ':' + proc.name+(proc.nativeProperty?':'+proc.nativeProperty:''),locals:new Map(),temporaries:new Map(),loops:new Map(),size:NATIVE_ERROR_FRAME_BYTES};
       const local = (name, type = 'Long',decl={}) => { context.size += decl.nativeBytes || 4; if(context.size>512*1024)this.fail('Native procedure workspace exceeds 512 KiB',module); const variable = {...decl,name,type,offset:-context.size}; context.locals.set(key(name),variable); return variable; };
       this.prepareNativeParameters(context);

@@ -72,6 +72,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Native strings and control metadata](NATIVE-STRING-METADATA.md): counted BSTRs,
   Replace/InStr binding, Tag/Name lifetime and HWND-backed TabStop.
 - [Win32 controls](WIN32-CONTROLS.md): native AOT control coverage, property and stream ownership, layout integration, output dependencies and Windows execution checks.
+- [Runtime intrinsic controls](WIN32-DYNAMIC-CONTROLS.md): owned HWND references, sparse control arrays, generation-safe creation and native callbacks.
 - [Typed source events](WIN32-EVENTS.md): synchronous WithEvents/RaiseEvent, reentrant delivery and subscription ownership.
 - [Typed native classes](WIN32-CLASSES.md): instance ownership, properties, runtime member dispatch and counted String mutation.
 - [Native drawing surfaces](WIN32-SURFACES.md): Form/PictureBox hDC ownership, retained backing, painting, scaling and failure cleanup.
