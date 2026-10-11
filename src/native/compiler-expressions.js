@@ -1,3 +1,4 @@
+import {nativeBooleanType,nativeBooleanText} from './boolean-text.js';
 /** Native compiler expressions lowering. Kept separate from PE linkage and runtime kernels. */
 import {REAL_TYPES} from './numeric.js';
 import {key,lit,mem,BOOL_CONDITIONS} from './compiler-constants.js';
@@ -10,6 +11,7 @@ export const nativeCompilerExpressionMethods={
     if(node.kind==='nativeKernelValue')return node.valueType;
     if(node.kind==='nativeKernelStorage')return key(node.storage.type);
     const variantType=this.variantType(node);if(variantType)return variantType;
+    const booleanType=nativeBooleanType(this,node);if(booleanType)return booleanType;
     const stringType=this.stringLibraryType(node);if(stringType)return stringType;
     const layoutType=this.layoutType(node);if(layoutType)return layoutType;
     const surfaceType=this.nativeSurfaceType(node);if(surfaceType)return surfaceType;
@@ -38,7 +40,7 @@ export const nativeCompilerExpressionMethods={
     return 'long';
   },
   numeric(node) { if(this.type(node)==='variant'){this.expression(node);this.unboxVariant('long');return;} if (this.type(node) === 'string') this.fail('Use CLng/CInt explicitly to convert native text to a number'); this.expression(node);if(this.type(node)==='currency')this.currencyToInteger();else if(REAL_TYPES.has(this.type(node)))this.floatToInteger(); },
-  textExpression(node) { if(this.type(node)==='variant'){this.expression(node);this.unboxVariant('string');this.stringPointer();return;} this.expression(node); if(this.type(node)==='date'){this.dateToString();}else if(this.type(node)==='currency'){this.currencyToString();}else if(REAL_TYPES.has(this.type(node))){this.floatToString(this.type(node));}else if(this.type(node)!=='string'){this.x.push().call('native:string:from-int');this.ownString();}this.stringPointer(); },
+  textExpression(node) { if(this.type(node)==='variant'){this.expression(node);this.unboxVariant('string');this.stringPointer();return;} this.expression(node); if(this.type(node)==='date'){this.dateToString();}else if(this.type(node)==='currency'){this.currencyToString();}else if(REAL_TYPES.has(this.type(node))){this.floatToString(this.type(node));}else if(this.type(node)==='boolean'){nativeBooleanText(this);}else if(this.type(node)!=='string'){this.x.push().call('native:string:from-int');this.ownString();}this.stringPointer(); },
   expression(node) {
     if (!node) this.fail('Missing expression'); const x = this.x;
     if(node.kind==='nativeKernelValue'){x.value(node.value);return;}

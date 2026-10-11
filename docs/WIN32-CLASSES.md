@@ -44,6 +44,12 @@ The instance header is private compiler/runtime data. It is **not** an
 IUnknown, IDispatch, OCX or external `As Any` object ABI. A typed class reference
 cannot silently convert into an integer, Double, Currency, Boolean or String.
 
+`Is` and `TypeOf` return Boolean values, including when boxed into a Variant or
+passed to `CStr`. Their -1/0 machine representation must not cause `CStr` to
+print numeric text: Boolean conversion uses `True`/`False`, while explicit Long
+-1/0 retains numeric formatting. This also applies to String/numeric comparison
+results; Variant comparisons still propagate Null.
+
 ## Runtime member names
 
 `CallByName` dispatches case-insensitive runtime names to compiled public class

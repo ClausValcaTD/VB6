@@ -20,6 +20,7 @@ function classInstances(fixture){
  add('Set kept=Nothing');check('finished=1','the final release invokes Class_Terminate once');
  add('On Error Resume Next\nErr.Clear\nDim failed As Failing\nSet failed=New Failing');check('Err.Number=903 And Err.Source="initializer" And Err.Description="owned failure" And failed Is Nothing','failed initialization preserves custom Err while rolling back the unpublished object');
  add('Err.Clear\nOn Error GoTo 0\nFor n=1 To 100\n Set live=New Lifetime\n live.Title=String$(1024,"x")\n Set live=Nothing\nNext');check('started=101 And finished=101','repeated native allocation, owned strings and release retain exact lifecycle counts');
+ check('VarType(TypeOf alias Is Counter)=vbBoolean And VarType(a Is b)=vbBoolean And CStr(TypeOf alias Is Counter)="True" And CStr(a Is b)="False"','class TypeOf/Is retain Boolean subtype and display names, not the EAX integer encoding');
  add('Set a=Nothing\nSet b=Nothing\nSet alias=Nothing');
  const result=finish('Public started As Long,finished As Long',`Private Sub Take(ByVal value As Lifetime)
  value.Title="changed"
@@ -83,5 +84,13 @@ function classStrings(fixture){
  add('Err.Clear\nOn Error GoTo 0\nname="Caption"\nCallByName CaptionTarget,name,vbLet,"native " & ChrW$(937)');check('CaptionTarget.Caption="native " & ChrW$(937)','CallByName assigns actual native control text through the property implementation');
  check('CallByName(CaptionTarget,"CAPTION",vbGet)="native " & ChrW$(937)','CallByName reads counted Unicode from the actual HWND');
  add('s=String$(8192,"x")\nMid(s,8192)="long"');check('Len(s)=8192 And Right$(s,1)="l"','long mutation is bounded by the BSTR count instead of the window scratch-buffer limit');
+ add('Dim flag As Boolean\nflag=True');
+ check('CStr(flag)="True" And CStr(False)="False" And "value=" & flag="value=True"','typed Boolean formatting emits the language names for explicit and implicit text conversion');
+ check('CStr(-1&)="-1" And CStr(0&)="0"','numeric -1 and 0 keep numeric formatting rather than becoming Boolean text');
+ check('CStr("a"="a")="True" And CStr("a"="b")="False" And CStr(1.5<2.5)="True"','String and floating comparisons retain their Boolean result type before formatting');
+ add('v=Not ("a"="b")');
+ check('VarType(v)=vbBoolean And CStr(v)="True"','comparison and Not results box as VT_BOOL rather than VT_I4');
+ add('v=Null\nv=(v=1)');
+ check('IsNull(v)','Variant comparison Null propagation is not replaced by the scalar Boolean path');
  return finish();
 }
