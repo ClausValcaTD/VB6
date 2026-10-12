@@ -1,3 +1,4 @@
+import {PRIVATE_MEMORY_INTRINSICS} from './private-memory.js';
 /** Native owned Collection references. This is a typed compiler extension, not
  * a Long alias exposed to arithmetic or a substitute scripting engine. Stored
  * entries own Automation values; object/IDispatch entries remain unsupported
@@ -35,7 +36,7 @@ export const nativeCollectionMethods={
     nodeget:(c,p)=>{const x=c.x;x.label(p.label).enter().value(arg(12)).add('eax',16).push().push(arg(8)).call('native:variant:copy').leave(8);},
     nodeclear:(c,p)=>{const x=c.x;x.label(p.label).enter().value(arg(8)).mov('esi','eax').add('eax',16).push().call('native:variant:clear')
       .pushOperand(at('esi',8)).invoke('oleaut32.dll','SysFreeString').mov(at('esi',8),0).leave(4);}
-   });
+   },PRIVATE_MEMORY_INTRINSICS);
    // Key publication owns its allocation and never keeps the caller's BSTR.
    this.nativeCollectionKernel.hosts.nodekeyset=(c,p)=>{const x=c.x;x.label(p.label).enter().push(arg(12)).call('native:string:copy').mov('ebx','eax')
     .value(arg(8)).mov(at('eax',8),'ebx').value(0).leave(8);};

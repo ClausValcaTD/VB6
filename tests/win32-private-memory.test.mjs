@@ -45,3 +45,13 @@ test('one private-frame clear preserves arguments and callee saves while zeroing
  assert.equal(zeroPrivateFrame({x},{module:{},size:4}),false);
  assert.throws(()=>zeroPrivateFrame({x},{module:{deferredNativeKernel:true},size:3}));
 });
+
+test('private service emission revisits roots discovered in an earlier kernel exactly once',async()=>{
+ const {nativePrivateKernelMethods}=await import('../src/native/private-kernels.js');
+ const first={procedures:new Map([['a',{proc:{name:'a',code:[]}}],['late',{proc:{name:'late',code:[]}}]]),roots:new Set(['a']),emitted:new Set(),hosts:{}};
+ const second={procedures:new Map([['b',{proc:{name:'b',code:[]}}]]),roots:new Set(['b']),emitted:new Set(),hosts:{b(c){first.roots.add('late');c.order.push('b');}}};
+ const c={context:'caller',instruction:'instruction',privateNativeKernels:[first,second],order:[],procedure(p){this.order.push(p.proc.name);}};
+ nativePrivateKernelMethods.emitPrivateNativeKernels.call(c);
+ assert.deepEqual(c.order,['a','b','late']);assert.equal(c.context,'caller');assert.equal(c.instruction,'instruction');
+ nativePrivateKernelMethods.emitPrivateNativeKernels.call(c);assert.deepEqual(c.order,['a','b','late']);
+});

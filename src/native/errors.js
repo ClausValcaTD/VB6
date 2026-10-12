@@ -69,7 +69,7 @@ export const nativeErrorMethods = {
   },
   enterErrorFrame(context) {
     const x=this.x;
-    for(const offset of Object.values(F))localImmediate(x,offset,0);
+    if(!context.nativeFrameZeroed)for(const offset of Object.values(F))localImmediate(x,offset,0);
     x.value(mem(E+'frame'));localStore(x,F.previous);
     x.emit(0x89,0xe8).store(E+'frame');
     x.emit(0x89,0xe0);localStore(x,F.stack);

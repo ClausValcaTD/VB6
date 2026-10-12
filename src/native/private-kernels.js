@@ -59,17 +59,21 @@ export const nativePrivateKernelMethods={
   nativeKernelStorage(storage){return {kind:'nativeKernelStorage',storage};},
   emitPrivateNativeKernels(){
     const previous=this.context,instruction=this.instruction;
-    try{for(const kernel of this.privateNativeKernels||[]){
-      // Emitting a host can discover another root. Iterate to a fixed point;
-      // normal recursive VB calls are handled by dependency closure, not inlining.
-      for(;;){
-        const pending=[...nativeKernelDependencies(kernel.procedures,kernel.roots)].filter(n=>!kernel.emitted.has(n));
-        if(!pending.length)break;
-        for(const name of pending){
-          const proc=kernel.procedures.get(name);kernel.emitted.add(name);
-          if(kernel.hosts[name])kernel.hosts[name](this,proc);else this.procedure(proc);
+    try{for(;;){
+      let changed=false;
+      for(const kernel of this.privateNativeKernels||[]){
+        // Hosts may discover a root in their own kernel OR an earlier service.
+        // Reach a global fixed point without re-emitting already linked bodies.
+        for(;;){
+          const pending=[...nativeKernelDependencies(kernel.procedures,kernel.roots)].filter(n=>!kernel.emitted.has(n));
+          if(!pending.length)break;
+          for(const name of pending){
+            const proc=kernel.procedures.get(name);kernel.emitted.add(name);changed=true;
+            if(kernel.hosts[name])kernel.hosts[name](this,proc);else this.procedure(proc);
+          }
         }
       }
+      if(!changed)break;
     }}finally{this.context=previous;this.instruction=instruction;}
   }
 };

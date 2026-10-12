@@ -14,6 +14,7 @@ export function zeroPrivateFrame(c,context){
  // below EBP-size. Only the newly allocated frame is cleared, once, before any
  // owned parameter or local initialization. Globals/instance fields are intact.
  if(!Number.isInteger(context.size)||context.size<0||context.size%4)throw new Error('Unaligned private native procedure frame');
+ context.nativeFrameZeroed=true;
  c.x.local(-context.size).mov('edi','eax').mov('ecx',context.size/4).xor('eax','eax').cld().repStore(32);
  return true;
 }
