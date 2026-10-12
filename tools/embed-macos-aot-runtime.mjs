@@ -20,6 +20,7 @@ export async function encodeAOTRuntimePayload(runtime,{sourceRoot=root,proof}={}
   const provenance=readAOTSourceProvenance(sourceRoot);
   for(const key of Object.keys(provenance))if(runtime.manifest.provenance?.[key]!==provenance[key])throw new Error('Runtime was compiled from different source: '+key);
   if(runtime.manifest.provenance?.structuralFixtureOnly||!proof?.arm64ExecutionVerified||!proof?.nativeSignatureVerified||proof.platform!=='darwin'||proof.arch!=='arm64'||proof.runtime?.sha256!==runtime.manifest.sha256)throw new Error('Embedding requires successful native execution and signature verification for these exact runtime bytes');
+  if(runtime.manifest.layout==='project-segments-v2'&&(!proof.largeCapacityVerified||JSON.stringify(proof.optimizationLevelsVerified)!=='[0,1,2,3]'))throw new Error('Growable runtime requires native large-project and all-optimization execution proof');
   const archive=compressedRuntimeArchive(runtime.bytes),files=await readZip(archive,{maxExpandedBytes:64*1024*1024,maxFiles:1});
   if(files.size!==1||!files.get('runtime-arm64')?.every((b,i)=>b===runtime.bytes[i])||files.get('runtime-arm64').length!==runtime.bytes.length)throw new Error('Runtime compression round trip failed');
   const base64=Buffer.from(archive).toString('base64'),manifest={...runtime.manifest,verification:{platform:'darwin',architecture:'arm64',nativeSignatureVerified:true,arm64ExecutionVerified:true}};

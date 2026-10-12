@@ -10,6 +10,7 @@ import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-nativ
 import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
+import {largeAOTProject} from '../packages/macos-native/tests/aot-large.mjs';
 import {buildAOTTemplate} from './build-macos-aot-template.mjs';
 const root=path.resolve(import.meta.dirname,'..'),sdk=path.join(root,'packages/macos-native'),work=await fs.mkdtemp(path.join(os.tmpdir(),'vb6-direct-aot-'));
 const artifacts=path.join(root,'artifacts/macos-aot'),reports=path.join(root,'reports/macos-aot');
@@ -34,17 +35,22 @@ try{
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;
-    for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))]]){
-      const result=await exportMacOSAOT(p,runtime);await verifyMacOSAOTArchive(result.bytes,result.options);
-      const archive=path.join(artifacts,result.filename),expanded=path.join(work,label);await fs.writeFile(archive,result.bytes);await fs.mkdir(expanded);
+    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))]]){
+      const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
+      const result=await exportMacOSAOT(p,runtime,options);
+      if(label==='large'){assert.ok(result.report.codeBytes>2097152,'Native large program must exceed old code cap');assert.ok(result.report.metadataBytes>2097152,'Native large program must exceed old metadata cap');}
+      await verifyMacOSAOTArchive(result.bytes,result.options);
+      const archive=path.join(artifacts,result.filename),expanded=path.join(work,key);await fs.writeFile(archive,result.bytes);await fs.mkdir(expanded);
       await run('/usr/bin/ditto',['-x','-k',archive,expanded]);
       const app=path.join(expanded,result.options.name+'.app'),executable=path.join(app,'Contents','MacOS',result.options.name);
       // Crucially, do NOT invoke Clang on project source or re-sign with codesign.
       await run('/usr/bin/codesign',['--verify','--strict','--verbose=2',app]);
       validate(await run(executable,[]));
-      report.checks.push(label+': downloaded direct ARM64 code executed and app signature verified');
-      report[label]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes};
+      report.checks.push(key+': direct ARM64 code executed and app signature verified');
+      report[key]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes,metadataBytes:result.report.metadataBytes,optimization:result.report.projectOptimization};
+      if(optimization===2)report[label]=report[key];
     }
+    report.largeCapacityVerified=true;report.optimizationLevelsVerified=[0,1,2,3];
     report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
   }
 }catch(error){report.error={message:error.message,output:error.output||''};console.error(error.stack,error.output||'');process.exitCode=1;}

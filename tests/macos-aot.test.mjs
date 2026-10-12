@@ -18,7 +18,7 @@ test('AOT emits actual aligned ARM64 procedures, not IR in project metadata',()=
  const result=compileMacOSAOT(conformanceProject());assert.ok(result.section.length>4096);assert.ok(result.metadata.entries.length>10);
  assert.ok(result.metadata.entries.every(n=>Number.isInteger(n)&&n%16===0));assert.equal(result.report.compiled,false);
  assert.ok(result.section.fixups.every(f=>f.kind.startsWith('arm64-')));assert.ok(!JSON.stringify(result.metadata).includes('"op":'));
- assert.throws(()=>compileMacOSAOT(project,{optimization:0}),/optimization/i);
+ for(const optimization of [0,1,2,3])assert.equal(compileMacOSAOT(project,{optimization}).report.optimization.level,optimization);
 });
 test('direct ZIP preserves executable permission, seals content and reports no notarization',async()=>{
  const result=await verifyMacOSAOTArchive(exported.bytes,exported.options);assert.equal(result.compiled,true);assert.equal(result.browserSignatureCryptographicallyVerified,true);

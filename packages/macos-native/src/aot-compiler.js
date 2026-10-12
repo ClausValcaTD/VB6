@@ -175,18 +175,17 @@ class DirectLowering extends MacOSLowering {
       if(module.form){m.form=this.spec({...module.form,name:module.name});m.controls=module.form.controls.map(c=>this.spec(c));m.menus=(module.form.menus||[]).map(c=>this.spec({...c,type:'Menu'}));}
       this.modules.push(m);
     }
-    const section=emitAOTFunctions(this.functions),metadata={abi:AOT_ABI,name:this.options.name,startup:this.program.startup,maxArrayElements:this.options.maxArrayElements,maxCallDepth:this.options.maxCallDepth,names:this.names,literals:this.literals,modules:this.modules,entries:this.functions.map(f=>section.labels.get('aot_entry_'+f.id))};
-    const text=JSON.stringify(metadata);if(new TextEncoder().encode(text).length>2*1024*1024-16)this.fail('Project metadata exceeds direct native runtime capacity','MACA202');
+    const section=emitAOTFunctions(this.functions,this.options.optimization),metadata={abi:AOT_ABI,name:this.options.name,startup:this.program.startup,maxArrayElements:this.options.maxArrayElements,maxCallDepth:this.options.maxCallDepth,names:this.names,literals:this.literals,modules:this.modules,entries:this.functions.map(f=>section.labels.get('aot_entry_'+f.id))};
+    const text=JSON.stringify(metadata);if(new TextEncoder().encode(text).length>8*1024*1024)this.fail('Project metadata exceeds the bounded 8 MiB native reader','MACA202');
     return {section,metadata,functions:this.functions};
   }
 }
 export function compileMacOSAOT(input,options={}){
   const project=normalizeProject(input),normalized=macOSOptions({name:project.name,...options});
   project.settings={...project.settings,conditionalConstants:{...project.settings.conditionalConstants,VBWEB:0,Win32:0,Win64:0,Mac:-1,MacOS:-1,ARM64:-1}};
-  if(normalized.optimization!==2)throw new MacOSCompileError('Direct AOT uses the optimized native runtime (optimization 2); use the source/bridge target for other optimization levels', '', 0, 'MACA203');
   const program=compileProject(project);if(!program.valid){const error=new MacOSCompileError('VB6 frontend rejected the project');error.diagnostics=program.diagnostics;throw error;}
   const controls=macOSControlReport(project),lowering=new DirectLowering(program,normalized),emitted=lowering.emit();
-  const report={target:'macos-arm64',architecture:'arm64',format:'Mach-O',artifact:'native-object-code',compiled:false,codegen:'arm64-aot',runtime:'vb6-native',abi:AOT_ABI,modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,codeBytes:emitted.section.length,metadataBytes:new TextEncoder().encode(JSON.stringify(emitted.metadata)).length,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,diagnostics:[]};
+  const report={target:'macos-arm64',architecture:'arm64',format:'Mach-O',artifact:'native-object-code',compiled:false,codegen:'arm64-aot',runtime:'vb6-native',abi:AOT_ABI,modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,codeBytes:emitted.section.length,optimization:emitted.section.optimization,metadataBytes:new TextEncoder().encode(JSON.stringify(emitted.metadata)).length,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,diagnostics:[]};
   return {...emitted,options:normalized,project,report,sourceMap:lowering.sourceMap};
 }
 /** Test-only native C++ oracle generated from the same lowered helper-call graph.

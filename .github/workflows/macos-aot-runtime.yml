@@ -1,6 +1,8 @@
 name: Refresh verified macOS runtime
 on:
   workflow_dispatch:
+  push:
+    branches: ["maint/macos-runtime-*"]
 permissions:
   contents: read
 concurrency:
@@ -8,7 +10,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native:
-    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/maint/macos-runtime-')
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'push') && startsWith(github.ref, 'refs/heads/maint/macos-runtime-')
     runs-on: macos-15
     timeout-minutes: 25
     steps:
