@@ -1,3 +1,5 @@
+import {rendererForDocument} from '../rendering/renderer.js';
+import {commitWorkspacePresentation} from './figma/presentation.js';
 import {el,clone} from '../core/core.js';
 import {uiDocuments} from '../core/window-context.js';
 import {showMenu,alertDialog} from './ui.js';
@@ -21,9 +23,14 @@ export function installFigmaMode(ide){
   workspace.report=error=>{ide.status('Figma workspace: '+(error.message||error));};
   workspace.safe=fn=>{try{const value=fn();if(value?.catch)value.catch(error=>{workspace.report(error);alertDialog(error.message||String(error),'Figma workspace');});workspace.scheduleSync();return value;}catch(error){workspace.report(error);alertDialog(error.message||String(error),'Figma workspace');workspace.scheduleSync();}};
   workspace.scheduleSync=()=>{if(!workspace.enabled||workspace.switching||workspace.frame)return;workspace.frame=view.requestAnimationFrame(()=>{workspace.frame=0;workspace.sync();});};
-  workspace.appearance=()=>{
+  workspace.appearance=(publish=true)=>{
     const scheme=workspace.settings.scheme==='system'?(media?.matches?'dark':'light'):workspace.settings.scheme;
-    for(const doc of uiDocuments()){const root=doc.documentElement;for(const [name,value]of [['data-ide-workspace',workspace.enabled?'figma':null],['data-figma-scheme',workspace.enabled?scheme:null]]){if(value===null){if(root.hasAttribute(name))root.removeAttribute(name);}else if(root.getAttribute(name)!==value)root.setAttribute(name,value);}}
+    const documents=uiDocuments();let changed=false;
+    for(const doc of documents){const root=doc.documentElement;for(const [name,value]of [['data-ide-workspace',workspace.enabled?'figma':null],['data-figma-scheme',workspace.enabled?scheme:null]]){
+      if(value===null){if(root.hasAttribute(name)){root.removeAttribute(name);changed=true;}}
+      else if(root.getAttribute(name)!==value){root.setAttribute(name,value);changed=true;}
+    }}
+    if(changed&&publish&&!workspace.switching)commitWorkspacePresentation(documents,rendererForDocument);
   };
   const saveProfiles=()=>{if(workspace.enabled)profiles.figma=ide.docking.snapshot();try{storage?.setItem(profileKey,JSON.stringify(profiles));}catch{workspace.report(new Error('Workspace layout applies to this session; browser storage is unavailable.'));}};
   const attach=designer=>{
@@ -84,7 +91,10 @@ export function installFigmaMode(ide){
     ui.run.disabled=ide.runState==='running';ui.stop.disabled=ide.runState==='design';ui.undo.disabled=ide.runState!=='design'||!ide.history.undoStack.length;ui.redo.disabled=ide.runState!=='design'||!ide.history.redoStack.length;
     ui.toolbar.hidden=!d;ui.addLayout.disabled=!workspace.writable();ui.left.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='layers':['figma-layers','toolbox','project'].some(id=>!ide.docking.model.windows.get(id)?.hidden)));ui.right.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='design':!ide.docking.model.windows.get('properties')?.hidden));ui.zoom.textContent=Math.round((d?.zoom||1)*100)+'%';
     for(const [type,button]of ui.buttons){button.disabled=!d||(type!=='Hand'&&!workspace.writable());button.setAttribute('aria-pressed',String(type==='Hand'?!!workspace.viewports.get(d)?.hand:d?.tool===type&&!workspace.viewports.get(d)?.hand));}
-    ui.layers.sync();ui.inspector.sync();decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance();
+    ui.layers.sync();ui.inspector.sync();decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance(false);
+    // Publish after all inspector, layer and viewport DOM edits, not before the
+    // MutationObserver callback. This also keeps native holes aligned in WebKit.
+    commitWorkspacePresentation(uiDocuments(),rendererForDocument);
   };
   workspace.configure=(value,{persist=true}={})=>{
     const settings=normalizeFigmaSettings(value),enabled=settings.mode==='figma';
@@ -112,7 +122,7 @@ export function installFigmaMode(ide){
       workspace.settings=settings;workspace.appearance();
       if(persist){try{saveFigmaSettings(storage,settings);}catch{workspace.report(new Error('Options apply to this session; browser storage is unavailable.'));}saveProfiles();ide.autosave();}
     }finally{workspace.switching=false;}
-    workspace.sync();return true;
+    workspace.sync();if(!workspace.enabled)commitWorkspacePresentation(uiDocuments(),rendererForDocument);return true;
   };
   const menu=ide.menu.bind(ide),command=ide.command.bind(ide),snapshot=ide.layoutSnapshot.bind(ide),factory=ide.documents.designer.bind(ide.documents);
   ide.menu=name=>{const items=menu(name);if(name==='Window'&&workspace.enabled)items.unshift({id:'figmaSingleCanvas',label:'Single design canvas',checked:ide.root.dataset.figmaWindowMode!=='windows'},null);if(name==='Tools')items.push(null,{id:'figmaWorkspaceOptions',label:'Figma Workspace Options…'});if(name==='View')items.push(null,{id:'figmaWorkspaceToggle',label:'Figma Workspace',checked:workspace.enabled},...(workspace.enabled?[{id:'figmaLayers',label:'Layers'},{id:'figmaFit',label:'Zoom to Fit',shortcut:'Shift+1'}]:[]));return items;};
