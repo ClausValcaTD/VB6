@@ -1,13 +1,13 @@
 import {el} from '../core/core.js';
 import {modal} from './ui.js';
 import {writeZip} from '../project/zip.js';
-import {compileMacOS, createMacOSBuildKit, MacOSCompilerClient, verifyMacOSAppArchive} from '../../packages/macos-native/src/index.js';
+import {compileMacOS, createMacOSBuildKit, MacOSCompilerClient, verifyMacOSAppArchive, compileMacOSAOT, exportMacOSApplication, verifyMacOSAOTArchive} from '../../packages/macos-native/src/index.js';
 
 /** A native export session is local UI authority, never an unattended agent command. */
 export function installMacOSExport(ide, api) {
   if (ide.macOSExportInstalled) return;
   ide.macOSExportInstalled = true;
-  if (api) Object.assign(api, {compileMacOS, createMacOSBuildKit, verifyMacOSAppArchive});
+  if (api) Object.assign(api, {compileMacOS, createMacOSBuildKit, verifyMacOSAppArchive, compileMacOSAOT, exportMacOSApplication, verifyMacOSAOTArchive});
   const menu = ide.menu.bind(ide), command = ide.command.bind(ide);
   let opened = false;
   ide.menu = name => {
@@ -40,10 +40,10 @@ export function installMacOSExport(ide, api) {
     const content = el('div', {},
       el('p', {}, 'Compile VB6 to a native arm64 Mach-O executable with AppKit controls. The app contains no browser, JavaScript interpreter, Wine or Microsoft runtime.'),
       output, downloads, field('Application name', name), field('Bundle identifier', identifier), field('Minimum macOS', minimum), field('Optimization', optimization),
-      el('fieldset', {}, el('legend', {}, 'Local macOS compiler (for .app ZIP download)'), field('Bridge URL', endpoint), field('Session token', token),
+      el('details', {}, el('summary', {}, 'Advanced: optional Mac compiler bridge'), field('Bridge URL', endpoint), field('Session token', token),
         el('p', {}, 'On your Mac with Xcode Command Line Tools: node tools/serve-macos.mjs ' + (origin === 'null' ? '--allow-file-origin' : '--origin ' + (origin || 'http://127.0.0.1:8080'))),
         el('p', {}, 'Paste its token, then approve this build in the terminal. The token is discarded when the dialog closes. The exporter never runs the generated application.')),
-      el('p', {}, 'Without a connected Mac, download the source build kit and run node build.mjs on macOS. A source kit is not an executable.'),
+      el('p', {}, 'Export .app ZIP works directly here, including offline: no Mac, Clang, server or bridge is needed. It uses O2. The optional bridge supports other optimization levels; the separate source build kit is not an executable.'),
       el('p', {}, 'This target is experimental, not complete VB6/Win32/COM parity. Default signing is ad-hoc, not notarization or Gatekeeper approval. Review diagnostics and test the native application before deployment.'));
     function offerArchive(filename, bytes) {
       clearDownload();
@@ -56,35 +56,44 @@ export function installMacOSExport(ide, api) {
     }
     function preflight() {
       try {
-        const result = compileMacOS(ide.project, selected());
-        output.textContent = result.report.modules + ' modules, ' + result.report.procedures + ' native procedures. Target: arm64, minimum macOS ' + result.options.minimumVersion + '.\nNative compilation and application behavior still require validation.';
+        const result = compileMacOSAOT(ide.project, selected());
+        output.textContent = result.report.modules + ' modules, ' + result.report.procedures + ' native procedures. Target: arm64, minimum macOS ' + result.options.minimumVersion + '.\nDirect AOT emits native code with the bundled SDK. Test application behavior on your Mac.';
       } catch (error) {output.textContent = error.message;}
     }
     for (const input of [name, identifier, minimum, optimization]) input.addEventListener('change', () => {clearDownload(); preflight();});
     preflight();
-    async function perform(executable) {
+    async function perform(mode) {
+      const executable = mode !== 'source';
       if (!alive || busy) return false;
       busy = true; clearDownload(); fields.forEach(input => input.disabled = true);
       try {
         if (ide.runState !== 'design') throw new Error('Stop execution before exporting.');
         const project = ide.project, snapshot = JSON.stringify(project), options = selected();
-        output.textContent = 'Checking native source compatibility…';
-        const prepared = executable ? compileMacOS(JSON.parse(snapshot), options) : createMacOSBuildKit(JSON.parse(snapshot), options);
-        let result;
-        if (executable) {
+        output.textContent = mode === 'direct' ? 'Compiling ARM64 code, linking the native runtime and signing the app…' : 'Checking native source compatibility…';
+        let result, prepared;
+        if (mode === 'direct') {
+          result = await exportMacOSApplication(JSON.parse(snapshot), options, {signal: cancelled.signal});
+          prepared = {options: result.options};
+        } else if (mode === 'bridge') {
+          prepared = compileMacOS(JSON.parse(snapshot), options);
           output.textContent = 'Connecting to the Mac. Approve this native build in the terminal…';
           await client.connect(endpoint.value, token.value, {signal: cancelled.signal}); token.value = '';
           result = await client.build(JSON.parse(snapshot), options, {signal: cancelled.signal});
-        } else result = {bytes: writeZip({...prepared.files, 'project.vb6web': snapshot}), report: prepared.report};
+        } else {
+          prepared = createMacOSBuildKit(JSON.parse(snapshot), options);
+          result = {bytes: writeZip({...prepared.files, 'project.vb6web': snapshot}), report: prepared.report};
+        }
         cancelled.signal.throwIfAborted();
         if (!alive) return false;
         if (ide.project !== project || JSON.stringify(ide.project) !== snapshot || ide.runState !== 'design') throw new Error('Project changed during export. Build again to download the current revision.');
         ide.lastMacOSBuild = result.report;
         offerArchive(prepared.options.name + (executable ? '.app.zip' : '-macos-source.zip'), result.bytes);
-        output.textContent = executable
+        output.textContent = mode === 'direct'
+          ? 'Direct native ARM64 .app ZIP ready: ' + result.bytes.length + ' bytes.\nSHA-256: ' + result.report.sha256 + '\nAll code-page and resource hashes verified. Ad-hoc signing is not Developer ID, notarization or Gatekeeper approval.'
+          : executable
           ? 'Native arm64 .app ZIP verified: ' + result.bytes.length + ' bytes.\nSHA-256: ' + result.report.sha256 + '\nAd-hoc signing is not notarization. The browser checks structure and hashes, not the cryptographic code signature.'
           : 'Source build kit ready: ' + result.bytes.length + ' bytes. This is not an executable. Extract it on a Mac and run node build.mjs.';
-        ide.emit('export', {kind: executable ? 'macos-arm64' : 'macos-source', report: result.report});
+        ide.emit('export', {kind: mode === 'direct' ? 'macos-arm64-aot' : executable ? 'macos-arm64' : 'macos-source', report: result.report});
         ide.status(executable ? 'Native macOS application archive is ready to save.' : 'macOS source build archive is ready to save; native compilation is still required.');
       } catch (error) {
         if (alive && !cancelled.signal.aborted) {
@@ -96,9 +105,14 @@ export function installMacOSExport(ide, api) {
       return false;
     }
     try {
-      await modal('Make macOS Apple Silicon Application', {width: 720, content,
-        buttons: [{label: 'Build .app ZIP', value: false, primary: true, action: () => perform(true)},
-          {label: 'Download Source Build Kit', value: false, action: () => perform(false)}, {label: 'Close', value: false}],
+      // Native top-layer modality keeps export status, signature warnings and
+      // approval controls above the IDE's retained canvas without changing its
+      // rendering backend. Reuse the existing classic-chrome dialog host.
+      // https://html.spec.whatwg.org/multipage/interactive-elements.html#dom-dialog-showmodal
+      await modal('Make macOS Apple Silicon Application', {width: 720, content, nativeModal: true,
+        buttons: [{label: 'Export .app ZIP', value: false, primary: true, action: () => perform('direct')},
+          {label: 'Build via Mac Bridge', value: false, action: () => perform('bridge')},
+          {label: 'Download Source Build Kit', value: false, action: () => perform('source')}, {label: 'Close', value: false}],
         onReady: ({dialog, finish}) => {
           // Close must remain effective during an asynchronous build/approval.
           dialog.querySelector('.ide-dialog-footer button:last-child').addEventListener('click', event => {event.stopImmediatePropagation(); finish(false);}, {capture: true});

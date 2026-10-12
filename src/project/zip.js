@@ -157,7 +157,16 @@ export async function readZip(input, {maxExpandedBytes = 50 * 1024 * 1024, maxFi
     const {name, start, size, expanded, method, crc} = record; let data = bytes.slice(start, start + size);
     if (method === 8) {
       if (typeof DecompressionStream === 'undefined') throw new Error('This browser cannot decompress ZIP files; extract them and import the source files together.');
-      const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader(), chunks = []; let length = 0;
+      // Feed bytes directly: Blob-backed reads may use browser I/O even though
+      // the archive is already in memory. Native streams need no Blob or fetch.
+      // Bounded pulls retain backpressure and cancellation for large archives.
+      const compressed = data; let position = 0;
+      const source = new ReadableStream({pull(controller) {
+        if (position === compressed.length) { controller.close(); return; }
+        const end = Math.min(position + 65536, compressed.length);
+        controller.enqueue(compressed.subarray(position, end)); position = end;
+      }});
+      const reader = source.pipeThrough(new DecompressionStream('deflate-raw')).getReader(), chunks = []; let length = 0;
       try {
         while (true) {
           const result = await reader.read(); if (result.done) break;

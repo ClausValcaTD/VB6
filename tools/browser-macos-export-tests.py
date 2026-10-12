@@ -73,6 +73,7 @@ with sync_playwright() as pw:
     def dialog():
         page.evaluate('void vb6Studio.command("exportMacOS")')
         page.get_by_role('dialog', name='Make macOS Apple Silicon Application').wait_for()
+        page.get_by_text('Advanced: optional Mac compiler bridge',exact=True).click()
     def close_dialog():
         page.get_by_role('button', name='Close', exact=True).click()
         page.get_by_role('dialog', name='Make macOS Apple Silicon Application').wait_for(state='detached')
@@ -161,7 +162,7 @@ with sync_playwright() as pw:
         dialog()
         page.get_by_label('macOS compiler bridge token', exact=True).fill(TOKEN)
         with page.expect_download() as item:
-            page.get_by_role('button', name='Build .app ZIP', exact=True).click()
+            page.get_by_role('button', name='Build via Mac Bridge', exact=True).click()
         output = OUT/'NONEXECUTABLE-protocol-fixture.app.zip'
         item.value.save_as(output)
         check('native download preserves exact archive bytes and executable mode metadata', item.value.suggested_filename=='NativeFixture.app.zip' and output.read_bytes()==BINARY)
@@ -172,14 +173,14 @@ with sync_playwright() as pw:
         dialog()
         page.get_by_label('macOS compiler bridge token',exact=True).fill(TOKEN)
         count = len(downloads)
-        page.get_by_role('button',name='Build .app ZIP',exact=True).click()
+        page.get_by_role('button',name='Build via Mac Bridge',exact=True).click()
         page.get_by_role('dialog').get_by_role('status').filter(has_text='unresolved native member').wait_for()
         check('native compiler failure displays diagnostic text and downloads nothing',len(downloads)==count)
         close_dialog()
         set_mode('hold')
         dialog()
         page.get_by_label('macOS compiler bridge token',exact=True).fill(TOKEN)
-        page.get_by_role('button',name='Build .app ZIP',exact=True).click()
+        page.get_by_role('button',name='Build via Mac Bridge',exact=True).click()
         await_pending()
         check('token is cleared before native compilation completes',page.get_by_label('macOS compiler bridge token',exact=True).input_value()=='')
         close_dialog()
@@ -192,7 +193,7 @@ with sync_playwright() as pw:
         dialog()
         check('reopening the dialog never restores a token',page.get_by_label('macOS compiler bridge token',exact=True).input_value()=='')
         page.get_by_label('macOS compiler bridge token',exact=True).fill(TOKEN)
-        page.get_by_role('button',name='Build .app ZIP',exact=True).click()
+        page.get_by_role('button',name='Build via Mac Bridge',exact=True).click()
         await_pending()
         page.evaluate('vb6Studio.project.description="changed during native build"')
         release_pending()
