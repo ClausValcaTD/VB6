@@ -12,7 +12,9 @@ async function digest(bytes,algorithm='SHA-256'){
 export const aotXML=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
 const base64=bytes=>btoa(Array.from(bytes,b=>String.fromCharCode(b)).join(''));
 const plist=body=>'<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n<plist version="1.0"><dict>'+body+'</dict></plist>\n';
-/** Seal every resource using both the v1 and v2 resource envelope formats. */
+/** Seal every resource using both the v1 and v2 resource envelope formats.
+ * Apple SecStaticCode::hasWeakResourceRules requires the exact ^.* catch-all,
+ * not merely an equivalent regular expression. Only system-allowed omissions. */
 export async function aotCodeResources(resources){
   const legacy=[],modern=[];
   for(const [name,bytes]of Object.entries(resources).sort(([a],[b])=>a<b?-1:a>b?1:0)){
@@ -23,7 +25,7 @@ export async function aotCodeResources(resources){
   }
   return encoder.encode(plist('<key>files</key><dict>'+legacy.join('')+'</dict><key>files2</key><dict>'+modern.join('')+'</dict>'+
     '<key>rules</key><dict><key>^Resources/</key><true/></dict>'+
-    '<key>rules2</key><dict><key>.*</key><true/><key>^Info\\.plist$</key><dict><key>omit</key><true/><key>weight</key><real>10</real></dict><key>^PkgInfo$</key><dict><key>omit</key><true/><key>weight</key><real>10</real></dict></dict>'));
+    '<key>rules2</key><dict><key>^.*</key><true/><key>^Info\\.plist$</key><dict><key>omit</key><true/><key>weight</key><real>10</real></dict><key>^PkgInfo$</key><dict><key>omit</key><true/><key>weight</key><real>10</real></dict></dict>'));
 }
 function signaturePlan(codeLimit,identifier){
   if(!Number.isInteger(codeLimit)||codeLimit<4096||codeLimit>64*1024*1024||codeLimit%16||typeof identifier!=='string'||identifier.includes('\0')||encoder.encode(identifier).length>200)throw new Error('Invalid ad-hoc signature parameters');
