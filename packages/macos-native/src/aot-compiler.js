@@ -155,7 +155,7 @@ class DirectLowering extends MacOSLowering {
     f.label('L'+proc.code.length);f.call('finish');f.end();this.finishFunction(proc.code.length);return f.id;
   }
   spec(control){
-    const propertyValue=v=>Array.isArray(v)?v:v&&typeof v==='object'?JSON.stringify(v):v;
+    const propertyValue=v=>Array.isArray(v)?v.map(propertyValue):v&&typeof v==='object'?JSON.stringify(v):v;
     return {name:control.name,type:control.type||'Form',parent:control.parent||'',index:Number.isInteger(Number(control.properties?.Index))&&control.properties?.Index!==undefined?Number(control.properties.Index):-1,
       properties:Object.entries(control.properties||{}).filter(([k])=>lower(k)!=='name').sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[lower(k),this.literalId(propertyValue(v))])};
   }

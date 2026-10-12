@@ -2,12 +2,12 @@
   "version": 2,
   "files": {
     "dist/studio.js": {
-      "bytes": 9881291,
-      "sha256": "fb90a1b3ee3a2d5d4f36438557985490b215dba2fd4aefc75cef31a23ba939aa"
+      "bytes": 9881310,
+      "sha256": "6a72774228493d22b7e56f2bf59c7d455ce373ecc0e02da466b4718594eb5d08"
     },
     "dist/VB6-Studio-Web.html": {
-      "bytes": 10222459,
-      "sha256": "fb8dcac2306ff7e1f4b8652f756150a9e6d1d64434af3c69eef2815ad587a6d6"
+      "bytes": 10222478,
+      "sha256": "bf1aa51c059ab806d76bc04aa3e5b5f270725ec66ebc57bcaf93da806430eb5a"
     },
     "dist/intelligent-ui-sandbox.html": {
       "bytes": 36292,
