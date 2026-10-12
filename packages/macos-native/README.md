@@ -1,14 +1,16 @@
 # VB6 native macOS compiler
 
-Experimental VB6-to-Apple-Silicon compiler, native runtime and AppKit host. The shared VB6 parser and intermediate representation are lowered to C++17, then Apple Clang emits an arm64 Mach-O executable. The generated application does not embed JavaScript, Electron, a browser, Wine or MSVBVM60.DLL.
+VB6-to-Apple-Silicon AOT compiler, native runtime and AppKit host. The default browser/Node export emits real ARM64 procedures, links the bundled native SDK and produces a signed `.app.zip` directly, including offline. No Mac compiler or source-only intermediate is required. The older C++17/Apple Clang path remains an explicit alternative. The generated application does not embed JavaScript, Electron, a browser, Wine or MSVBVM60.DLL.
 
 ## Export from the IDE
 
 Choose **File → Make Project.app (macOS Apple Silicon)…**. This is independent of Windows AOT, Microsoft VB6 runtime, VB.NET and HTML export.
 
+**Export .app ZIP** is the default executable path and needs no Mac bridge, server, Clang or network. It uses the embedded O2 SDK, preserves executable permissions, and seals code pages and resources. The direct target has a 2 MiB project-code capacity and 2 MiB metadata capacity, with explicit diagnostics on overflow. See [direct AOT architecture and APIs](../../docs/MACOS-DIRECT-AOT.md).
+
 **Download Source Build Kit** works without a Mac connection. Extract the ZIP on macOS and run `node build.mjs`. The kit contains generated native source, the runtime SDK and build scripts; it is not an executable.
 
-**Build .app ZIP** uses an explicitly approved local Mac compiler. In a terminal on the Mac, with Node.js 22+ and Xcode Command Line Tools installed:
+**Build via Mac Bridge** uses an explicitly approved local Mac compiler. In a terminal on the Mac, with Node.js 22+ and Xcode Command Line Tools installed:
 
 ```sh
 npm run macos:bridge -- --origin https://wieslawsoltes.github.io
@@ -26,18 +28,19 @@ From the repository:
 
 ```sh
 node tools/build-macos-native.mjs
+node tools/build-macos.mjs MyProject.vb6web --out NativeOutput
+# Explicit alternatives:
 node tools/build-macos.mjs MyProject.vb6web --source-only --out ProjectSource
-# On macOS with Xcode Command Line Tools:
-node tools/build-macos.mjs MyProject.vbp --out NativeOutput
+node tools/build-macos.mjs MyProject.vbp --clang --out ClangOutput
 ```
 
-The source-only destination must be new. Executable builds produce a signed `.app`, `.app.zip` and JSON build report. Node.js is a build-time requirement, not an application dependency.
+Direct export creates `NativeOutput/MyProject.app.zip` on any Node-supported host and refuses overwrite. The source-only destination must be new. Explicit Clang builds produce a signed `.app`, `.app.zip` and JSON build report. Node.js is a build-time requirement, not an application dependency.
 
 Build first, then package with `npm pack ./packages/macos-native`. The packed compiler is independently usable and has no repository-relative imports. This command does not publish it to npm.
 
 ```js
-import {createMacOSBuildKit} from '@vb6-studio/macos-native';
-import {buildMacOSProject} from '@vb6-studio/macos-native/node';
+import {exportMacOSApplication, verifyMacOSAOTArchive, createMacOSBuildKit} from '@vb6-studio/macos-native';
+import {exportMacOSProject, buildMacOSProject} from '@vb6-studio/macos-native/node';
 import {createMacOSBridge} from '@vb6-studio/macos-native/bridge';
 
 const kit = createMacOSBuildKit(project, {
@@ -46,6 +49,11 @@ const kit = createMacOSBuildKit(project, {
   minimumVersion: '11.0',
   optimization: 2
 });
+const archive = await exportMacOSApplication(project, kit.options);
+await verifyMacOSAOTArchive(archive.bytes, archive.options);
+// Durable direct output on Linux, Windows or macOS:
+const direct = await exportMacOSProject(project, {compiler: kit.options, out: "./direct"});
+// Explicit Apple Clang compilation on a Mac:
 const report = await buildMacOSProject(project, {
   compiler: kit.options,
   out: '/path/to/native-output',
@@ -61,11 +69,13 @@ VB6 Integer/Boolean are 16-bit, Long is 32-bit, Currency is a scaled 64-bit valu
 
 Project-defined `Implements` contracts support private method implementations, named and optional arguments, default/indexed properties, get/let/set, checked interface casts and ByRef aliases. Canonical object identity is retained across interface views; their reverse cache is weak. These are source-level VB contracts, not a Windows COM ABI.
 
-The local compiler resolves Apple Clang through the installed Xcode SDK. It stages source privately, invokes tools without shell interpolation, caches runtime objects by source/toolchain, verifies the arm64 image and code signature, and preserves executable modes and original signed ZIP bytes. The browser checks archive structure and hashes, not the cryptographic code signature.
+The local compiler resolves Apple Clang through the installed Xcode SDK. It stages source privately, invokes tools without shell interpolation, caches runtime objects by source/toolchain, verifies the arm64 image and code signature, and preserves executable modes and original signed ZIP bytes. The bridge client checks archive structure and transport hashes. Direct export additionally verifies every code-page hash and bundle resource seal; neither browser path evaluates macOS trust.
 
 Default signing is ad-hoc. **Ad-hoc signing is not notarization, Gatekeeper approval or Developer ID signing.** Configure a signing identity on the trusted local builder, never through project data. Distribution requires the developer's own signing and notarization process. Native programs are not sandboxed by this compiler.
 
 ## Validation and remaining boundaries
+
+`node tools/test-macos-aot.mjs` validates actual generated ARM64 execution, strict Apple signature verification and sanitized helper-call conformance. The Direct macOS AOT workflow also tests real offline browser downloads and executes those exact archives on Apple Silicon.
 
 `npm run test:macos` tests compiler contracts, archive validation, bridge denial/cancellation, offline package extraction and cross-platform source determinism. `npm run test:macos:browser` tests IDE downloads, cancellation and stale-project protection over HTTP and file origins.
 

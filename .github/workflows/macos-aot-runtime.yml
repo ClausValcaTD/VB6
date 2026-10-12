@@ -1,16 +1,6 @@
 name: Refresh verified macOS runtime
 on:
   workflow_dispatch:
-  # Bootstrap the direct exporter on its authorized implementation branch.
-  # This trigger is removed before merge; routine refreshes use workflow_dispatch.
-  push:
-    branches: [feat/macos-arm64-aot-export]
-    paths:
-      - '.github/workflows/macos-aot-runtime.yml'
-      - 'packages/macos-native/aot/**'
-      - 'packages/macos-native/native/**'
-      - 'packages/macos-native/src/aot-signature.js'
-      - 'tools/embed-macos-aot-runtime.mjs'
 permissions:
   contents: read
 concurrency:
@@ -18,7 +8,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native:
-    if: github.ref == 'refs/heads/feat/macos-arm64-aot-export' || (github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/maint/macos-runtime-'))
+    if: github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/heads/maint/macos-runtime-')
     runs-on: macos-15
     timeout-minutes: 25
     steps:
@@ -65,7 +55,7 @@ jobs:
             const fs = require('node:fs');
             const {owner, repo} = context.repo;
             const branch = context.ref.replace(/^refs\/heads\//, '');
-            if (branch !== 'feat/macos-arm64-aot-export' && !/^maint\/macos-runtime-[A-Za-z0-9_.-]+$/.test(branch)) throw new Error('Runtime refresh may not modify this branch');
+            if (!/^maint\/macos-runtime-[A-Za-z0-9_.-]+$/.test(branch)) throw new Error('Runtime refresh may not modify this branch');
             const ref = 'heads/' + branch;
             const head = (await github.rest.git.getRef({owner, repo, ref})).data.object.sha;
             if (head !== context.sha) throw new Error('Branch advanced; regenerate from its new head');
