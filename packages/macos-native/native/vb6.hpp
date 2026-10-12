@@ -146,7 +146,7 @@ struct Procedure {
   std::string name,returnType="variant",scope="public",accessor;
   bool isFunction=false,isStatic=false,external=false;
   std::vector<Parameter> parameters;
-  Value (*code)(Frame&)=nullptr;
+  std::function<Value(Frame&)> code;
 };
 struct NativeCallback final : Object {
   std::weak_ptr<Instance> owner; std::string procedure;

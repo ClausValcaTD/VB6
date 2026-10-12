@@ -1,8 +1,8 @@
 {
   "name": "@vb6-studio/macos-native",
-  "version": "0.1.0-alpha.1",
+  "version": "0.2.0-alpha.1",
   "type": "module",
-  "description": "Experimental VB6 to Apple Silicon native compiler and AppKit runtime",
+  "description": "Direct VB6 Apple Silicon Mach-O app export, native AppKit runtime and optional compiler bridge",
   "license": "MIT",
   "engines": {
     "node": ">=22"
@@ -19,6 +19,7 @@
   "files": [
     "dist",
     "native",
+    "aot",
     "src/build-driver.mjs",
     "src/target.js",
     "src/mach-o.js",
