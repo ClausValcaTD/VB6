@@ -174,7 +174,7 @@ export const nativeCompilerExpressionMethods={
     const target = this.resolveProcedure(node.callee);
     if (!target) this.fail('Native procedure is not available: ' + (name || node.callee.name));
     const plan=this.nativeCallPlan(target,args);
-    if(target.module?.form && target.module!==this.context.module)x.call(target.module.initialize);
+    if(target.module?.form && !target.instanceOffset && target.module!==this.context.module)x.call(target.module.initialize);
     this.nativeRecordAwareCall(target,plan);
   }
 };

@@ -40,6 +40,7 @@ export const nativeCompilerFormMethods={
     if (used.size < menus.filter(m => m.properties.Visible !== 0).length) this.fail('Unreachable or cyclic native menus',module);
   },
   form(module) {
+    if(module.nativeForm)return this.emitInstanceForm(module);
     this.context={module,proc:{},locals:new Map()};
     const x = this.x, prefix = module.form.type === 'MDIForm' ? 'MDIForm_' : 'Form_', p = module.form.properties;
     const done = x.unique(), wnd = 'wndproc:' + module.name, wc = 'wndclass:' + module.name;
@@ -144,7 +145,8 @@ export const nativeCompilerFormMethods={
     x.label(focus).value({argument:16}).emit(0x25).imm(65535).test(); const deactivate = x.unique(); x.branch('e',deactivate); this.handler(module,prefix + 'Activate'); x.jump(fallback).label(deactivate); this.handler(module,prefix + 'Deactivate'); x.jump(fallback);
     x.label(close).value(mem(module.loaded)).test().branch('e',fallback).value(0).emit(0x89,0x45,0xfc).value({argument:16}).emit(0x89,0x45,0xf8);
     this.handler(module,prefix + 'QueryUnload',[{ref:-4},{ref:-8}]); x.emit(0x83,0x7d,0xfc,0).branch('ne',zero);
-    if(module.form.type==='MDIForm')for(const child of this.modules.values())if(child.form?.properties.MDIChild){
+    if(module.form.type==='MDIForm'&&this.nativeFormTypes?.size)this.closeNativeMdiChildren(module,zero);
+    if(module.form.type==='MDIForm')for(const child of this.modules.values())if(child.form?.properties.MDIChild&&!child.nativeForm){
       const skip=x.unique();x.value(mem(child.handle)).test().branch('e',skip).api('user32.dll','SendMessageW',[mem(child.handle),0x10,2,0]);x.value(mem(child.handle)).test().branch('ne',zero).label(skip);
     }
     this.handler(module,prefix + 'Unload',[{ref:-4}]); x.emit(0x83,0x7d,0xfc,0).branch('ne',zero);

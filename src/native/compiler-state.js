@@ -11,7 +11,7 @@ export const nativeCompilerStateMethods={
     if (!['form','module','class'].includes(module.kind) || module.interfaces.length ) this.fail('Native AOT does not yet lower classes or interfaces', module);
     const result = {module,nativeInternal:!!module.nativeInternal,name:module.name,form:module.form,globals:new Map(),procedures:new Map(),controls:new Map(),controlArrays:new Map(),externals:this.externals.get(key(module.name))};
     this.modules.set(key(module.name), result);
-    if(module.kind==='class'){result.nativeClass=this.nativeClassDescriptor(module.name);result.nativeClass.module=result;}
+    if(module.kind==='class'||this.nativeFormTypes?.has(key(module.name))){result.nativeClass=this.nativeClassDescriptor(module.name);result.nativeClass.module=result;if(result.nativeClass.nativeForm)result.nativeForm=result.nativeClass;}
     for (const decl of module.declarations) {
       if (decl.constant) continue; this.scalar(decl);
       const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; if(result.nativeClass)this.allocateNativeInstanceField(variable,result);else this.allocateStorage(variable); result.globals.set(key(decl.name),variable);
@@ -45,6 +45,7 @@ export const nativeCompilerStateMethods={
     }
     for (const name of result.externals.keys()) if (result.procedures.has(name) || result.globals.has(name) || module.constantBindings.has(name)) this.fail('Native declaration conflicts with a project member: ' + name,module);
     if (!module.form) return;
+    if(result.nativeForm){this.prepareInstanceForm(result);return;}
     if (!['Form','MDIForm'].includes(module.form.type)) this.fail('Unsupported native form designer',module);
     if(module.form.type==='MDIForm'&&module.form.properties.Picture)this.fail('Native MDI background Picture is not yet lowered',module);
     if (![1,3].includes(Number(module.form.properties.ScaleMode ?? 1))) this.fail('Native form ScaleMode currently supports Twips (1) or Pixels (3)',module);

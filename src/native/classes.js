@@ -252,12 +252,13 @@ export const nativeClassMethods={
   // The result slot immediately owns the zeroed object, including on an
   // initialization failure. Return moves that owner rather than adding one.
   x.mov(slot(context.returnValue),'eax');
+  if(d.nativeForm)this.initializeNativeFormHeader(context,d);
   const previous=context.instanceOffset;context.instanceOffset=null;
   for(const field of d.fields){const v={...field,nativeInstancePointer:arg(context.returnValue.offset)};
    this.initializeFixedString(v);if(v.initial){this.storageExpression(v,v.initial);this.store(v);}
   }
   context.instanceOffset=previous;
-  const init=d.module.procedures.get('class_initialize');
+  const init=d.module.procedures.get(d.nativeForm?'form_initialize':'class_initialize');
   if(init){if(init.proc.params.length||init.proc.kind!=='sub')this.fail('Class_Initialize requires a parameterless Sub');x.push(arg(context.returnValue.offset)).call(init.label);this.checkNativeError();}
   x.mov('eax',slot(context.returnValue)).mov(at('eax',8),1);
  },
@@ -273,7 +274,7 @@ export const nativeClassMethods={
   context.nativeOwnedTemps.push({variable:cleanup,release:P+'complete-release',blockScoped:true});x.mov(slot(cleanup),'eax');
   const skip=x.unique();x.cmp(at('eax',8),1).branch('ne',skip).mov(at('eax',8),2);
   for(const d of this.nativeClassTypes.values()){
-   const term=d.module.procedures.get('class_terminate');if(!term)continue;
+   const term=d.module.procedures.get(d.nativeForm?'form_terminate':'class_terminate');if(!term)continue;
    if(term.proc.params.length||term.proc.kind!=='sub')this.fail('Class_Terminate requires a parameterless Sub');
    const next=x.unique();x.cmp(at('eax',4),d.id).branch('ne',next).push().call(term.label);this.checkNativeError();x.jump(skip).label(next);
   }

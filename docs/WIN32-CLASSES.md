@@ -20,8 +20,9 @@ evaluation cannot redirect the call to another instance.
 Class fields admit the native scalar types, counted Strings, scalar Variants,
 Collections, other typed classes and supported inline records. Array-valued class
 fields and arrays of class references are still diagnosed. Methods can use the
-already-supported local typed arrays. Interfaces, generic Object/IDispatch values and independent Form instances require further
-native implementations; accepting a class module does not certify those paths.
+already-supported local typed arrays. Interfaces, generic Object/IDispatch values require further native implementations; accepting
+a class module does not certify those paths. Independently owned Form instances
+use the separately admitted [native Form/MDI path](WIN32-FORM-INSTANCES.md).
 Typed [WithEvents/RaiseEvent](WIN32-EVENTS.md) now has its own synchronous source-event implementation.
 
 `Class_Initialize` is parameterless and runs after zeroed fields and fixed String

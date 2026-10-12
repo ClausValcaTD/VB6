@@ -75,6 +75,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Win32 controls](WIN32-CONTROLS.md): native AOT control coverage, property and stream ownership, layout integration, output dependencies and Windows execution checks.
 - [Runtime intrinsic controls](WIN32-DYNAMIC-CONTROLS.md): owned HWND references, sparse control arrays, generation-safe creation and native callbacks.
 - [Typed source events](WIN32-EVENTS.md): synchronous WithEvents/RaiseEvent, reentrant delivery and subscription ownership.
+- [Independent native Forms and MDI](WIN32-FORM-INSTANCES.md): per-instance HWND/control state, embedded interface ownership, cancellation and admission limits.
 - [Typed native classes](WIN32-CLASSES.md): instance ownership, properties, runtime member dispatch and counted String mutation.
 - [Native drawing surfaces](WIN32-SURFACES.md): Form/PictureBox hDC ownership, retained backing, painting, scaling and failure cleanup.
 - [Native RichEdit selection and search](WIN32-RICHEDIT.md): mixed-format masks, Unicode search, line lookup and undo/redo.

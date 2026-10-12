@@ -61,7 +61,7 @@ export function dynamicControlMachine(t,project,optimization=1){
  hook('user32.dll','RegisterClassW',1,()=>1);hook('user32.dll','LoadCursorW',2,()=>1);hook('user32.dll','AdjustWindowRectEx',4,()=>1);
  hook('user32.dll','CreateWindowExW',12,(ex,cls,title,style,left,top,width,height,parent,id)=>{
   assert.ok(!parent||windows.has(parent),'created in a live parent');
-  const classname=m.utf16(cls),formName=classname.startsWith('VB6.Native.')?classname.slice('VB6.Native.'.length):null,hwnd=nextWindow++;
+  const classname=m.utf16(cls),formName=classname.startsWith('VB6.Native.Instance.')?classname.slice('VB6.Native.Instance.'.length):classname.startsWith('VB6.Native.')?classname.slice('VB6.Native.'.length):null,hwnd=nextWindow++;
   const proc=formName?vm.symbol('wndproc:'+formName):0;
   windows.set(hwnd,{hwnd,classname,text:m.utf16(title),style,ex,left:left|0,top:top|0,width,height,parent,id,font:0,state:0,proc,originalProc:0,subclass:null,props:new Map(),check:0,limit:32767,password:0});return hwnd;
  });
@@ -99,6 +99,6 @@ export function dynamicControlMachine(t,project,optimization=1){
  hook('user32.dll','GetKeyState',1,()=>0);
  hook('user32.dll','MessageBoxW',4,(_,p)=>{throw new Error('Unhandled native error: '+m.utf16(p));});
  hook('kernel32.dll','ExitProcess',1,code=>{throw new Error('Native ExitProcess '+code);});
- return {...h,windows,fonts,send,destroy,window,faults,create:form=>vm.invoke('create:'+form),handle:label=>m.read(vm.symbol('hwnd:'+label)),
+ return {...h,windows,fonts,send,destroy,window,faults,callback,defaults,create:form=>vm.invoke('create:'+form),handle:label=>m.read(vm.symbol('hwnd:'+label)),
   invokeForm:(form,name,args=[])=>vm.invoke('proc:'+form+':'+name,args),reuseHandle:hwnd=>{assert.ok(!windows.has(hwnd));nextWindow=hwnd;},fail:(name,after=1)=>faults.set(name,after)};
 }
