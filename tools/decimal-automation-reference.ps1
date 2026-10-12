@@ -58,10 +58,15 @@ public static class DecimalAutomationReference {
     }
 }
 '@
-$cases = @(Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json)
+# Windows PowerShell emits the JSON root array as a single pipeline object.
+# Wrapping that pipeline in @() introduces a nested array instead of fixtures.
+$cases = Get-Content -LiteralPath $InputPath -Raw | ConvertFrom-Json
+if ($cases -isnot [array] -or $cases.Count -eq 0) { throw 'Expected a nonempty JSON array of Decimal fixtures.' }
 $results = @(
     foreach ($case in $cases) {
-        $result = [DecimalAutomationReference]::Run($case.operation, $case.left, $case.right)
+        if ($case -is [array] -or $case.left -isnot [string] -or $case.right -isnot [string] -or $case.operation -isnot [string]) { throw 'Invalid Decimal fixture shape.' }
+        try { $result = [DecimalAutomationReference]::Run($case.operation, $case.left, $case.right) }
+        catch { throw ("Decimal fixture {0} ({1}, {2}, {3}) failed: {4}" -f $case.id, $case.operation, $case.left, $case.right, $_.Exception.Message) }
         [pscustomobject]@{ id = $case.id; hresult = $result.HResult; value = $result.Value }
     }
 )
