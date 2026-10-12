@@ -1,14 +1,16 @@
 # Native macOS Apple Silicon export
 
-This target builds native arm64 Mach-O applications using Apple Clang and AppKit. It is an experimental source compiler and compatibility runtime, not a Windows executable emulator, a COM loader or certification of complete VB6/Win32 parity.
+This target builds native arm64 Mach-O applications using direct ARM64 AOT or an explicit Apple Clang alternative, sharing the native AppKit runtime. It is an experimental compiler and compatibility runtime, not a Windows executable emulator, a COM loader or certification of complete VB6/Win32 parity.
 
 ## Export paths
 
-The IDE's **File → Make Project.app (macOS Apple Silicon)…** command exposes two different artifacts. **Build .app ZIP** contacts a local Mac compiler and downloads the signed application's original ZIP bytes. **Download Source Build Kit** generates an offline source archive; extraction and compilation on a Mac are still necessary.
+The IDE's **File → Make Project.app (macOS Apple Silicon)…** command defaults to **Export .app ZIP**: an actual executable generated directly in the browser using the embedded native SDK, with no Mac connection, Clang or source-only step. It also works offline. [Direct AOT architecture, APIs, validation and capacity limits](MACOS-DIRECT-AOT.md) describe this path.
 
-Both paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and O0–O3 optimization. Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
+**Build via Mac Bridge** explicitly contacts a local Mac compiler and downloads the signed application's original ZIP bytes. **Download Source Build Kit** is a separate offline source artifact; extraction and compilation on a Mac are still necessary for that artifact.
 
-### Native application from the browser
+All paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and optimization (O2 for direct export; O0–O3 for the explicit Clang/source paths). Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
+
+### Optional Mac compiler bridge
 
 On the Mac, install Node.js 22+ and Xcode Command Line Tools, then run from the repository:
 
@@ -16,9 +18,9 @@ On the Mac, install Node.js 22+ and Xcode Command Line Tools, then run from the 
 npm run macos:bridge -- --origin https://wieslawsoltes.github.io
 ```
 
-For a local IDE at `http://127.0.0.1:8080`, use that exact origin instead. The bridge binds only `127.0.0.1`; its default endpoint is `http://127.0.0.1:8769/macos`. Copy the URL and random token printed in the terminal into the export dialog. Press **Build .app ZIP**, review the terminal's source hash and adapter list, and type `YES` to approve that build.
+For a local IDE at `http://127.0.0.1:8080`, use that exact origin instead. The bridge binds only `127.0.0.1`; its default endpoint is `http://127.0.0.1:8769/macos`. Copy the URL and random token printed in the terminal into the export dialog. Press **Build via Mac Bridge**, review the terminal's source hash and adapter list, and type `YES` to approve that build.
 
-The CLI requires an interactive terminal. There is no unattended allow-all flag. A `file:` IDE can be permitted with `--allow-file-origin`; this explicitly permits opaque file origins and does not authenticate a particular local HTML file. Browser local-network policy is not disabled by the exporter. When the browser denies the connection, use a locally served IDE or the offline source kit.
+The CLI requires an interactive terminal. There is no unattended allow-all flag. A `file:` IDE can be permitted with `--allow-file-origin`; this explicitly permits opaque file origins and does not authenticate a particular local HTML file. Browser local-network policy is not disabled by the exporter. When the browser denies that connection, direct **Export .app ZIP** still needs no bridge; a locally served IDE or source kit are other explicit alternatives.
 
 The result has this shape:
 
@@ -35,7 +37,7 @@ MyApplication.app.zip
 MyApplication.build.json
 ```
 
-The bridge performs code-signature verification before returning the archive. The browser validates bundle metadata, Mach-O architecture, execute permissions, safe ZIP entries and SHA-256 hashes. **Browser validation is not cryptographic signature verification.** It preserves the original archive rather than rebuilding a ZIP that could lose permissions or signature-related metadata.
+The bridge performs code-signature verification before returning the archive. The browser validates bundle metadata, Mach-O architecture, execute permissions, safe ZIP entries and SHA-256 hashes. **This bridge-client validation is not cryptographic signature verification.** Direct export separately verifies code-page and resource hashes; neither path performs browser-based macOS trust evaluation. It preserves the original archive rather than rebuilding a ZIP that could lose permissions or signature-related metadata.
 
 Closing the dialog cancels the request and clears its token. Cancellation settles the client even when an injected transport or response stream ignores its abort signal; late response bodies are discarded and cannot update a replacement connection. Response deadlines cover both headers and body streaming, and every completed response must match an advertised Content-Length. Changing the project while a build is pending prevents downloading a result for the old snapshot. A keyboard-accessible Save ZIP link remains available when automatic download is suppressed. No export path runs the produced application.
 
@@ -53,7 +55,7 @@ From a repository checkout, the equivalent command-line workflows are:
 ```sh
 node tools/build-macos-native.mjs
 node tools/build-macos.mjs Project.vb6web --source-only --out NewSourceFolder
-node tools/build-macos.mjs Project.vbp --out NativeOutput \
+node tools/build-macos.mjs Project.vbp --clang --out NativeOutput \
   --name MyApplication \
   --bundle-identifier org.example.myapplication \
   --minimum-version 11.0 \
@@ -63,6 +65,8 @@ node tools/build-macos.mjs Project.vbp --out NativeOutput \
 Existing outputs are not replaced by default. The extracted kit's builder supports explicit `--force`; review the destination before using it. Do not execute build scripts obtained from untrusted projects without review.
 
 ## Compiler and runtime architecture
+
+Direct export uses a checked ARM64 encoder and Mach-O linker, sharing Win32 byte-section infrastructure and the native runtime. See [the direct pipeline](MACOS-DIRECT-AOT.md#reuse-and-code-generation). The following diagram describes the retained **explicit Apple Clang** alternative:
 
 ```text
 VB6 project / imported .vbp
@@ -74,7 +78,7 @@ VB6 project / imported .vbp
   → signed arm64 Mach-O inside .app
 ```
 
-This is a C++-lowering backend, not a handwritten ARM instruction encoder. JavaScript executes during compilation and IDE operation; it is not embedded as the exported program's language interpreter. Generated procedures and the native runtime are machine code. Runtime-value and member dispatch remain dynamic where VB semantics require them.
+The explicit Clang mode is a C++-lowering backend; the default direct mode uses the ARM64 encoder. JavaScript executes during compilation and IDE operation; it is not embedded as the exported program's language interpreter. Generated procedures and the native runtime are machine code. Runtime-value and member dispatch remain dynamic where VB semantics require them.
 
 | Contract | Native representation / behavior |
 | --- | --- |
@@ -107,6 +111,8 @@ const options = {
   minimumVersion: '11.0',
   optimization: 2
 };
+// For direct .app.zip output use exportMacOSApplication / exportMacOSProject;
+// the APIs below intentionally retain explicit source/Apple Clang behavior.
 const lowered = compileMacOS(project, options); // native source and report
 const kit = createMacOSBuildKit(project, options); // portable source files
 const built = await buildMacOSProject(project, {
@@ -128,9 +134,11 @@ This is an authority boundary, not a sandbox. The compiler invokes a local nativ
 
 The native builder uses direct process arguments, source/toolchain-keyed runtime caching, private staging, output-path checks, Mach-O segment inspection and native signature verification. Each POSIX compiler invocation owns a separate process group. Cancellation, timeout, excessive diagnostics or a failing log callback terminates that group and waits for process exit and closed output streams before source staging can be removed. This does not sandbox a malicious tool that escapes its process group. UTF-8 output is decoded incrementally and independently for stdout and stderr. SDK line endings are normalized before embedding so Windows CRLF and Unix LF checkouts yield the same build-kit revision and IDE fingerprints.
 
-Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--identity`; project/HTTP data cannot choose it. No signing credential is included in project exports. Developer ID distribution and notarization remain the developer's responsibility.
+Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--clang --identity`; project/HTTP data cannot choose it. No signing credential is included in project exports. Developer ID distribution and notarization remain the developer's responsibility.
 
 ## Validation and scope of evidence
+
+The separate Direct macOS AOT workflow checks the handwritten ARM64 backend and genuine offline browser-produced applications as described in [direct validation](MACOS-DIRECT-AOT.md#validation-and-sdk-maintenance).
 
 The read-only Native macOS workflow has Linux and Apple Silicon jobs plus Chromium, Firefox and WebKit export UI jobs. The native harness:
 

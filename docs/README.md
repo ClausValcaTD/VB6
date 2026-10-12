@@ -9,6 +9,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Architecture and SDK embedding](ARCHITECTURE.md): module boundaries, execution,
   persistence and extension points.
 - [Application export](APPLICATION-EXPORT.md): deployment APIs, modular output, CSP and validation.
+- [Direct macOS AOT export](MACOS-DIRECT-AOT.md): offline ARM64 executable export,
+  reusable Win32 infrastructure, application signing and SDK maintenance.
 - [Native macOS export](MACOS-EXPORT.md): Apple Silicon compiler, AppKit runtime,
   approved local builds, source kits, reusable APIs and compatibility boundaries.
 - [Native macOS lifetime and editing](MACOS-LIFETIME-EDITING.md): reference release,
