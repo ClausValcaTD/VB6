@@ -31,15 +31,19 @@ jobs:
           node-version: 22
       - name: ARM64 encoding, app packaging and tamper rejection
         run: node tools/build-macos-native.mjs
-      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs
+      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs tests/macos-aot-capacity.test.mjs tests/macos-aot-resize.test.mjs tests/macos-aot-optimizer.test.mjs tests/macos-distribution.test.mjs tests/macos-distribution-cli.test.mjs
       - name: Execute sanitized helper oracle and genuine Apple Silicon export
         run: node tools/test-macos-aot.mjs
+      - name: Verify trusted local distribution with actual Apple tools
+        if: runner.os == 'macOS'
+        run: node tools/test-macos-distribution.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: macos-aot-${{ matrix.os }}
           path: |
             reports/macos-aot
+            reports/macos-aot-distribution
             artifacts/macos-aot
           retention-days: 14
   browser:

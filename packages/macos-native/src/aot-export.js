@@ -64,3 +64,10 @@ export async function verifyMacOSAOTArchive(bytes,options={}){
   const binary=files.get(root+'MacOS/'+o.name),layout=aotImageLayout(binary),signature=await verifyAOTSignature(binary,layout,{identifier:o.bundleIdentifier,infoPlist:files.get(root+'Info.plist'),codeResources:seal});
   return {...report,signature,browserSignatureCryptographicallyVerified:true};
 }
+
+/** Verified in-memory input for trusted local distribution. Does not touch disk. */
+export async function unpackMacOSAOTArchive(input,options={}) {
+  const bytes=Uint8Array.from(input),normalized=macOSOptions(options);
+  await verifyMacOSAOTArchive(bytes,normalized);
+  return {options:normalized,files:await readZip(bytes,{maxExpandedBytes:128*1024*1024,maxFiles:4096,filenameEncoding:'utf-8'})};
+}

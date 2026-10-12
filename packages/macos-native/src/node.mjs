@@ -53,3 +53,11 @@ export async function exportMacOSProject(project,{compiler={},out=path.resolve('
   finally {await file.close();if(!complete)await fs.unlink(destination);}
   return {...result.report,archive:destination};
 }
+
+export {distributeMacOSApplication} from './distribution.mjs';
+import {distributeMacOSApplication} from './distribution.mjs';
+/** Build offline, then explicitly sign/notarize on this trusted Mac. */
+export async function exportMacOSDistribution(project,{compiler={},resources,...distribution}={}) {
+  const result=await exportMacOSApplication(project,compiler,{resources,signal:distribution.signal});
+  return distributeMacOSApplication(result.bytes,result.options,distribution);
+}
