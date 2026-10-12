@@ -17,7 +17,7 @@ End Sub`;
 export function traceControlFixture(project){
   const copy=structuredClone(project),module=copy.modules[0],lines=module.code.split('\n');let inside=false;
   module.code=lines.flatMap((line,index)=>{
-    if(/^Private Sub Form_Load\(\)/i.test(line)){inside=true;return [line,'NativeTrace "Form_Load"'];}
+    if(/^(?:Private|Public) Sub (?:Form_Load|MDIForm_Load|NativeVerify)\(\)/i.test(line)){inside=true;return [line,'NativeTrace "'+line.replaceAll('"','""')+'"'];}
     if(/^End Sub/i.test(line))inside=false;
     if(!inside||/^\s*(Dim |End If|Else|Next\b)/i.test(line))return [line];
     const marker=`NativeTrace "line ${index+1}: ${line.trim().slice(0,150).replaceAll('"','""')}"`;
