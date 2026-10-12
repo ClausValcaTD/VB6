@@ -11,6 +11,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Application export](APPLICATION-EXPORT.md): deployment APIs, modular output, CSP and validation.
 - [Direct macOS AOT export](MACOS-DIRECT-AOT.md): offline ARM64 executable export,
   reusable Win32 infrastructure, application signing and SDK maintenance.
+- [macOS distribution](MACOS-DISTRIBUTION.md): trusted local Developer ID signing,
+  Hardened Runtime, entitlement approval, notarization and final-archive verification.
 - [Native macOS export](MACOS-EXPORT.md): Apple Silicon compiler, AppKit runtime,
   approved local builds, source kits, reusable APIs and compatibility boundaries.
 - [Native macOS lifetime and editing](MACOS-LIFETIME-EDITING.md): reference release,

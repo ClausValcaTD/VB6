@@ -8,7 +8,7 @@ The IDE's **File → Make Project.app (macOS Apple Silicon)…** command default
 
 **Build via Mac Bridge** explicitly contacts a local Mac compiler and downloads the signed application's original ZIP bytes. **Download Source Build Kit** is a separate offline source artifact; extraction and compilation on a Mac are still necessary for that artifact.
 
-All paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and optimization (O2 for direct export; O0–O3 for the explicit Clang/source paths). Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
+All paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and optimization (O0–O3 project code for direct export, independently of the O2 native SDK; O0–O3 for the explicit Clang/source paths). Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
 
 ### Optional Mac compiler bridge
 
@@ -134,7 +134,7 @@ This is an authority boundary, not a sandbox. The compiler invokes a local nativ
 
 The native builder uses direct process arguments, source/toolchain-keyed runtime caching, private staging, output-path checks, Mach-O segment inspection and native signature verification. Each POSIX compiler invocation owns a separate process group. Cancellation, timeout, excessive diagnostics or a failing log callback terminates that group and waits for process exit and closed output streams before source staging can be removed. This does not sandbox a malicious tool that escapes its process group. UTF-8 output is decoded incrementally and independently for stdout and stderr. SDK line endings are normalized before embedding so Windows CRLF and Unix LF checkouts yield the same build-kit revision and IDE fingerprints.
 
-Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--clang --identity`; project/HTTP data cannot choose it. No signing credential is included in project exports. Developer ID distribution and notarization remain the developer's responsibility.
+Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--clang --identity`, or sign a direct executable with `--distribute --identity`. The [distribution workflow](MACOS-DISTRIBUTION.md) supports Hardened Runtime, explicitly supplied entitlements and optional Apple notarization through a local Keychain profile. Project/HTTP data cannot choose these settings. No signing credential is included in project exports, and real service acceptance requires the developer's own valid identity and credentials. A synthetic notarization test is not evidence of Apple trust.
 
 ## Validation and scope of evidence
 
