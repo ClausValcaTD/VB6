@@ -1,6 +1,6 @@
 import {lower} from '../core/core.js';
 const json=x=>JSON.stringify(x);
-function shape(p){return {kind:p.kind,accessor:p.accessor,type:lower(p.returnType),params:p.params.map(a=>({type:lower(a.type),byRef:a.byRef,optional:a.optional,paramArray:a.paramArray,array:a.bounds!==null,initial:a.initial}))};}
+function shape(p){return {kind:p.kind,accessor:p.accessor,type:lower(p.returnType),array:!!p.returnArray,params:p.params.map(a=>({type:lower(a.type),byRef:a.byRef,optional:a.optional,paramArray:a.paramArray,array:a.bounds!==null,initial:a.initial}))};}
 function argument(type){return {name:'value',type,byRef:true,optional:false,paramArray:false,bounds:null,initial:null};}
 /** Bind the project-defined public contract to private Interface_Member methods.
  * No native type library, inheritance or COM ABI is implied. */

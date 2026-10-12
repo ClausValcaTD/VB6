@@ -1,3 +1,4 @@
+import {matchLike} from './like.js';
 import {VBDecimal} from './decimal.js';
 export {VBDecimal};
 import {asDate,dateToSerial} from './calendar.js';
@@ -347,7 +348,7 @@ export class Cell {
   constructor(type='Variant',value=defaultValue(type),constant=false,fixedLength=null){this.type=type;this.constant=constant;this.fixedLength=fixedLength;this._scalar=storageScalar(value,type,fixedLength);this._value=unbox(this._scalar);}
   get(){return this._value;}
   getScalar(){if(!scalarType(this._value))return this._value;return this._scalar instanceof VBScalar&&Object.is(this._scalar.value,this._value)?this._scalar:storageScalar(this._value,this.type,this.fixedLength);}
-  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!(next instanceof VBArray)||lower(next.type)!==lower(this.elementType))throw new VBError('Array type mismatch',13);}if(this._value?.__fields){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
+  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!(next instanceof VBArray)||lower(next.type)!==lower(this.elementType))throw new VBError('Array type mismatch',13);next.dynamic=this._value instanceof VBArray?this._value.dynamic:true;}else if(next instanceof VBArray)next.dynamic=true;if(this._value?.__fields){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
 }
 /** Lazily creates As New variables; assigning Nothing resets the factory. */
 export class LazyCell extends Cell {
@@ -371,7 +372,21 @@ export class VBArray {
     if(preserve&&old.length&&(old.length!==normalized.length||old.some(([l,u],i)=>l!==normalized[i][0]||(i<old.length-1&&u!==normalized[i][1]))))throw new VBError('ReDim Preserve can change only the upper bound of the last dimension',9);
     if(!this.dynamic)throw new VBError('This array is fixed or temporarily locked',10);
     const next=new VBArray(normalized,this.type,this.elementFactory,this.fixedLength);next.dynamic=true;
-    if(preserve&&old.length){for(const indices of this.indices()){if(indices.every((n,d)=>n<=normalized[d][1]))next.set(indices,this.getScalar(...indices));}}
+    if(preserve&&old.length&&this.data.length){
+      // Storage is last-dimension contiguous. Move retained row spans without
+      // re-coercion, per-element coordinate allocation or record cloning. This
+      // preserves tagged Variant subtypes and live references to record fields.
+      const oldWidth=old.at(-1)[1]-old.at(-1)[0]+1,newWidth=normalized.at(-1)[1]-normalized.at(-1)[0]+1;
+      const retained=Math.min(oldWidth,newWidth),rows=this.data.length/oldWidth;
+      if(this.scalarData)next.scalarData=new Array(next.data.length);
+      for(let row=0;row<rows;row++){
+        const from=row*oldWidth,to=row*newWidth;
+        for(let column=0;column<retained;column++){
+          next.data[to+column]=this.data[from+column];
+          if(this.scalarData)next.scalarData[to+column]=this.scalarData[from+column];
+        }
+      }
+    }
     this.bounds=next.bounds;this.data=next.data;this.scalarData=next.scalarData;return this;
   }
   erase(){this.scalarData=[];if(this.dynamic){this.bounds=[];this.data=[];}else this.data=this.data.map(()=>this.elementFactory?this.elementFactory():coerce(defaultValue(this.type),this.type,this.fixedLength));}
@@ -417,11 +432,11 @@ export function binary(op,a,b,compare='binary') {
   if(a===null||b===null){if(op==='and'&&(a===0||b===0))return 0;if(op==='or'&&(a===-1||b===-1))return -1;if(op==='imp'&&(a===0||b===-1))return -1;return null;}
   if(['=','<>','<','>','<=','>=','like'].includes(op)) {
     if(a===undefined)a=typeof b==='string'?'':0;if(b===undefined)b=typeof a==='string'?'':0;
+    if(op==='like')return matchLike(vbString(a),vbString(b),compare)?-1:0;
     if(op!=='like'&&(a instanceof VBDecimal||b instanceof VBDecimal)){const c=decimal(a).compare(decimal(b));return ({'=':c===0,'<>':c!==0,'<':c<0,'>':c>0,'<=':c<=0,'>=':c>=0}[op])?-1:0;}
     if(a instanceof VBCurrency&&b instanceof VBCurrency){a=a.raw;b=b.raw;}else{if(a instanceof VBCurrency)a=numeric(a);if(b instanceof VBCurrency)b=numeric(b);}
     if(a instanceof Date)a=numeric(a);if(b instanceof Date)b=numeric(b);
     if(compare==='text'&&typeof a==='string'&&typeof b==='string'){a=a.toLocaleLowerCase();b=b.toLocaleLowerCase();}
-    if(op==='like'){let pattern='^';for(let i=0;i<String(b).length;i++){const c=String(b)[i];if(c==='*')pattern+='.*';else if(c==='?')pattern+='.';else if(c==='#')pattern+='[0-9]';else if(c==='['){const end=String(b).indexOf(']',i+1);if(end<0)throw new VBError('Invalid pattern string',93);let part=String(b).slice(i+1,end);if(part[0]==='!')part='^'+part.slice(1);pattern+='['+part+']';i=end;}else pattern+=c.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');}return new RegExp(pattern+'$',compare==='text'?'i':'').test(String(a))?-1:0;}
     return ({'=':()=>a==b,'<>':()=>a!=b,'<':()=>a<b,'>':()=>a>b,'<=':()=>a<=b,'>=':()=>a>=b}[op]())?-1:0;
   }
   if(op==='+'&&typeof a==='string'&&typeof b==='string')return a+b;

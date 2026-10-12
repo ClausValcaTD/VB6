@@ -2,6 +2,9 @@ import {VBScalar,SCALAR_TYPES,printScalar,unbox,tagScalar,scalarType,storageScal
 import {RuntimeDebugger,StopExecution,isSequencePoint,statementIndex,immediateStatements} from './debug-control.js';
 import {VBWin32Bridge} from './win32.js';
 import {isAutomationObject,automationDefaultName,automationMember,automationReference,automationInvoke,automationEnumerate,automationSubscribe} from './automation.js';
+import {propertyReference} from './property-reference.js';
+import {executeRedim} from './redim.js';
+import {createArrayCell,procedureResult} from './procedure-storage.js';
 import {DataContext} from '../data/context.js';
 import {errorDescription} from './error-messages.js';
 import {DebugEvaluationSession} from './debug-evaluation.js';
@@ -106,7 +109,7 @@ export class VirtualMachine extends Signal {
     }
     for(const instance of this.instances.values())await this.initializeFields(instance);
   }
-  makeFrame(instance,proc={name:'(Declarations)',params:[],returnType:'Variant',code:[]}){return {debugId:this.debugger.nextFrameId++,instance,module:instance.module,proc,locals:new Map(),pc:0,temps:new Map(),withStack:[],gosubStack:[],errorMode:'off',errorTarget:null,errorActive:false,errorPc:null,lastLine:null,lastPc:-1,erl:0,result:new Cell(proc.storageReturnType||proc.returnType||'Variant'),depth:this.stack.length};}
+  makeFrame(instance,proc={name:'(Declarations)',params:[],returnType:'Variant',code:[]}){return {debugId:this.debugger.nextFrameId++,instance,module:instance.module,proc,locals:new Map(),pc:0,temps:new Map(),withStack:[],gosubStack:[],errorMode:'off',errorTarget:null,errorActive:false,errorPc:null,lastLine:null,lastPc:-1,erl:0,result:procedureResult(this,proc),depth:this.stack.length};}
   async initializeFields(instance){const frame=this.makeFrame(instance);for(const decl of [...instance.module.declarations.filter(d=>d.constant),...instance.module.declarations.filter(d=>!d.constant)])await this.declare(decl,frame,instance.fields);instance.initialized=true;}
   async declare(decl,frame,target=frame.locals,staticFlag=false) {
     const key=lower(decl.name);if(target.has(key))return target.get(key);
@@ -120,7 +123,7 @@ export class VirtualMachine extends Signal {
     const cell=new Cell(decl.bounds!==null&&decl.bounds!==undefined?'Variant':type,value,decl.constant,decl.fixedLength);cell.scope=decl.scope;cell.isArray=decl.bounds!==null&&decl.bounds!==undefined;cell.elementType=type;target.set(key,cell);if(decl.withEvents)this.bindEventCell(cell,frame.instance,decl.name);if(staticFlag)staticCells.set(staticKey,cell);return cell;
   }
   recordSchema(name,module){const local=Object.entries(module.types).find(([key])=>lower(key)===lower(name));if(local)return local[1];for(const candidate of this.program.modules.values()){const match=Object.entries(candidate.types).find(([key])=>lower(key)===lower(name));if(match)return match[1];}return null;}
-  async createArray(bounds,type,frame,fixedLength=null,depth=0){const record=this.recordSchema(type,frame.module)?await this.createRecord(type,frame,depth+1):null;return new VBArray(bounds,type,record?()=>cloneValue(record):null,fixedLength);}
+  async createArray(bounds,type,frame,fixedLength=null,depth=0){const record=this.recordSchema(type,frame.module)?await this.createRecord(type,frame,depth+1):null;const object=this.program.modules.get(lower(type))?.kind==='class'||this.program.modules.get(lower(type))?.form||this.data.isObjectType(type)||['collection','dictionary','scripting.dictionary'].includes(lower(type));return new VBArray(bounds,type,record?()=>cloneValue(record):object?()=>NOTHING:null,fixedLength);}
   async createRecord(name,frame,depth=0){if(depth>32)throw new VBError('Recursive user-defined type',1002);const fields=new Map();for(const member of this.recordSchema(name,frame.module)||[]){const type=member.storageType||member.type;let value;if(member.bounds!==null){value=await this.createArray(await this.evalBounds(member.bounds,frame),type,frame,member.fixedLength,depth+1);value.dynamic=!member.bounds.length;}else if(this.recordSchema(type,frame.module))value=await this.createRecord(type,frame,depth+1);else value=member.initial?await this.evaluateScalar(member.initial,frame):defaultValue(type);const cell=new Cell(member.bounds!==null?'Variant':type,value,false,member.fixedLength);cell.isArray=member.bounds!==null;cell.elementType=type;fields.set(member.name,cell);}return makeRecord(name,fields);}
   // Event connections follow assignment order; replacing a reference detaches the old source.
   bindEventCell(cell,owner,prefix){
@@ -397,7 +400,7 @@ export class VirtualMachine extends Signal {
     return slots;
   }
   async callExpression(node,frame){
-    let target=node.callee.kind==='id'&&lower(node.callee.name)===lower(frame.proc.name)?{__procedure:frame.proc,instance:frame.instance}:await this.evaluateScalar(node.callee,frame,{raw:true});
+    let target=node.callee.kind==='id'&&!frame.proc.returnArray&&lower(node.callee.name)===lower(frame.proc.name)?{__procedure:frame.proc,instance:frame.instance}:await this.evaluateScalar(node.callee,frame,{raw:true});
     return this.callResolvedExpression(node,target,frame);
   }
   async callResolvedExpression(node,target,frame){
@@ -405,6 +408,7 @@ export class VirtualMachine extends Signal {
     const instance=objectIdentity(target),defaultName=target?.__vbInterface?instance.module.interfaceBindings[target.interfaceName]?.defaultMember:instance?.module?.defaultMember;
     if(instance?.__vbInstance&&defaultName)target=await this.getMemberScalar(target,defaultName,frame);
     const proc=target?.__procedure,signature=target?.__signature||proc,fn=target?.__native||(typeof target==='function'?target:null),params=signature?.params||(fn?.vbShortParams&&node.args.length===2&&node.args.every(n=>n.kind!=='named')?fn.vbShortParams:fn?.vbParams);
+    if(proc?.returnArray&&!signature.params.length&&node.args.length){const result=await this.callProcedure(target.instance,proc,[],frame,true);return this.callResolvedExpression(node,result,frame);}
     const slots=this.argumentSlots(node.args,params,!!proc?.params.at(-1)?.paramArray||!!fn?.vbVariadic);
     const actual=[];
     for(const {index,node:arg}of slots){
@@ -436,14 +440,29 @@ export class VirtualMachine extends Signal {
       if(!cell){for(const instance of this.instances.values())if(instance.module.kind==='module'&&instance.fields.has(key)&&(instance===frame.instance||instance.fields.get(key).scope!=='private')){cell=instance.fields.get(key);break;}}
       if(cell){if(!objectSet){const value=await cell.get();if(value?.__control)return value.defaultRef();if(hasDataDefault(value))return new Ref(()=>value.Value,v=>{value.Value=v;});if(isAutomationObject(value))return automationReference(value,automationDefaultName(value));const instance=objectIdentity(value),name=value?.__vbInterface?instance.module.interfaceBindings[value.interfaceName]?.defaultMember:instance?.module?.defaultMember;if(instance?.__vbInstance&&name)return this.memberReference(value,name,frame);}return cell;}
       if(frame.proc.constantBindings?.has(key)||frame.module.constantBindings?.has(key)||frame.module.globalEnumMembers?.has(key))throw new VBError('Assignment to constant not permitted',500);
-      const setter=frame.module.procedures.get(key+':let')||frame.module.procedures.get(key+':set');if(setter)return new Ref(()=>this.getIdentifier(node.name,frame),v=>this.callProcedure(frame.instance,setter,[v],frame));
+      const property=await propertyReference(this,frame.instance,node.name,[],frame,objectSet);if(property)return property;
       if(frame.instance.formObject&&this.hasMember(frame.instance.formObject,node.name))return this.memberReference(frame.instance.formObject,node.name,frame);
       if(frame.module.optionExplicit)throw new VBError(`Variable not defined: ${node.name}`,500);
       cell=new Cell(defaultIdentifierType(node.name,frame.module.defaultTypes));frame.locals.set(key,cell);return cell;
     }
     if(node.kind==='member')return this.memberReference(await this.evaluateScalar(node.object,frame,{raw:true}),node.name,frame,objectSet);
     if(node.kind==='call'){
-      let target=await this.evaluateScalar(node.callee,frame,{raw:true});const args=[];for(const a of node.args)args.push(await this.evaluateScalar(a,frame));
+      // Capture an authored property's receiver and index arguments once. In
+      // particular, a write-only property must not evaluate a nonexistent Get.
+      let target,receiver;
+      if(node.callee.kind==='member'){
+        receiver=await this.evaluateScalar(node.callee.object,frame,{raw:true});
+        const property=await propertyReference(this,receiver,node.callee.name,node.args,frame,objectSet);if(property)return property;
+        target=await this.getMemberScalar(receiver,node.callee.name,frame);
+      }else{
+        if(node.callee.kind==='id'&&lower(node.callee.name)!==lower(frame.proc.name)&&!frame.locals.has(lower(node.callee.name))&&!frame.instance.fields.has(lower(node.callee.name))){
+          const property=await propertyReference(this,frame.instance,node.callee.name,node.args,frame,objectSet);if(property)return property;
+        }
+        target=await this.evaluateScalar(node.callee,frame,{raw:true});
+      }
+      const defaultInstance=objectIdentity(target),defaultProperty=target?.__vbInterface?defaultInstance.module.interfaceBindings[target.interfaceName]?.defaultMember:defaultInstance?.module?.defaultMember;
+      if(defaultProperty){const property=await propertyReference(this,target,defaultProperty,node.args,frame,objectSet);if(property)return property;}
+      const args=[];for(const a of node.args)args.push(await this.evaluateScalar(a,frame));
       if(isAutomationObject(target))return automationReference(target,automationDefaultName(target),args,objectSet);
       const instance=objectIdentity(target),defaultName=target?.__vbInterface?instance.module.interfaceBindings[target.interfaceName]?.defaultMember:instance?.module?.defaultMember;
       if(instance?.__vbInstance&&defaultName){const getter=()=>this.callExpression(node,frame);if(target.__vbInterface){const member=this.interfaceProcedure(target,defaultName,objectSet?'set':'let');return new Ref(getter,v=>this.callProcedure(member.instance,member.__procedure,[...args,v],frame));}const setter=instance.module.procedures.get(defaultName+':'+(objectSet?'set':'let'));if(!setter)throw new VBError('Default property is read-only',383);return new Ref(getter,v=>this.callProcedure(instance,setter,[...args,v],frame));}
@@ -452,7 +471,7 @@ export class VirtualMachine extends Signal {
       if(target instanceof VBDictionary)return new Ref(()=>target.Item(...args),value=>target.setItem(...args,value),'Variant',null,()=>target.itemScalar(...args));
       if(target?.__native&&target.receiver?.setItem)return new Ref(()=>target.__native.apply(target.receiver,args.map(unbox)),v=>target.receiver.setItem(...args.map(unbox),unbox(v)));
       if(node.callee.kind==='member'){
-        const object=await this.evaluateScalar(node.callee.object,frame,{raw:true});const name=lower(node.callee.name);
+        const object=receiver;const name=lower(node.callee.name);
         if(isAutomationObject(object))return automationReference(object,node.callee.name,args,objectSet);
         if(object?.__vbInterface){const member=this.interfaceProcedure(object,node.callee.name,objectSet?'set':'let');return new Ref(()=>this.callExpression(node,frame),v=>this.callProcedure(member.instance,member.__procedure,[...args,v],frame));}
         if(object?.__vbInstance){const proc=object.module.procedures.get(name+':let')||object.module.procedures.get(name+':set');if(proc){if(proc.scope==='private'&&object.module!==frame?.module)throw new VBError('Property assignment is not accessible',438);return new Ref(()=>this.getMemberScalar(object,node.callee.name,frame),v=>this.callProcedure(object,proc,[...args,v],frame));}}
@@ -465,6 +484,7 @@ export class VirtualMachine extends Signal {
   }
   async memberReference(object,name,frame,objectSet=false){
     if(isAutomationObject(object))return automationReference(object,name,[],objectSet);
+    const property=await propertyReference(this,object,name,[],frame,objectSet);if(property)return property;
     if(object?.__vbInterface){const member=this.interfaceProcedure(object,name,objectSet?'set':'let');return new Ref(()=>this.getMemberScalar(object,name,frame),v=>this.callProcedure(member.instance,member.__procedure,[v],frame));}
     this.assertVisible(object,name,frame);
     if(object?.__vbInstance){const key=lower(name);if(object.fields.has(key))return object.fields.get(key);const setter=object.module.procedures.get(key+':let')||object.module.procedures.get(key+':set');if(setter){if(setter.scope==='private'&&object.module!==frame?.module)throw new VBError('Property assignment is not accessible',438);return new Ref(()=>this.getMemberScalar(object,name,frame),v=>this.callProcedure(object,setter,[v],frame));}if(object.formObject)return this.memberReference(object.formObject,name,frame);throw new VBError(`Method or data member not found: ${name}`,438);}
@@ -509,7 +529,7 @@ export class VirtualMachine extends Signal {
   async callProcedure(instance,proc,args=[],caller=null,scalarReturn=false){
     if(proc.external){const value=await this.debugAwait(this.win32.invoke(proc,args.map(a=>a?.ref?a:a?.__win32ByVal?{...a,value:unbox(a.value)}:unbox(a))));return scalarReturn?storageScalar(value,proc.storageReturnType||proc.returnType||'Variant'):value;}
     if(this.stack.length>=this.options.maxCallDepth)throw new VBError('Out of stack space',28);
-    const frame=this.makeFrame(instance,proc);frame.caller=caller;if(this.recordSchema(proc.returnType,frame.module))frame.result=new Cell(proc.returnType,await this.createRecord(proc.returnType,frame));
+    const frame=this.makeFrame(instance,proc);frame.caller=caller;if(proc.returnArray)frame.result=createArrayCell(proc.storageReturnType||proc.returnType,await this.createArray([],proc.storageReturnType||proc.returnType,frame));else if(this.recordSchema(proc.returnType,frame.module))frame.result=new Cell(proc.returnType,await this.createRecord(proc.returnType,frame));
     if(args.length>proc.params.length&&!proc.params.at(-1)?.paramArray)throw new VBError(`Wrong number of arguments to ${proc.name}`,450);
     for(let i=0;i<proc.params.length;i++){
       const param=proc.params[i];let actual=i<args.length?args[i]:MISSING,cell;
@@ -526,9 +546,10 @@ export class VirtualMachine extends Signal {
           // Only storage-backed references may participate in automatic watches.
           if(ref instanceof Cell||typeof ref.debugGetScalar==='function'){cell.debugGetScalar=()=>storageScalar(ref instanceof Cell?ref.getScalar():ref.debugGetScalar(),'Variant');cell.debugGet=()=>unbox(cell.debugGetScalar());}
         }else cell=objectSupports(value,param.type)&&lower(ref.type)!==lower(param.type)?new Ref(async()=>coerce(await ref.get(),param.type),v=>ref.set(v),param.type):ref;
-      }else cell=new Cell(param.bounds!==null?'Variant':declared,actual?.ref?await readScalar(actual.ref):actual);
+      }else cell=param.bounds!==null?createArrayCell(declared,actual?.ref?await readScalar(actual.ref):actual):new Cell(declared,actual?.ref?await readScalar(actual.ref):actual);
       frame.locals.set(lower(param.name),cell);
     }
+    for(const decl of proc.redimDeclarations||[])await this.declare(decl,frame,frame.locals,decl.static||proc.static);
     this.stack.push(frame);this.currentFrame=frame;
     try {await this.execute(frame);return scalarReturn?frame.result.getScalar():frame.result.get();}
     finally{this.stack.pop();this.currentFrame=this.stack.at(-1)||null;if(!this.stack.length&&!this.debugEvaluation&&frame.proc.code.some(isSequencePoint))this.stepMode=null;if(!this.stack.length&&this.eventQueue.length)queueMicrotask(()=>this.processEvents());}
@@ -577,7 +598,7 @@ export class VirtualMachine extends Signal {
       try{
         switch(ins.op){
           case 'dim':for(const decl of ins.decls)await this.declare(decl,frame,frame.locals,ins.static||frame.proc.static);break;
-          case 'assign':{const ref=await this.reference(ins.target,frame,ins.objectSet);const value=await this.evaluateScalar(ins.expr,frame);if(ref.isArray&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);await ref.set(ins.objectSet?value:await this.defaultValue(value));break;}
+          case 'assign':{const ref=await this.reference(ins.target,frame,ins.objectSet);const value=await this.evaluateScalar(ins.expr,frame);if(ref.isArray&&!ref.isProperty&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);await ref.set(ins.objectSet?value:await this.defaultValue(value));break;}
           case 'expr':await this.evaluateScalar(ins.expr,frame);break;
           case 'print':{const values=[];for(const e of ins.exprs){const v=await this.defaultValue(await this.evaluateScalar(e,frame));values.push(printScalar(v));}this.output(values.join(' '),ins.newline);break;}
           case 'assert':if(this.options.debugStatements!==false&&!truth(await this.evaluateScalar(ins.expr,frame))){this.output('Assertion failed: '+ins.source+':'+ins.line);await this.debugger.breakAfter(ins,frame,'assert');}break;
@@ -593,7 +614,7 @@ export class VirtualMachine extends Signal {
           case 'temp':frame.temps.set(ins.id,await this.evaluateScalar(ins.expr,frame));break;
           case 'case':{const value=frame.temps.get(ins.id);let matched=false;for(const c of ins.cases){if(c.kind==='range')matched=truth(binary('>=',value,await this.evaluateScalar(c.low,frame),frame.module.optionCompare))&&truth(binary('<=',value,await this.evaluateScalar(c.high,frame),frame.module.optionCompare));else matched=truth(binary(c.op||'=',value,await this.evaluateScalar(c.expr,frame),frame.module.optionCompare));if(matched)break;}if(!matched)frame.pc=ins.target;break;}
           case 'forInit':{
-            const ref=await this.reference(parseExpression(ins.name),frame),start=await this.evaluateScalar(ins.start,frame),end=await this.evaluateScalar(ins.end,frame),step=await this.evaluateScalar(ins.step,frame);
+            const ref=await this.reference(ins.variable||parseExpression(ins.name),frame),start=await this.evaluateScalar(ins.start,frame),end=await this.evaluateScalar(ins.end,frame),step=await this.evaluateScalar(ins.step,frame);
             numeric(start);numeric(end);const direction=numeric(step)>=0;
             await ref.set(start);frame.temps.set(ins.id,{ref,end,step,direction});
             if(truth(binary(direction?'>':'<',await readScalar(ref),end,frame.module.optionCompare)))frame.pc=ins.target;break;
@@ -603,7 +624,7 @@ export class VirtualMachine extends Signal {
             await data.ref.set(binary('+',await readScalar(data.ref),data.step,frame.module.optionCompare));
             if(truth(binary(data.direction?'<=':'>=',await readScalar(data.ref),data.end,frame.module.optionCompare)))frame.pc=ins.target;break;
           }
-          case 'eachInit':{let value=await this.evaluateScalar(ins.expr,frame);if(isAutomationObject(value))value=await this.debugAwait(automationEnumerate(value));if(!value?.[Symbol.iterator])throw new VBError('Object is not a collection',451);const iterator=value.scalarIterator?value.scalarIterator():value[Symbol.iterator](),ref=await this.reference(parseExpression(ins.name),frame,true);frame.temps.set(ins.id,{iterator,ref});const next=iterator.next();if(next.done)frame.pc=ins.target;else await ref.set(next.value);break;}
+          case 'eachInit':{let value=await this.evaluateScalar(ins.expr,frame);if(isAutomationObject(value))value=await this.debugAwait(automationEnumerate(value));if(!value?.[Symbol.iterator])throw new VBError('Object is not a collection',451);const iterator=value.scalarIterator?value.scalarIterator():value[Symbol.iterator](),ref=await this.reference(ins.variable||parseExpression(ins.name),frame,true);frame.temps.set(ins.id,{iterator,ref});const next=iterator.next();if(next.done)frame.pc=ins.target;else await ref.set(next.value);break;}
           case 'eachNext':{const data=frame.temps.get(ins.id),next=data.iterator.next();if(!next.done){await data.ref.set(next.value);frame.pc=ins.target;}break;}
           case 'stringAlign':{
             const ref=await this.reference(ins.target,frame,true),current=await ref.get();
@@ -619,7 +640,7 @@ export class VirtualMachine extends Signal {
             const source=vbString(await this.evaluateScalar(ins.expr,frame)),count=Math.max(0,Math.min(length,source.length,current.length-start+1));
             if(count)await ref.set(current.slice(0,start-1)+source.slice(0,count)+current.slice(start-1+count));break;
           }
-          case 'redim':for(const decl of ins.decls){let ref;try{ref=await this.reference({kind:'id',name:decl.name},frame,true);}catch(e){if(e.number===500){frame.locals.set(lower(decl.name),new Cell());ref=frame.locals.get(lower(decl.name));}else throw e;}const bounds=await this.evalBounds(decl.bounds,frame),value=await ref.get();if(value instanceof VBArray)value.redim(bounds,ins.preserve);else{const a=await this.createArray(bounds,decl.storageType||decl.type,frame,decl.fixedLength);a.dynamic=true;await ref.set(a);}}break;
+          case 'redim':for(const decl of ins.decls)await executeRedim(this,decl,frame,ins.preserve);break;
           case 'erase':for(const expr of ins.exprs){const value=await this.evaluateScalar(expr,frame);if(!(value instanceof VBArray))throw new VBError('Expected array',13);value.erase();}break;
           case 'withPush':frame.withStack.push(await this.evaluateScalar(ins.expr,frame,{raw:true}));break;
           case 'withPop':frame.withStack.pop();break;
@@ -703,7 +724,7 @@ export class VirtualMachine extends Signal {
         const target=parseExpression(source.slice(0,equal.start));if(!['id','member','call'].includes(target.kind))throw new VBError('Invalid assignment target',1002);
         const ref=await this.reference(target,frame,objectSet);
         value=await this.evaluateScalar(parseExpression(source.slice(equal.end)),frame);
-        if(ref.isArray&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);
+        if(ref.isArray&&!ref.isProperty&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);
         await ref.set(objectSet?value:await this.defaultValue(value));
       }else{
         value=await this.evaluateScalar(parseCall(statement.replace(/^Call\s+/i,''),{explicit:/^Call\s+/i.test(statement)}),frame);

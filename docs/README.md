@@ -24,6 +24,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 ## Language, runtime and project files
 
 - [Language frontend](LANGUAGE-FRONTEND.md): scanning, declarations and diagnostics.
+- [Array storage, source properties and Like](LANGUAGE-ARRAYS-LIKE.md): binding, ownership,
+  matcher bounds, runtime semantics and explicit export limitations.
 - [VB.NET / .NET 10 migration](VBNET-MIGRATION.md): source conversion, ZIP export,
   reusable packages, compatibility runtime, extensions and conformance gates.
 - [VB.NET language and record lowering](VBNET-LANGUAGE-LOWERING.md): independent

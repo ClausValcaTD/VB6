@@ -1,3 +1,4 @@
+import {parseRedimDeclarations} from './redim-semantics.js';
 import {splitPrintList} from './print-list.js';
 import {parseDeclarations,parseParameters,parseProcedureHeader,parseTypeFields} from './declarations.js';
 import {parseModuleHeader,parseEnumMember} from './module-syntax.js';
@@ -81,7 +82,7 @@ class ProcedureCompiler {
     if(/^For\s+/i.test(text)){
       const header=parseForHeader(text);if(this.blocks.some(b=>b.type==='For'&&b.identity===header.identity))throw new VBError('For control variable already in use',1002);
       const {kind,identity,...data}=header,id=`$${kind==='each'?'each':'for'}${this.temp++}`;
-      const index=this.emit(kind==='each'?'eachInit':'forInit',{...data,id,target:null},line);
+      const index=this.emit(kind==='each'?'eachInit':'forInit',{...data,variable:E(header.name),id,target:null},line);
       this.blocks.push({type:'For',kind,id,index,start:this.code.length,name:header.name,identity,exits:[]});return;
     }
     if((m=text.match(/^Next(?:\s+(.+))?$/i))){const names=m[1]?splitTop(m[1]):[''];for(const name of names){const b=this.block('For',line);if(name&&loopVariable(name).identity!==b.identity)throw new VBError('Next control variable does not match For',1002);this.emit(b.kind==='each'?'eachNext':'forNext',{id:b.id,target:b.start},line);this.patch(b.index,this.code.length);for(const i of b.exits)this.patch(i,this.code.length);this.blocks.pop();}return;}
@@ -97,7 +98,7 @@ class ProcedureCompiler {
     if((m=text.match(/^Exit\s+(Sub|Function|Property|For|Do)$/i))){if(/^(Sub|Function|Property)$/i.test(m[1])){if(lower(m[1])!==this.proc.kind)throw new VBError('Exit '+m[1]+' does not match enclosing procedure',1002);this.emit('return',{},line);}else{const type=m[1].toLowerCase()==='for'?'For':'Do',b=[...this.blocks].reverse().find(b=>b.type===type);if(!b)throw new VBError(`Exit ${m[1]} outside block`,1002);const inner=this.blocks.slice(this.blocks.indexOf(b)+1).filter(x=>x.type==='With').length;if(inner)this.emit('withUnwind',{count:inner},line);b.exits.push(this.jump(null,line));}return;}
     if((m=text.match(/^(Dim|Static|Private|Public)\s+(.+)$/i))){this.emit('dim',{decls:parseDeclarations(m[2],false,this.module.defaultTypes).map(d=>{if(d.withEvents)throw new VBError('WithEvents is valid only at class or form module level',1002);return d;}),static:/static/i.test(m[1])},line);return;}
     if((m=text.match(/^Const\s+(.+)$/i))){this.emit('dim',{decls:parseDeclarations(m[1],true,this.module.defaultTypes)},line);return;}
-    if((m=text.match(/^ReDim\s+(Preserve\s+)?(.+)$/i))){this.emit('redim',{decls:parseDeclarations(m[2],false,this.module.defaultTypes),preserve:!!m[1]},line);return;}
+    if((m=text.match(/^ReDim\s+(Preserve\s+)?(.+)$/i))){this.emit('redim',{decls:parseRedimDeclarations(m[2],false,this.module.defaultTypes),preserve:!!m[1]},line);return;}
     if((m=text.match(/^Erase\s+(.+)$/i))){this.emit('erase',{exprs:splitTop(m[1]).map(E)},line);return;}
     if((m=text.match(/^On\s+Error\s+(.+)$/i))){
       if(/^Resume\s+Next$/i.test(m[1]))this.emit('onError',{mode:'next'},line);
