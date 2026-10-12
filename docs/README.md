@@ -69,6 +69,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Windows build targets](WINDOWS-BUILDS.md), [target validation](NATIVE-VALIDATION.md),
   [native compiler and optimizer](native-compiler-optimization.md),
   [direct Win32 AOT](WIN32-AOT.md) and [export troubleshooting](WIN32-EXPORT-TROUBLESHOOTING.md).
+- [Private native services](WIN32-PRIVATE-SERVICES.md): demand-driven linkage, pointer primitives and owned-frame performance.
 - [Native strings and control metadata](NATIVE-STRING-METADATA.md): counted BSTRs,
   Replace/InStr binding, Tag/Name lifetime and HWND-backed TabStop.
 - [Win32 controls](WIN32-CONTROLS.md): native AOT control coverage, property and stream ownership, layout integration, output dependencies and Windows execution checks.
