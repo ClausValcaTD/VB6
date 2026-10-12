@@ -24,7 +24,7 @@ export async function propertyReference(vm,object,name,nodes,frame,objectSet=fal
   for(const {index,node} of vm.argumentSlots(nodes,parameters)){
     if(node.kind==='missing')continue;
     if(node.kind==='byval')throw new VBError('ByVal override is valid only for Declare calls',49);
-    actual[index]=parameters[index].byRef?await vm.sourceArgument(node,frame):await vm.evaluateScalar(node,frame);
+    actual[index]=parameters[index].byRef?await vm.sourceArgument(node,frame,frame.activeArrayLeases):await vm.evaluateScalar(node,frame);
   }
   for(let i=0;i<parameters.length;i++)if(actual[i]===MISSING&&!parameters[i].optional)throw new VBError('Argument not optional: '+parameters[i].name,449);
   const read=()=>{

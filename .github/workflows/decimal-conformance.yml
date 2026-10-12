@@ -1,0 +1,117 @@
+name: Decimal conformance
+on:
+  pull_request:
+    paths:
+      - 'src/runtime/**'
+      - 'src/language/**'
+      - 'tests/decimal-exact-arithmetic.test.mjs'
+      - 'tools/*decimal*'
+      - 'tools/ide-artifacts.json'
+      - '.github/workflows/decimal-conformance.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/runtime/**'
+      - 'src/language/**'
+      - 'tests/decimal-exact-arithmetic.test.mjs'
+      - 'tools/*decimal*'
+      - 'tools/ide-artifacts.json'
+      - '.github/workflows/decimal-conformance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  rational-oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Exact rational oracle and Variant operator regression tests
+        run: |
+          set -o pipefail
+          mkdir -p reports/decimal
+          node --test tests/decimal-exact-arithmetic.test.mjs 2>&1 | tee reports/decimal/oracle.log
+      - name: Checked before-and-after Decimal microbenchmarks
+        run: |
+          set -o pipefail
+          node tools/benchmark-decimal.mjs 2>&1 | tee reports/decimal/benchmark.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decimal-rational-oracle-and-benchmark
+          path: reports/decimal
+          if-no-files-found: error
+          retention-days: 14
+  windows-automation:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        architecture: [x86, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate deterministic exact input fixtures
+        run: node tools/check-decimal-automation.mjs --generate
+      - name: Execute real Windows Automation arithmetic
+        shell: pwsh
+        env:
+          REFERENCE_ARCH: ${{ matrix.architecture }}
+        run: |
+          $folder = if ($env:REFERENCE_ARCH -eq 'x86') { 'SysWOW64' } else { 'System32' }
+          $executable = Join-Path $env:windir "$folder/WindowsPowerShell/v1.0/powershell.exe"
+          & $executable -NoProfile -NonInteractive -File tools/decimal-automation-reference.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check exact numeric values and native error codes
+        run: node tools/check-decimal-automation.mjs --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decimal-automation-${{ matrix.architecture }}
+          path: reports/decimal
+          if-no-files-found: error
+          retention-days: 14
+  generated-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Strict build against the committed artifact fingerprints
+        run: node tools/build.mjs
+      - name: Report generated fingerprints for review, without updating expectations
+        if: always()
+        run: |
+          mkdir -p reports/decimal
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {GENERATED_ARTIFACTS} from './tools/ide-artifacts.mjs';
+          const files=Object.fromEntries(GENERATED_ARTIFACTS.map(name=>{
+            const data=fs.readFileSync(name);
+            return [name,{bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')}];
+          }));
+          const report=JSON.stringify({version:2,files},null,2)+'\n';
+          fs.writeFileSync('reports/decimal/generated-fingerprints.json',report);
+          console.log('FINGERPRINT_REPORT_BEGIN\n'+report+'FINGERPRINT_REPORT_END');
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decimal-generated-fingerprints
+          path: reports/decimal
+          if-no-files-found: error
+          retention-days: 14

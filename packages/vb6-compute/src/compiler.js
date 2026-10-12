@@ -35,7 +35,8 @@ const relation = (a,op,b,type) => isWide(type)?`${type==='currency'?'cy_cmp':'d_
  */
 export function compileComputeIR(program, options={}) {
   if(!program?.valid || !(program.modules instanceof Map))
-    throw new ComputeError('The source program contains compiler errors','GPU_SOURCE',{diagnostics:program?.diagnostics||[]});
+    throw new ComputeError('The source program contains compiler errors',({VB_REDIM_FIXED:'GPU_FIXED_ARRAY',VB_REDIM_TYPE:'GPU_TYPE'})[program?.diagnostics?.[0]?.code]||'GPU_SOURCE',{diagnostics:program?.diagnostics||[]});
+  for(const module of program.modules.values())for(const proc of module.procedures.values())if(proc.returnArray)throw new ComputeError('Typed array procedure returns are not implemented by the compute target','GPU_TYPE',{source:module.name,line:proc.line});
   const precision=options.precision??'strict';
   if(!['strict','single'].includes(precision))throw new ComputeError('precision must be strict or single','GPU_OPTION');
   const workgroupSize=integer(options.workgroupSize??64,'workgroupSize',1,256);

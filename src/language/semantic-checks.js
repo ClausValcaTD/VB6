@@ -44,11 +44,11 @@ export function validateLanguageSemantics(modules,scopes,recordTypes) {
       if(returns&&locals.has(name)){const entry=locals.get(name);report(m,entry.line||p.line,'Declaration conflicts with procedure return variable: '+p.name);}
       for(const ins of p.code){
         if(ins.op!=='forInit'&&ins.op!=='eachInit')continue;
-        const target=parseExpression(ins.name);if(target.kind!=='id')continue;
+        const target=ins.variable||parseExpression(ins.name);if(target.kind!=='id')continue;
         const name=lower(target.name),entry=locals.get(name)||scope.globals.get(name);
         const imported=publicNames.get(name)||[];
         let declaration=entry?.d;
-        if(!declaration&&returns&&name===lower(p.name))declaration={type:p.returnType,storageType:p.storageReturnType,bounds:null};
+        if(!declaration&&returns&&name===lower(p.name))declaration={type:p.returnType,storageType:p.storageReturnType,bounds:p.returnArray?[]:null};
         if(!declaration){
           if(imported.length>1){report(m,ins.line,'Ambiguous loop control variable: '+target.name);continue;}
           declaration=imported[0];
@@ -78,7 +78,7 @@ export function validateLanguageSemantics(modules,scopes,recordTypes) {
         const value=p.accessor==='get'?null:p.params.at(-1),actual=indexes(p);
         if(p.accessor!=='get'&&(!value||value.optional||value.paramArray)){report(m,p.line,'Property Let/Set requires a final, non-Optional value parameter');continue;}
         if(p!==reference&&(expected.length!==actual.length||expected.some((arg,i)=>!sameParameter(m,arg,actual[i]))))report(m,p.line,'Inconsistent index parameters for property '+p.name);
-        if(p.accessor==='let'&&reference.accessor==='get'&&typeIdentity(m,value.type)!==typeIdentity(m,reference.returnType))report(m,p.line,'Property Let value type must match Property Get return type: '+p.name);
+        if(p.accessor==='let'&&reference.accessor==='get'&&(typeIdentity(m,value.type)!==typeIdentity(m,reference.returnType)||(value.bounds!==null)!==!!reference.returnArray))report(m,p.line,'Property Let value type must match Property Get return type: '+p.name);
         if(p.accessor==='set'){
           const type=lower(value.type);
           if(value.bounds!==null||scalar.has(type)&&!['variant','object'].includes(type)||recordTypes.has(type)||value.storageType)report(m,p.line,'Property Set value must be an object reference or Variant: '+p.name);
