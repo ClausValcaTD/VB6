@@ -5,7 +5,7 @@ is a local fallback only; it does not claim storage, HTTP or file-URL coverage.
 """
 import functools, http.server, json, os, shutil, threading, time, unittest
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE=os.environ.get('VB6_BROWSER','chromium')
 TRANSPORT=os.environ.get('VB6_TEST_TRANSPORT','http')
@@ -167,7 +167,7 @@ class FigmaWorkspace(unittest.TestCase):
     def test_19_floating_menu_and_escape_sidebar_use_workspace_theme(self):
         self.enable();self.page.evaluate('vb6Studio.figmaMode.configure({mode:"figma",scheme:"dark"})');self.page.get_by_label('Canvas zoom',exact=True).click()
         menu=self.page.get_by_role('menu',name='Commands',exact=True);self.assertEqual(menu.evaluate('(n)=>getComputedStyle(n).backgroundColor'),'rgb(44, 44, 44)');self.assertEqual(menu.evaluate('(n)=>getComputedStyle(n).borderRadius'),'7px');self.page.keyboard.press('Escape')
-        self.page.set_viewport_size({'width':700,'height':820});left=self.page.get_by_label('Toggle Layers sidebar',exact=True);left.click();self.assertEqual(left.get_attribute('aria-expanded'),'true');self.page.keyboard.press('Escape');self.page.wait_for_timeout(60);self.assertEqual(left.get_attribute('aria-expanded'),'false');self.assertFalse(self.page.locator('.figma-layer-tree').is_visible());self.done()
+        self.page.set_viewport_size({'width':700,'height':820});left=self.page.get_by_label('Toggle Layers sidebar',exact=True);left.click();expect(left).to_have_attribute('aria-expanded','true');self.page.keyboard.press('Escape');self.page.wait_for_timeout(60);expect(left).to_have_attribute('aria-expanded','false');self.assertFalse(self.page.locator('.figma-layer-tree').is_visible());self.done()
     def test_20_layout_keyboard_and_guides_survive_transformed_canvas(self):
         self.enable(True);self.select(['button','text']);before=self.snapshot();count=self.page.evaluate('vb6Studio.history.undoStack.length');designer=self.page.locator('.designer-scroll[data-figma-viewport]');designer.focus();designer.press('Shift+A')
         self.page.wait_for_timeout(80);self.assertEqual(self.page.evaluate('vb6Studio.designer.selected()[0].name'),'LayoutFrame1');self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),count+1)
