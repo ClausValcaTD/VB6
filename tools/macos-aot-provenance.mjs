@@ -7,3 +7,14 @@ export function readAOTSourceProvenance(root=path.resolve(import.meta.dirname,'.
   const sdk=path.join(root,'packages/macos-native');
   return {nativeSourceSha256:digest(path.join(sdk,'native')),aotSourceSha256:digest(path.join(sdk,'aot'))};
 }
+/** Fail normal builds on a missing/stale binary instead of shipping source-only export. */
+export function checkAOTRuntimeProvenance(root=path.resolve(import.meta.dirname,'..')){
+  const filename=path.join(root,'packages/macos-native/src/aot-runtime-payload.js'),source=fs.readFileSync(filename,'utf8');
+  const match=/^export const AOT_RUNTIME_MANIFEST=(.+);$/m.exec(source);
+  if(!match)throw new Error('Missing native AOT payload manifest; run the verified runtime refresh');
+  const manifest=JSON.parse(match[1]);
+  if(!manifest||manifest.abi!==1||manifest.architecture!=='arm64'||!manifest.verification?.nativeSignatureVerified||!manifest.verification?.arm64ExecutionVerified)throw new Error('Native AOT payload has no verified execution provenance');
+  const expected=readAOTSourceProvenance(root);
+  for(const key of Object.keys(expected))if(expected[key]!==manifest.provenance?.[key])throw new Error('Native AOT payload is stale: '+key+'. Rebuild and validate it on Apple Silicon.');
+  return manifest;
+}

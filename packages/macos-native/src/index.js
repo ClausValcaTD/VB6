@@ -10,3 +10,9 @@ import {MacOSCompilerClient} from './client.js';
 import {verifyMacOSAppArchive,sha256Bytes} from './archive.js';
 import {MACOS_PROTOCOL,MACOS_LIMITS,macOSBridgeURL,normalizeMacOSBuildRequest} from './protocol.js';
 export {MacOSCompilerClient,verifyMacOSAppArchive,sha256Bytes,MACOS_PROTOCOL,MACOS_LIMITS,macOSBridgeURL,normalizeMacOSBuildRequest};
+
+import {compileMacOSAOT} from './aot-compiler.js';
+import {exportMacOSApplication} from './aot-application.js';
+import {exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive} from './aot-export.js';
+import {loadMacOSAOTRuntime,macOSAOTRuntimeInfo} from './aot-runtime.js';
+export {compileMacOSAOT,exportMacOSApplication,exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive,loadMacOSAOTRuntime,macOSAOTRuntimeInfo};

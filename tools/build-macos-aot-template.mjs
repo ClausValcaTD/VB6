@@ -12,7 +12,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),sdk=p
 export async function buildAOTTemplate({out=path.join(root,'artifacts/macos-aot/runtime'),cache,jobs=3,log=()=>{},signal}={}){
   if(process.platform!=='darwin'||process.arch!=='arm64')throw new Error('The SDK runtime template must be built on Apple Silicon macOS');
   if(!Number.isInteger(jobs)||jobs<1||jobs>16)throw new Error('jobs must be 1..16');
-  buildMacOSPackage(root);const {createMacOSBuildKit}=await import('../packages/macos-native/dist/index.js');
+  buildMacOSPackage(root,{allowStaleAOTRuntime:true});const {createMacOSBuildKit}=await import('../packages/macos-native/dist/index.js');
   const work=await fs.mkdtemp(path.join(os.tmpdir(),'vb6-aot-runtime-'));cache??=path.join(work,'cache');
   try {
     const kit=createMacOSBuildKit({schema:1,name:'NativeAOTRuntime',startup:'Sub Main',modules:[{name:'MainModule',kind:'module',code:'Public Sub Main()\nEnd Sub'}]}),kitDir=path.join(work,'kit');

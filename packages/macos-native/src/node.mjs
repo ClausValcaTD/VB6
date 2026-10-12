@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {createMacOSBuildKit,importFiles} from '../dist/index.js';
+import {createMacOSBuildKit,importFiles,exportMacOSApplication} from '../dist/index.js';
 import {writeBuildKit,buildNativeKit} from './build-driver.mjs';
 export async function buildMacOSProject(project,{compiler={},out=path.resolve('out'),...build}={}) {
   const kit=createMacOSBuildKit(project,compiler),temporary=await fs.mkdtemp(path.join(os.tmpdir(),'vb6-macos-'));
@@ -38,4 +38,18 @@ export async function readMacOSProject(input) {
 }
 export async function exportMacOSSource(project,directory,options={}) {
   const kit=createMacOSBuildKit(project,options);await writeBuildKit(path.resolve(directory),kit.files);return kit.report;
+}
+
+/** Create a ready-to-extract .app ZIP on any Node-supported host. Never executes it. */
+export async function exportMacOSProject(project,{compiler={},out=path.resolve('out'),signal,resources}={}) {
+  signal?.throwIfAborted();
+  const result=await exportMacOSApplication(project,compiler,{signal,resources}),directory=path.resolve(out);
+  await fs.mkdir(directory,{recursive:true});const stat=await fs.lstat(directory);
+  if(!stat.isDirectory()||stat.isSymbolicLink())throw new Error('Output must be a regular directory, not a link');
+  signal?.throwIfAborted();const destination=path.join(directory,result.filename);
+  // Exclusive creation refuses overwrite and symlink traversal at the output file.
+  const file=await fs.open(destination,'wx',0o644);let complete=false;
+  try {await file.writeFile(result.bytes);await file.sync();signal?.throwIfAborted();complete=true;}
+  finally {await file.close();if(!complete)await fs.unlink(destination);}
+  return {...result.report,archive:destination};
 }
