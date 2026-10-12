@@ -40,6 +40,7 @@ export const nativeErrorMethods = {
     this.fail('Native Err supports Clear() and Raise(number, source, description, helpfile, helpcontext)');
   },
   errorCheckpoint(context, index, instruction) {
+    if(context.privateSkipCheckpoints)return;
     const x=this.x;
     localImmediate(x,F.current,context.label+':'+index);
     localImmediate(x,F.next,context.label+':'+(index+1));

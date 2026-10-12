@@ -1,3 +1,4 @@
+import {nativeCheckBoxClick} from './control-checkbox.js';
 /** Demand-gated native subclass and parent-notification routes. All callback
  * paths retain a node across authored handlers and balance the Windows boundary.
  * Designer controls keep their old event routing without duplicate delivery.
@@ -18,7 +19,10 @@ export const nativeDynamicEventMethods={
    .value(module.dynamicRegistry).cmp(at('ebx',24),'eax').branch('ne',next).pushOperand('ebx').call(this.controlProcedure('Retain')).mov(at('ebp',-56),'eax');
   x.value(arg(12)).compare(0x111).branch('e',command).jump(color).label(command)
    .value(mem(module.loaded)).test().branch('e',drop).value({memory:module.dynamicRegistry,addend:16}).test().branch('ne',drop)
-   .value(arg(-56)).testOperand(at('eax',20),1).branch('ne',drop).mov('edx',at('eax',12));
+   .value(arg(-56)).testOperand(at('eax',20),1).branch('ne',drop);
+  const notCheckClick=x.unique();x.cmp(at('eax',40),4).branch('ne',notCheckClick).value(arg(16)).shift('shr','eax',16).test().branch('ne',notCheckClick);
+  nativeCheckBoxClick(this,arg(20));
+  x.label(notCheckClick).value(arg(-56)).mov('edx',at('eax',12));
   for(const group of module.controlArrays.values()){
    const another=x.unique();x.value(group.dynamicDirectory).cmp('edx','eax').branch('ne',another);
    for(const [code,event]of this.nativeCommandEvents(group.type)){

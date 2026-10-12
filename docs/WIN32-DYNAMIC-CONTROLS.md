@@ -37,6 +37,16 @@ or CheckBox/OptionButton Value). This is not blanket support for every legacy
 VB control, arbitrary OCX, dynamic WithEvents control variables or every member
 of an untyped Object. Unsupported members continue to produce diagnostics.
 
+## Checkbox state
+
+Both designer and runtime CheckBox windows use the native three-state style, so
+Value 2 is representable even with the default two-state click policy. The
+framework applies user-click cycling before the authored Click handler: by
+default unchecked becomes checked, checked becomes unchecked, and an
+indeterminate checkbox becomes checked. TripleState enables the three-state
+cycle. Load copies this policy with the live state. A runtime control's native
+state is read through BM_GETCHECK rather than a separate cached value.
+
 ## Lifetime, reentry and callbacks
 
 The node keeps its identity until all references are released. Destruction
@@ -74,6 +84,14 @@ pointer reads by executing the actual linked helper in the checked IA-32 test
 machine. It is not a Windows timing benchmark or a hardware-throughput claim.
 Keep those distinctions when comparing revisions; host/compiler timing and native
 application performance require their own measurements.
+
+Compiler-owned pointer primitives are lowered directly only when their exact
+private host ABI is declared; authored functions with similar names are not
+substituted. Private helper frames are zeroed in one bounded block, and private
+helpers with no Resume path omit internal statement-address writes. Authored
+sequence points, Resume/Resume Next, extension instructions, error propagation,
+rollback handlers and owned cleanup remain intact. These reductions apply at
+O0 as native service lowering, not as disabled safety checks or source pruning.
 
 ## Validation boundaries
 

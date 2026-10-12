@@ -1,3 +1,4 @@
+import {inlinePrivateMemoryCall} from './private-memory.js';
 import {lowerNativeParamArray} from './param-arrays.js';
 import {planNativeInStrArguments} from './call-plan.js';
 import {mem32} from './x86-operands.js';
@@ -143,6 +144,7 @@ export const nativeNumericMethods = {
     return false;
   },
   nativeTypedCall(target,plan) {
+    if(inlinePrivateMemoryCall(this,target,plan))return;
     const x=this.x,signature=target.proc||target,callPins=[],callStrings=[],marshalledStrings=[],slots=new Array(signature.params.length);
     // Stage in the caller's frame: arguments are evaluated exactly once in source
     // order, even with mixed 4/8-byte ABI slots, recursion and array reallocation.

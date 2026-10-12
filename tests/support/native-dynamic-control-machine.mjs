@@ -20,10 +20,17 @@ export function dynamicControlMachine(t,project,optimization=1){
  const defaults=(hwnd,msg,wp,lp)=>{
   const w=window(hwnd);
   if(msg===0x30){w.font=wp;return 0;}if(msg===0x31)return w.font;
-  if(msg===0xf0)return w.check;if(msg===0xf1){w.check=wp;return 0;}
+  if(msg===0xf0)return w.check;if(msg===0xf1){
+   const type=w.style&15,max=[5,6].includes(type)?2:[2,3,4,9].includes(type)?1:0;
+   w.check=Math.min(wp,max);return 0;
+  }
   if(msg===0xd5)return w.limit;if(msg===0xc5){w.limit=wp;return 0;}
   if(msg===0xd2)return w.password;if(msg===0xcc){w.password=wp;return 0;}
-  if(msg===0xf5){if(w.parent)send(w.parent,0x111,w.id,hwnd);return 0;}
+  if(msg===0xf5){
+   const type=w.style&15;
+   if(type===3)w.check=w.check?0:1;else if(type===6)w.check=(w.check+1)%3;else if(type===9)w.check=1;
+   if(w.parent)send(w.parent,0x111,w.id,hwnd);return 0;
+  }
   if(msg===0x102){w.text+=String.fromCharCode(wp);if(w.parent)send(w.parent,0x111,(0x300<<16)|w.id,hwnd);return 0;}
   if(msg===0x10){destroy(hwnd);return 0;}
   return 0;

@@ -1,3 +1,4 @@
+import {emitNativeCheckBoxHelpers} from './control-checkbox.js';
 import {nativeDynamicControlMethods} from './dynamic-controls.js';
 import {nativeDynamicEventMethods} from './dynamic-control-events.js';
 import {nativeEventMethods} from './events.js';
@@ -88,7 +89,7 @@ class NativeCompiler {
     emitNativeNumericHelpers(this);emitNativeCurrencyHelpers(this);emitNativeDateHelpers(this);emitNativeDateIntervalHelpers(this);
     emitNativeStorageHelpers(this);emitNativeStringLibraryHelpers(this);emitNativeStringStatements(this);
     emitNativeArrayHelpers(this);
-    this.emitNativeGridEditHelpers();this.emitNativePictureHelpers();this.emitNativeImageListHelpers();this.emitNativeDialogHelpers();this.emitNativeControlTextHelpers();this.emitNativeRichTextHelpers();this.emitNativeRangeHelpers();this.emitNativeFileHelpers();this.emitNativeFontHelpers();this.emitNativeInputHelpers();this.emitNativeTabHelpers();this.emitNativeTabTextHelpers();this.emitNativeColorHelpers();this.emitNativeDrawingHelpers();
+    this.emitNativeGridEditHelpers();this.emitNativePictureHelpers();this.emitNativeImageListHelpers();this.emitNativeDialogHelpers();this.emitNativeControlTextHelpers();this.emitNativeRichTextHelpers();this.emitNativeRangeHelpers();this.emitNativeFileHelpers();this.emitNativeFontHelpers();this.emitNativeInputHelpers();emitNativeCheckBoxHelpers(this);this.emitNativeTabHelpers();this.emitNativeTabTextHelpers();this.emitNativeColorHelpers();this.emitNativeDrawingHelpers();
     // int-to-string(value, buffer), including INT_MIN without signed negation overflow.
     const positive = x.unique(), digits = x.unique(), copy = x.unique(), done = x.unique();
     x.label('int-to-string').enter(64).value({argument:8}).emit(0x89,0xc3).value({argument:12}).emit(0x89,0xc7,0x89,0xd8,0x85,0xc0).branch('ns',positive);

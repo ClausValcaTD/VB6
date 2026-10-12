@@ -19,7 +19,7 @@ export function nativeControlStyle(type,p) {
   }
   if(type==='CommandButton')style|=0x4000|(p.Default?1:0);
   if(type==='Label')style=style&~0x10000|0x100|align;
-  if(type==='CheckBox')style|=0x4000|(p.TripleState?6:3);
+  if(type==='CheckBox')style|=0x4000|5; // BS_3STATE: framework owns click cycling, Value=2 is always representable.
   if(type==='OptionButton')style|=0x4000|9;
   if(type==='Frame')style=style&~0x10000|7|0x02000000;
   if(type==='ListBox'||type==='FileListBox'||type==='DirListBox') {

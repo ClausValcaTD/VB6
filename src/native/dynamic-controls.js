@@ -1,3 +1,4 @@
+import {PRIVATE_MEMORY_INTRINSICS} from './private-memory.js';
 /** Native intrinsic-control references and runtime Load/Unload/Controls.Add.
  * Demand-gated: unrelated static exports retain their existing binary output.
  * References are not numeric HWND aliases; snapshots stay alive across reentry
@@ -60,7 +61,7 @@ export const nativeDynamicControlMethods={
     x.api('user32.dll','GetWindowTextLengthW',[arg(8)]).cmp('eax','ebx').branch('be',valid).pushOperand('esi').invoke('oleaut32.dll','SysFreeString').jump('error:5').label(valid);
     x.mov('eax',at('ebp',-4)).shift('shl','eax',1).mov(at('esi',-4),'eax').mov('eax','esi').leave(4);
    }
-  });
+  },PRIVATE_MEMORY_INTRINSICS);
   this.nativeDynamicKernel=kernel;
   for(const name of ['ClassName','KindName','DefaultStyle','DefaultEx','DefaultWidth','DefaultHeight'])kernel.hosts[key(name)]=(c,p)=>{
    const x=c.x;x.label(p.label).enter().value(arg(8));

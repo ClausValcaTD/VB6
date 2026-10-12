@@ -1,3 +1,4 @@
+import {bindPrivateMemoryIntrinsics} from './private-memory.js';
 /** Compiler-owned VB helpers are compiled to ordinary x86, never interpreted or
  * embedded as source. Registry naming and reachability keep them isolated from
  * authored modules and avoid emitting unused native services. */
@@ -22,7 +23,7 @@ export function nativeKernelDependencies(procedures,roots){
   for(const root of roots)visit(root);return needed;
 }
 export const nativePrivateKernelMethods={
-  privateNativeKernel(baseName,code,hosts={}){
+  privateNativeKernel(baseName,code,hosts={},intrinsics={}){
     let name=baseName,suffix=0;while(this.modules.has(key(name)))name=baseName+(++suffix);
     const program=compileProject({name,startup:'Sub Main',modules:[{id:name,name,kind:'module',code}]});
     if(!program.valid)throw new Error('Invalid private native kernel: '+JSON.stringify(program.diagnostics));
@@ -42,6 +43,7 @@ export const nativePrivateKernelMethods={
     try{this.prepareModule(module);}finally{[this.preparingModule,this.preparingProcedure]=before;}
     const kernel=this.modules.get(key(name));kernel.deferredNativeKernel=true;
     kernel.roots=new Set();kernel.emitted=new Set();kernel.hosts=hosts;
+    bindPrivateMemoryIntrinsics(kernel,intrinsics);
     (this.privateNativeKernels||=[]).push(kernel);return kernel;
   },
   privateNativeProcedure(kernel,name){

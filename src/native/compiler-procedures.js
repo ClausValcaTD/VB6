@@ -1,3 +1,4 @@
+import {privateNeedsCheckpoints,zeroPrivateFrame} from './private-frames.js';
 import {nativeStringStatement} from './string-statements.js';
 import {preparePrivateErrorScope,enterPrivateErrorScope,leavePrivateErrorScope} from './private-error-scope.js';
 /** Native compiler procedures lowering. Kept separate from PE linkage and runtime kernels. */
@@ -9,7 +10,7 @@ export const nativeCompilerProcedureMethods={
   procedure(context) {
     this.context = context; const outer=this.x, body=new BinarySection('.body',0), x=this.x=new X86(body,this.image), code=this.optimizedNativeProcedure(context), end=context.label+':return';
     // Lower first so temporary text buffers are stack-local, including recursive calls.
-    x.sequence=outer.sequence;context.stringTemps=[];context.variantTemps=[];context.arrayPins=[];context.nativeOwnedTemps=[];this.prepareNativeFlow(context);preparePrivateErrorScope(this,context);
+    x.sequence=outer.sequence;context.stringTemps=[];context.variantTemps=[];context.arrayPins=[];context.nativeOwnedTemps=[];this.prepareNativeFlow(context);preparePrivateErrorScope(this,context);context.privateSkipCheckpoints=!privateNeedsCheckpoints(context);
     for (let i = 0; i < code.length; i++) {
       this.typeCache=new WeakMap();
       const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
@@ -81,7 +82,7 @@ export const nativeCompilerProcedureMethods={
     this.emitErrorDispatch(context);
     x.label(context.label+':clear-strings');for(const reference of context.nativeOwnedTemps.filter(r=>!r.blockScoped))this.clearNativeOwnedPointer(reference);for(const pin of context.arrayPins)this.releaseArrayPin(pin);for(const variable of context.stringTemps)this.clearStringStorage(variable);for(const variable of context.variantTemps)this.clearVariantStorage(variable);x.emit(0xc3);
     this.instruction=null;this.x=outer;outer.sequence=x.sequence;const unitStart=this.text.length;outer.label(context.label).enter(context.size);
-    for(const variable of [...context.locals.values(),...context.stringTemps,...context.variantTemps,...context.arrayPins,...context.nativeOwnedTemps.map(x=>x.variable)])if(!variable.parameter&&!variable.label&&!variable.nativeInstanceField)this.zeroStorage(variable);
+    if(!zeroPrivateFrame(this,context))for(const variable of [...context.locals.values(),...context.stringTemps,...context.variantTemps,...context.arrayPins,...context.nativeOwnedTemps.map(x=>x.variable)])if(!variable.parameter&&!variable.label&&!variable.nativeInstanceField)this.zeroStorage(variable);
     this.enterErrorFrame(context);enterPrivateErrorScope(this,context);
     for(const variable of context.locals.values())if(variable.ownedParameter){
       if(key(variable.type)==='variant'){outer.push({argument:variable.incomingOffset});this.rawStorageAddress(variable);outer.push().call('native:variant:copy');}

@@ -54,12 +54,27 @@ End Function
 function input(fixture){
  const {control,add,check,finish}=fixture('AotControlDynamicInput');
  control('TextBox','Edits',{Index:0,Text:''});
+ control('CheckBox','Checks',{Index:0,Value:2});
+ control('CheckBox','Triple',{Index:0,TripleState:-1});
  add('Dim result As Long,radio As OptionButton,checkBox As CheckBox');
  add('Err.Clear\nOn Error GoTo 0\nLoad Edits(32767)\nresult=SendValue(Edits(32767).hWnd,&H102,120,0)');
  check('Edits(32767).Text="" And inputCalls=1 And inputIndex=32767','ByRef KeyAscii cancellation suppresses the native edit insertion');
  add('result=SendValue(Edits(32767).hWnd,&H102,65,0)');check('Edits(32767).Text=ChrW$(937) And inputCalls=2','changed Unicode KeyAscii reaches the original edit procedure');
  add('Set radio=Controls.Add("VB.OptionButton","radio")\nSet checkBox=Controls.Add("VB.CheckBox","check")\nradio.Value=True\ncheckBox.Value=2');
  check('radio.Value And checkBox.Value=2','typed value properties preserve Boolean and three-state control semantics');
+ check('SendValue(radio.hWnd,&HF0,0,0)=1 And SendValue(checkBox.hWnd,&HF0,0,0)=2','typed values agree with independent native BM_GETCHECK, not a cached property');
+ add('result=SendValue(checkBox.hWnd,&HF5,0,0)');
+ check('checkBox.Value=1','a native click on a programmatically grayed two-state checkbox checks it');
+ add('result=SendValue(checkBox.hWnd,&HF5,0,0)');
+ check('checkBox.Value=0','the next native click unchecks it without cycling through indeterminate');
+ add('Load Checks(256)');
+ check('Checks(0).Value=2 And Checks(256).Value=2','designer and cloned controls both preserve an authored indeterminate state');
+ add('result=SendValue(Checks(256).hWnd,&HF5,0,0)');
+ check('Checks(256).Value=1 And Checks(0).Value=2','runtime array Click changes only the selected checkbox before handler dispatch');
+ add('Load Triple(32767)\nresult=SendValue(Triple(32767).hWnd,&HF5,0,0)\nresult=SendValue(Triple(32767).hWnd,&HF5,0,0)');
+ check('Triple(32767).Value=2 And Triple(0).Value=0','TripleState click policy survives live template cloning');
+ add('result=SendValue(Triple(32767).hWnd,&HF5,0,0)');
+ check('Triple(32767).Value=0','three-state native click cycling returns from indeterminate to unchecked');
  return finish('Private inputCalls As Long,inputIndex As Integer',`Private Sub Edits_KeyPress(Index As Integer,KeyAscii As Integer)
  inputCalls=inputCalls+1
  inputIndex=Index

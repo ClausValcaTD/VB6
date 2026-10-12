@@ -1,3 +1,4 @@
+import {PRIVATE_MEMORY_INTRINSICS} from './private-memory.js';
 /** Typed WithEvents cells own a source reference plus a subscription node.
  * Nodes borrow sink owners: they do not introduce source/sink reference cycles.
  * Invocation retains a class sink until its callback returns. Linked tombstones
@@ -40,7 +41,7 @@ export const nativeEventMethods={
   const kernel=this.privateNativeKernel('NativeEventService',code,{
    word:(c,p)=>c.x.label(p.label).enter().value(arg(8)).mov('edx','eax').value(arg(12)).mov('eax',mem32({base:'edx',index:'eax'})).leave(8),
    putword:(c,p)=>c.x.label(p.label).enter().value(arg(8)).mov('edx','eax').value(arg(12)).add('edx','eax').value(arg(16)).mov(at('edx'),'eax').leave(12)
-  });
+  },PRIVATE_MEMORY_INTRINSICS);
   this.nativeEventsKernel=kernel;kernel.events=events;
   for(const e of events){const p=kernel.procedures.get(key(e.method));p.proc.nativeTransparentErr=true;p.nativeEvent=e;p.proc.code.unshift({op:'nativeEventDispatch',line:0});}
   for(const s of sinks){const p=kernel.procedures.get(key(s.method));p.proc.nativeTransparentErr=true;p.nativeEventSink=s;p.proc.code.unshift({op:'nativeEventSink',line:0});}
