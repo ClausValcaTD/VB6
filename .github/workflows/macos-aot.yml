@@ -31,7 +31,7 @@ jobs:
           node-version: 22
       - name: ARM64 encoding, app packaging and tamper rejection
         run: node tools/build-macos-native.mjs
-      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs
+      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs
       - name: Execute sanitized helper oracle and genuine Apple Silicon export
         run: node tools/test-macos-aot.mjs
       - uses: actions/upload-artifact@v4

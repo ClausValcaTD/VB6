@@ -19,7 +19,7 @@ const project=conformanceProject(),options={name:project.name,bundleIdentifier:'
 const result=await exportMacOSApplication(project,options);
 console.log(JSON.stringify({project,options,sha256:result.report.sha256}));
 '''], cwd=ROOT))
-checks, errors, archives = [], [], []
+checks, errors, archives, automatic = [], [], [], {}
 
 def check(name, condition):
     if not condition:
@@ -82,11 +82,36 @@ try:
 
             dialog()
             check(origin+': bridge configuration is optional and collapsed', not page.get_by_label('macOS compiler bridge token',exact=True).is_visible())
-            with page.expect_download(timeout=90000) as item:
-                page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            # Browser user-activation rules may suppress automatic downloads after
+            # asynchronous signing. Exercise the visible, real manual-save fallback.
+            try:
+                page.wait_for_function('''() => {
+                  const report=globalThis.vb6Studio.lastMacOSBuild;
+                  return report?.codegen==='arm64-aot' || report?.success===false;
+                }''', timeout=90000)
+                state=page.evaluate('({report:vb6Studio.lastMacOSBuild,status:document.querySelector("[role=dialog] [role=status]")?.textContent})')
+                (OUT/(ENGINE+'-'+origin+'-state.json')).write_text(json.dumps(state,indent=2))
+                check(origin+': direct build succeeded', state['report'].get('success') is not False and state['report'].get('compiled') is True)
+                page.get_by_role('dialog').get_by_role('status').filter(has_text='Direct native ARM64 .app ZIP ready').wait_for()
+                for _ in range(50):
+                    if downloads:
+                        break
+                    page.wait_for_timeout(20)
+                automatic[origin]=bool(downloads)
+                if downloads:
+                    downloaded=downloads[-1]
+                else:
+                    with page.expect_download(timeout=30000) as item:
+                        page.get_by_role('link',name='Save ZIP: NativeConformance.app.zip').click()
+                    downloaded=item.value
+            except Exception:
+                (OUT/(ENGINE+'-'+origin+'-failure.txt')).write_text(page.locator('body').inner_text())
+                page.screenshot(path=str(OUT/(ENGINE+'-'+origin+'-failure.png')))
+                raise
             output = OUT/(ENGINE+'-'+origin+'.app.zip')
-            item.value.save_as(output)
-            check(origin+': actual application filename, not source kit', item.value.suggested_filename == 'NativeConformance.app.zip')
+            downloaded.save_as(output)
+            check(origin+': actual application filename, not source kit', downloaded.suggested_filename == 'NativeConformance.app.zip')
             verify(output)
             check(origin+': project is unchanged and no network used', not requests and page.evaluate('JSON.stringify(vb6Studio.project)') == before)
             check(origin+': native report verifies pages without claiming notarization', page.evaluate('vb6Studio.lastMacOSBuild.codegen==="arm64-aot" && vb6Studio.lastMacOSBuild.signature.byteHashesVerified && !vb6Studio.lastMacOSBuild.notarized'))
@@ -106,7 +131,7 @@ try:
             item.value.save_as(retry)
             check(origin+': manual retry preserves every byte', retry.read_bytes()==output.read_bytes())
             retry.unlink()
-            page.evaluate('__restoreDownloadClick()')
+            page.evaluate('void __restoreDownloadClick()')
             close()
 
             dialog()
@@ -115,14 +140,14 @@ try:
             page.get_by_role('button', name='Export .app ZIP', exact=True).click()
             page.wait_for_function('__nativeHashPaused')
             close()
-            page.evaluate('__releaseNativeHash(); __restoreNativeHash()')
+            page.evaluate('() => {__releaseNativeHash(); __restoreNativeHash();}')
             page.wait_for_timeout(1500)
             check(origin+': closing an in-flight export prevents a late download', len(downloads)==count)
             dialog()
             pause_hash()
             page.get_by_role('button', name='Export .app ZIP', exact=True).click()
             page.wait_for_function('__nativeHashPaused')
-            page.evaluate('vb6Studio.project.description="changed during direct build"; __releaseNativeHash(); __restoreNativeHash()')
+            page.evaluate('() => {vb6Studio.project.description="changed during direct build"; __releaseNativeHash(); __restoreNativeHash();}')
             page.get_by_role('dialog').get_by_role('status').filter(has_text='Project changed during export').wait_for()
             check(origin+': stale direct output is rejected', len(downloads)==count)
             close()
@@ -131,4 +156,4 @@ try:
         browser.close()
     check('no browser script errors', not errors)
 finally:
-    (OUT/'validation.json').write_text(json.dumps({'browser':ENGINE,'checks':checks,'errors':errors,'archives':archives,'nativeWebCrypto':True,'realFileOrigin':True},indent=2))
+    (OUT/'validation.json').write_text(json.dumps({'browser':ENGINE,'checks':checks,'errors':errors,'archives':archives,'nativeWebCrypto':True,'realFileOrigin':True,'automaticDownload':automatic},indent=2))
