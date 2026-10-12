@@ -1,0 +1,43 @@
+name: Direct macOS AOT
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: macos-aot-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+jobs:
+  executable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Archive exact source revision
+        run: |
+          mkdir -p artifacts/macos-aot
+          git rev-parse HEAD > artifacts/macos-aot/exact-head.txt
+          git archive --format=zip -o artifacts/macos-aot/source.zip HEAD
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: ARM64 encoding, app packaging and tamper rejection
+        run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs
+      - name: Execute sanitized helper oracle and genuine Apple Silicon export
+        run: node tools/test-macos-aot.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-aot-${{ matrix.os }}
+          path: |
+            reports/macos-aot
+            artifacts/macos-aot
+          retention-days: 14

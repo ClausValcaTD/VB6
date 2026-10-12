@@ -1,0 +1,51 @@
+/** Execute the helper-call oracle AND, on Apple Silicon, the actual exported code.
+ * The portable oracle is a diagnostic, never a substitute for ARM64 execution. */
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {runTool} from '../packages/macos-native/src/build-driver.mjs';
+import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-native/src/aot-compiler.js';
+import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
+import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
+import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
+import {buildAOTTemplate} from './build-macos-aot-template.mjs';
+const root=path.resolve(import.meta.dirname,'..'),sdk=path.join(root,'packages/macos-native'),work=await fs.mkdtemp(path.join(os.tmpdir(),'vb6-direct-aot-'));
+const artifacts=path.join(root,'artifacts/macos-aot'),reports=path.join(root,'reports/macos-aot');
+let transcript='';const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.length>16*1024*1024)transcript=transcript.slice(-16*1024*1024);};
+const report={platform:process.platform,arch:process.arch,portableOracleVerified:false,arm64ExecutionVerified:false,nativeSignatureVerified:false,checks:[]};
+const run=(exe,args,options={})=>runTool(exe,args,{cwd:work,timeout:180000,log,...options});
+const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
+try{
+  await fs.mkdir(artifacts,{recursive:true});
+  const mac=process.platform==='darwin';if(mac)assert.equal(process.arch,'arm64','Native test requires actual Apple Silicon, not Rosetta');
+  const compiler=mac?await run('/usr/bin/xcrun',['--find','clang++']):execFileSync('/bin/sh',['-c','command -v clang++'],{encoding:'utf8'}).trim();
+  const flags=['-std=c++17','-O0','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I',path.join(sdk,'native'),'-I',path.join(sdk,'aot')];
+  if(mac)flags.push('-arch','arm64','-isysroot',await run('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-path']));
+  const sources=(await fs.readdir(path.join(sdk,'native'))).filter(n=>n.endsWith('.cpp')).sort().map(n=>path.join(sdk,'native',n));
+  sources.push(path.join(sdk,'tests','portable-host.cpp'),path.join(sdk,'aot','helpers.cpp'),path.join(sdk,'aot','runtime.cpp'));
+  const objects=sources.map((_,i)=>path.join(work,i+'.o'));let next=0;const errors=[];
+  async function worker(){while(!errors.length){const i=next++;if(i>=sources.length)return;try{await run(compiler,[...flags,'-c',sources[i],'-o',objects[i]]);}catch(error){errors.push(error);}}}
+  await Promise.all(Array.from({length:3},worker));if(errors.length)throw errors[0];
+  const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
+  await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
+  report.portableOracleVerified=true;report.checks.push('ASan/UBSan native-helper graph, interfaces and lifetimes');
+  if(mac){
+    const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
+    report.runtime=runtime.manifest;
+    for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))]]){
+      const result=await exportMacOSAOT(p,runtime);await verifyMacOSAOTArchive(result.bytes,result.options);
+      const archive=path.join(artifacts,result.filename),expanded=path.join(work,label);await fs.writeFile(archive,result.bytes);await fs.mkdir(expanded);
+      await run('/usr/bin/ditto',['-x','-k',archive,expanded]);
+      const app=path.join(expanded,result.options.name+'.app'),executable=path.join(app,'Contents','MacOS',result.options.name);
+      // Crucially, do NOT invoke Clang on project source or re-sign with codesign.
+      await run('/usr/bin/codesign',['--verify','--strict','--verbose=2',app]);
+      validate(await run(executable,[]));
+      report.checks.push(label+': downloaded direct ARM64 code executed and app signature verified');
+      report[label]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes};
+    }
+    report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
+  }
+}catch(error){report.error={message:error.message,output:error.output||''};console.error(error.stack,error.output||'');process.exitCode=1;}
+finally{await fs.mkdir(reports,{recursive:true});await fs.writeFile(path.join(reports,'validation.json'),JSON.stringify(report,null,2)+'\n');await fs.writeFile(path.join(reports,'execution.log'),transcript);await fs.rm(work,{recursive:true,force:true});}
