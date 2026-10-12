@@ -17,7 +17,7 @@ REPORT=base.REPORT/'presentation'
 base.REPORT=REPORT
 
 class FigmaPresentation(base.FigmaWorkspace):
-    def painted_theme(self,scheme,label):
+    def painted_theme(self,scheme,label,backend="canvas2d"):
         """Read actual composited screenshot pixels, not just computed DOM styles.
         No forced renderer paint, backend replacement or sleep occurs here.
         """
@@ -35,9 +35,36 @@ class FigmaPresentation(base.FigmaWorkspace):
                   'canvas':(30,30,30) if scheme=='dark' else (245,245,245)}
         actual={name:image.getpixel((int(p['x']),int(p['y']))) for name,p in probes.items()}
         stats=self.page.evaluate('vb6Studio.rendering.getStats()')
-        (REPORT/(label+'.json')).write_text(json.dumps({'expected':expected,'actual':actual,'points':probes,'renderer':stats},indent=2))
-        self.assertEqual(stats['active'],'canvas2d','The visual guard must not silently qualify HTML fallback')
+        # Evidence only: never repaint or replace a backend to satisfy a probe.
+        evidence=self.page.evaluate(r'''points=>{
+          const r=vb6Studio.rendering,scene=r.retained.scene;
+          const contains=(b,p)=>b&&p.x>=b[0]&&p.y>=b[1]&&p.x<b[0]+b[2]&&p.y<b[1]+b[3];
+          const selectors={header:'.figma-header',layers:'.figma-layer-tree',canvas:'.designer-scroll[data-figma-viewport]',design:'.figma-design-inspector'};
+          return {hidden:document.hidden,canvases:[...document.querySelectorAll('[data-vb-render-layer]')].map(n=>({width:n.width,height:n.height,style:n.style.cssText,current:n===r.canvas})),
+            probes:Object.fromEntries(Object.entries(points).map(([name,p])=>{
+              const n=document.querySelector(selectors[name]),cs=getComputedStyle(n),box=n.getBoundingClientRect();
+              return [name,{dom:{rect:[box.x,box.y,box.width,box.height],background:cs.backgroundColor,display:cs.display},snapshot:r.adapter.styles.get(n),
+                covering:scene.commands.filter(c=>contains(c.rect,p)&&contains(c.clip,p)).map(c=>({rect:c.rect,clip:c.clip,color:c.color,hole:c.hole,page:!!c.page}))}];
+            }))};
+        }''',probes)
+        (REPORT/(label+'.json')).write_text(json.dumps({'expected':expected,'actual':actual,'points':probes,'renderer':stats,'evidence':evidence},indent=2))
+        self.assertEqual(stats['active'],backend,'The visual guard must retain the qualified backend')
         self.assertEqual(actual,expected,'Native DOM and retained paint must publish the same workspace scheme')
+    def test_presentation_default_backend_theme_pixels(self):
+        # Qualify the actual shipped policy rather than assuming the project's
+        # legacy renderer preference selects the IDE-global canvas backend.
+        self.page.evaluate('vb6Studio.rendering.ready')
+        initial=self.page.evaluate('vb6Studio.rendering.getStats()')
+        (REPORT/'default-startup.json').write_text(json.dumps(initial,indent=2))
+        backend=initial['active']
+        self.assertIn(backend,['webgpu','webgl2','canvas2d'],'Default policy must select a working canvas in this matrix')
+        self.enable(True);self.select(['frame']);before=self.snapshot()
+        for index,scheme in enumerate(['light','dark','light','dark']):
+            self.page.evaluate('scheme=>vb6Studio.figmaMode.configure({mode:"figma",scheme,units:"px"})',scheme)
+            self.painted_theme(scheme,'default-'+str(index)+'-'+scheme,backend)
+            self.assertEqual(self.snapshot(),before)
+        self.done()
+
     def test_presentation_composited_theme_pixels(self):
         self.page.evaluate('vb6Studio.setRenderingPolicy({backend:"canvas2d",fallbacks:["html"],text:"native"})')
         self.enable(True);before=self.snapshot()
