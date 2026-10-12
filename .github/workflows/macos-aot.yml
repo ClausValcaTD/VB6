@@ -30,7 +30,8 @@ jobs:
         with:
           node-version: 22
       - name: ARM64 encoding, app packaging and tamper rejection
-        run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs
+        run: node tools/build-macos-native.mjs
+      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs
       - name: Execute sanitized helper oracle and genuine Apple Silicon export
         run: node tools/test-macos-aot.mjs
       - uses: actions/upload-artifact@v4
@@ -40,4 +41,58 @@ jobs:
           path: |
             reports/macos-aot
             artifacts/macos-aot
+          retention-days: 14
+  browser:
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm run build
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps ${{ matrix.browser }}
+      - name: Offline direct app download from HTTP and file origins
+        env:
+          VB6_BROWSER: ${{ matrix.browser }}
+        run: python tools/browser-macos-aot-tests.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-direct-browser-${{ matrix.browser }}
+          path: reports/macos-aot-browser
+          retention-days: 14
+  browser-native:
+    needs: browser
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/build-macos-native.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-direct-browser-*
+          path: browser-input
+      - name: Verify and execute all six browser-exported ARM64 applications
+        run: node tools/test-macos-browser-artifacts.mjs browser-input
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-direct-browser-native-execution
+          path: reports/macos-aot-browser-native
           retention-days: 14

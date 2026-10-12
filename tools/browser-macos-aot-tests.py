@@ -1,0 +1,134 @@
+#!/usr/bin/env python3
+"""Genuine HTTP/file-origin direct export. No compiler bridge or hash adapter."""
+from __future__ import annotations
+import hashlib
+import json
+import os
+import subprocess
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parents[1]
+ENGINE = os.environ.get('VB6_BROWSER', 'chromium')
+OUT = ROOT / 'reports' / 'macos-aot-browser'
+OUT.mkdir(parents=True, exist_ok=True)
+fixture = json.loads(subprocess.check_output(['node', '--input-type=module', '-e', '''
+import {conformanceProject} from './packages/macos-native/tests/conformance.mjs';
+import {exportMacOSApplication} from './packages/macos-native/dist/index.js';
+const project=conformanceProject(),options={name:project.name,bundleIdentifier:'org.vb6studio.application',minimumVersion:'11.0',optimization:2};
+const result=await exportMacOSApplication(project,options);
+console.log(JSON.stringify({project,options,sha256:result.report.sha256}));
+'''], cwd=ROOT))
+checks, errors, archives = [], [], []
+
+def check(name, condition):
+    if not condition:
+        raise AssertionError(name)
+    checks.append(name)
+    print('PASS', name, flush=True)
+
+def verify(path):
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    check(path.name + ': every byte equals Node export', digest == fixture['sha256'])
+    subprocess.run(['node', '--input-type=module', '-e', '''
+import fs from 'node:fs/promises';
+import {verifyMacOSAOTArchive} from './packages/macos-native/dist/index.js';
+const report=await verifyMacOSAOTArchive(new Uint8Array(await fs.readFile(process.argv[1])),JSON.parse(process.argv[2]));
+if(!report.compiled||!report.signature.byteHashesVerified)throw new Error('Invalid browser archive');
+''', str(path), json.dumps(fixture['options'])], cwd=ROOT, check=True)
+    archives.append({'name':path.name, 'sha256':digest, 'options':fixture['options']})
+
+try:
+    with sync_playwright() as pw:
+        browser = getattr(pw, ENGINE).launch(headless=True)
+        for origin in ['http', 'file']:
+            context = browser.new_context(accept_downloads=True, viewport={'width':1440,'height':1050})
+            page = context.new_page()
+            page.set_default_timeout(60000)
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            downloads, requests = [], []
+            page.on('download', lambda item: downloads.append(item))
+            url = 'http://127.0.0.1:8080/' if origin == 'http' else (ROOT/'dist/VB6-Studio-Web.html').as_uri()
+            if origin == 'http':
+                page.route(url, lambda route: route.fulfill(content_type='text/html', body=(ROOT/'dist/VB6-Studio-Web.html').read_text()))
+            page.goto(url)
+            page.wait_for_function('!!globalThis.vb6Studio?.macOSExportInstalled')
+            check(origin+': native Web Crypto and secure origin', page.evaluate('isSecureContext && !!crypto.subtle'))
+            page.evaluate('p=>vb6Studio.loadProject(VB6StudioAPI.normalizeProject(p))', fixture['project'])
+            before = page.evaluate('JSON.stringify(vb6Studio.project)')
+            context.set_offline(True)
+            page.on('request', lambda request: requests.append(request.url) if request.url.startswith(('http:', 'https:')) else None)
+
+            def dialog():
+                page.evaluate('void vb6Studio.command("exportMacOS")')
+                page.get_by_role('dialog', name='Make macOS Apple Silicon Application').wait_for()
+
+            def close():
+                page.get_by_role('button', name='Close', exact=True).click()
+                page.get_by_role('dialog', name='Make macOS Apple Silicon Application').wait_for(state='detached')
+
+            def pause_hash():
+                # Delay one REAL Web Crypto operation to expose cancellation races.
+                # The native SHA implementation remains the oracle; no substitute.
+                page.evaluate('''() => {
+                  const native=crypto.subtle.digest.bind(crypto.subtle);let held=false;
+                  globalThis.__nativeHashPaused=false;
+                  crypto.subtle.digest=async(...args)=>{
+                    if(!held){held=true;globalThis.__nativeHashPaused=true;await new Promise(resolve=>globalThis.__releaseNativeHash=resolve);}
+                    return native(...args);
+                  };
+                  globalThis.__restoreNativeHash=()=>crypto.subtle.digest=native;
+                }''')
+
+            dialog()
+            check(origin+': bridge configuration is optional and collapsed', not page.get_by_label('macOS compiler bridge token',exact=True).is_visible())
+            with page.expect_download(timeout=90000) as item:
+                page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            output = OUT/(ENGINE+'-'+origin+'.app.zip')
+            item.value.save_as(output)
+            check(origin+': actual application filename, not source kit', item.value.suggested_filename == 'NativeConformance.app.zip')
+            verify(output)
+            check(origin+': project is unchanged and no network used', not requests and page.evaluate('JSON.stringify(vb6Studio.project)') == before)
+            check(origin+': native report verifies pages without claiming notarization', page.evaluate('vb6Studio.lastMacOSBuild.codegen==="arm64-aot" && vb6Studio.lastMacOSBuild.signature.byteHashesVerified && !vb6Studio.lastMacOSBuild.notarized'))
+            page.screenshot(path=str(OUT/(ENGINE+'-'+origin+'.png')))
+            page.evaluate('''() => {
+              const native=HTMLAnchorElement.prototype.click;
+              globalThis.__restoreDownloadClick=()=>HTMLAnchorElement.prototype.click=native;
+              HTMLAnchorElement.prototype.click=function(){if(this.download.endsWith('.app.zip'))return;return native.call(this);};
+            }''')
+            count = len(downloads)
+            page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            page.get_by_role('dialog').get_by_role('status').filter(has_text='Direct native ARM64 .app ZIP ready').wait_for()
+            check(origin+': manual download remains available after blocked automatic click', len(downloads)==count and page.get_by_role('link',name='Save ZIP: NativeConformance.app.zip').is_visible())
+            with page.expect_download() as item:
+                page.get_by_role('link',name='Save ZIP: NativeConformance.app.zip').click()
+            retry = OUT/(ENGINE+'-'+origin+'-retry.zip')
+            item.value.save_as(retry)
+            check(origin+': manual retry preserves every byte', retry.read_bytes()==output.read_bytes())
+            retry.unlink()
+            page.evaluate('__restoreDownloadClick()')
+            close()
+
+            dialog()
+            pause_hash()
+            count = len(downloads)
+            page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            page.wait_for_function('__nativeHashPaused')
+            close()
+            page.evaluate('__releaseNativeHash(); __restoreNativeHash()')
+            page.wait_for_timeout(1500)
+            check(origin+': closing an in-flight export prevents a late download', len(downloads)==count)
+            dialog()
+            pause_hash()
+            page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+            page.wait_for_function('__nativeHashPaused')
+            page.evaluate('vb6Studio.project.description="changed during direct build"; __releaseNativeHash(); __restoreNativeHash()')
+            page.get_by_role('dialog').get_by_role('status').filter(has_text='Project changed during export').wait_for()
+            check(origin+': stale direct output is rejected', len(downloads)==count)
+            close()
+            check(origin+': all direct-export cases stayed offline', not requests)
+            context.close()
+        browser.close()
+    check('no browser script errors', not errors)
+finally:
+    (OUT/'validation.json').write_text(json.dumps({'browser':ENGINE,'checks':checks,'errors':errors,'archives':archives,'nativeWebCrypto':True,'realFileOrigin':True},indent=2))
