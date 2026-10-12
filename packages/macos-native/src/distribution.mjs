@@ -88,8 +88,12 @@ export function createMacOSDistributor({platform=process.platform,run=runTool}={
       for(const [relative,content]of unpacked.files){
         signal?.throwIfAborted();
         const destination=path.join(stage,relative);
-        await fs.mkdir(path.dirname(destination),{recursive:true,mode:0o700});
-        await fs.writeFile(destination,content,{flag:'wx',mode:relative===name+'.app/Contents/MacOS/'+name?0o755:0o644});
+        await fs.mkdir(path.dirname(destination),{recursive:true,mode:0o755});
+        // Explicit modes survive a restrictive caller umask. Staging itself
+        // remains 0700, so these final bundle modes do not expose build inputs.
+        for(let directory=path.dirname(destination);directory!==stage;directory=path.dirname(directory))await fs.chmod(directory,0o755);
+        const mode=relative===name+'.app/Contents/MacOS/'+name?0o755:0o644,file=await fs.open(destination,'wx',mode);
+        try{await file.writeFile(content);await file.chmod(mode);}finally{await file.close();}
       }
       const entitlements=path.join(stage,'entitlements.plist');
       await fs.writeFile(entitlements,options.entitlements,{flag:'wx',mode:0o600});
@@ -127,7 +131,7 @@ export function createMacOSDistributor({platform=process.platform,run=runTool}={
       const report={artifact:'native-distribution',architecture:'arm64',archive,bytes:output.length,sha256:hash(output),inputSha256:hash(original),...signature,
         nativeSignatureVerified:true,archiveRoundtripVerified:true,notarized:!!notarization,ticketStapled:!!notarization,gatekeeperAccepted:!!notarization,notarization};
       await fs.writeFile(stagedReport,JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o644});
-      for(const filename of [stagedArchive,stagedReport]){const file=await fs.open(filename,'r');try{await file.sync();}finally{await file.close();}}
+      for(const filename of [stagedArchive,stagedReport]){const file=await fs.open(filename,'r');try{await file.chmod(0o644);await file.sync();}finally{await file.close();}}
       signal?.throwIfAborted();await fs.link(stagedArchive,archive);archiveLinked=true;
       signal?.throwIfAborted();await fs.link(stagedReport,reportFile);reportLinked=true;
       signal?.throwIfAborted();complete=true;return {...report,reportFile};

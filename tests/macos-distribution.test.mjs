@@ -108,3 +108,19 @@ test('entitlement serializer is deterministic, bounded, XML-safe and never evalu
   for(const input of [null,[],{x:NaN},{x:1.2},{x:'\0'},{x:'\ud800'},{x:'\ufffe'},{x:'x'.repeat(65537)},circular,getter,{x:Array(5000).fill('a')},{x:new Date()}])assert.throws(()=>distributionEntitlements(input));
   assert.equal(evaluated,false);
 });
+
+// Private staging protects the build, while the final bundle remains usable
+// after installation into /Applications by accounts other than its builder.
+test('distribution uses traversable application directories inside private staging',{skip:process.platform==='win32'},async t=>{
+  const out=await directory(t);let checked=false;
+  const tools=fakeTools({display:adhoc,onCall:async(exe,args,options)=>{
+    if(exe==='/usr/bin/codesign'&&args[0]==='--force'){
+      const app=args.at(-1);assert.equal((await fs.stat(options.cwd)).mode&0o777,0o700);
+      for(const name of ['', 'Contents', 'Contents/MacOS', 'Contents/Resources'])assert.equal((await fs.stat(path.join(app,name))).mode&0o755,0o755);
+      assert.equal((await fs.stat(path.join(app,'Contents/MacOS/DistributionTest'))).mode&0o777,0o755);checked=true;
+    }
+  }});
+  const previous=process.umask(0o077);
+  try{const report=await tools.distribute(result.bytes,result.options,{out,identity:'-'});assert.equal(checked,true);assert.equal((await fs.stat(report.archive)).mode&0o777,0o644);}
+  finally{process.umask(previous);}
+});
