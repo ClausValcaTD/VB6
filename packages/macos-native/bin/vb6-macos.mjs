@@ -25,7 +25,7 @@ export async function main(args=process.argv.slice(2)) {
   if(!out)throw new Error('--out DIRECTORY is required');
   if(Number(sourceOnly)+Number(clang)+Number(distribution)>1)throw new Error('--source-only, --clang and --distribute are mutually exclusive');
   if(options.jobs!==undefined&&!clang)throw new Error('--jobs requires explicit --clang mode');
-  if(options.identity!==undefined&&!clang&&!distribution)throw new Error('--identity requires explicit --clang or --distribute mode');
+  if(options.identity!==undefined&&!clang&&!distribution)throw new Error('Signing identities require explicit --clang or --distribute mode');
   if((options.notarizeProfile!==undefined||entitlementsFile!==undefined||options.timeout!==undefined)&&!distribution)throw new Error('Notarization, entitlements and signing timeout require explicit --distribute mode');
   if(distribution){
     const {compiler,...configuration}=options;macOSDistributionOptions(configuration);

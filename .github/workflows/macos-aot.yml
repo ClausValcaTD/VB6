@@ -96,7 +96,7 @@ jobs:
         with:
           pattern: macos-direct-browser-*
           path: browser-input
-      - name: Verify and execute all six browser-exported ARM64 applications
+      - name: Verify and execute all 24 browser-exported ARM64 applications
         run: node tools/test-macos-browser-artifacts.mjs browser-input
       - uses: actions/upload-artifact@v4
         if: always()

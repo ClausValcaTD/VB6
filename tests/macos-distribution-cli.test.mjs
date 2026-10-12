@@ -6,7 +6,7 @@ test('CLI explicitly distinguishes offline export, Clang and trusted local distr
   const result=run(['--help']);assert.equal(result.status,0);assert.match(result.stdout,/--distribute/);assert.match(result.stdout,/--notarize-profile/);assert.match(result.stdout,/O0\.\.O3/);assert.match(result.stdout,/explicitly uploads to Apple/);
 });
 for(const [args,message]of [
- [['--identity','Test'],/requires explicit --clang or --distribute/],
+ [['--identity','Test'],/require explicit --clang or --distribute/],
  [['--notarize-profile','Local'],/require explicit --distribute/],
  [['--entitlements-json','secret.json'],/require explicit --distribute/],
  [['--sign-timeout','1000'],/require explicit --distribute/],
