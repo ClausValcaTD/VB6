@@ -105,7 +105,11 @@ export function installMacOSExport(ide, api) {
       return false;
     }
     try {
-      await modal('Make macOS Apple Silicon Application', {width: 720, content,
+      // Native top-layer modality keeps export status, signature warnings and
+      // approval controls above the IDE's retained canvas without changing its
+      // rendering backend. Reuse the existing classic-chrome dialog host.
+      // https://html.spec.whatwg.org/multipage/interactive-elements.html#dom-dialog-showmodal
+      await modal('Make macOS Apple Silicon Application', {width: 720, content, nativeModal: true,
         buttons: [{label: 'Export .app ZIP', value: false, primary: true, action: () => perform('direct')},
           {label: 'Build via Mac Bridge', value: false, action: () => perform('bridge')},
           {label: 'Download Source Build Kit', value: false, action: () => perform('source')}, {label: 'Close', value: false}],

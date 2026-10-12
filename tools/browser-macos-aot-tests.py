@@ -62,6 +62,31 @@ try:
             def dialog():
                 page.evaluate('void vb6Studio.command("exportMacOS")')
                 page.get_by_role('dialog', name='Make macOS Apple Silicon Application').wait_for()
+                check(origin+': export uses the native top layer', page.get_by_role('dialog').evaluate('node=>node.matches(":modal")'))
+
+            def check_dialog_pixels():
+                # A high-z-index retained canvas must never obscure export
+                # status, trust warnings or buttons. Compare the same native
+                # modal with and without that overlay; do not switch backends.
+                node = page.get_by_role('dialog')
+                page.evaluate('document.fonts.ready')
+                page.evaluate('() => new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                backend = page.evaluate('vb6Studio.rendering.backend')
+                check(origin+': canvas renderer is still active', backend in ['webgpu','webgl2','canvas2d'])
+                overlay = node.screenshot(caret='hide', animations='disabled')
+                try:
+                    page.evaluate('''() => {
+                      const layer=vb6Studio.rendering.canvas;
+                      globalThis.__restoreExportCanvasStyle=layer.style.cssText;
+                      layer.style.setProperty('visibility','hidden','important');
+                    }''')
+                    native = node.screenshot(caret='hide', animations='disabled')
+                finally:
+                    page.evaluate('vb6Studio.rendering.canvas.style.cssText=__restoreExportCanvasStyle')
+                (OUT/(ENGINE+'-'+origin+'-dialog.png')).write_bytes(overlay)
+                (OUT/(ENGINE+'-'+origin+'-dialog-native.png')).write_bytes(native)
+                check(origin+': export dialog pixels are not obscured by the canvas', overlay == native)
+                check(origin+': pixel capture preserved the rendering backend', page.evaluate('vb6Studio.rendering.backend') == backend)
 
             def close():
                 page.get_by_role('button', name='Close', exact=True).click()
@@ -115,6 +140,7 @@ try:
             verify(output)
             check(origin+': project is unchanged and no network used', not requests and page.evaluate('JSON.stringify(vb6Studio.project)') == before)
             check(origin+': native report verifies pages without claiming notarization', page.evaluate('vb6Studio.lastMacOSBuild.codegen==="arm64-aot" && vb6Studio.lastMacOSBuild.signature.byteHashesVerified && !vb6Studio.lastMacOSBuild.notarized'))
+            check_dialog_pixels()
             page.screenshot(path=str(OUT/(ENGINE+'-'+origin+'.png')))
             page.evaluate('''() => {
               const native=HTMLAnchorElement.prototype.click;
