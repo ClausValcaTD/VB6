@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {convertVbNetProject} from '../src/migration/index.js';
 import {compileProject} from '../src/language/compiler.js';
 import {VirtualMachine} from '../src/runtime/vm.js';
-import {SETTER_ORDER_FIXTURE} from './migration-setter-order-fixtures.mjs';
+import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from './migration-setter-order-fixtures.mjs';
 
 for(const codeStyle of ['native','compatibility'])test(codeStyle+': reordered setters retain write semantics and capture indexes before RHS',()=>{
  const r=convertVbNetProject(SETTER_ORDER_FIXTURE,{platform:'AnyCPU',codeStyle});
@@ -20,10 +20,11 @@ for(const codeStyle of ['native','compatibility'])test(codeStyle+': reordered se
  assert.equal((source.match(/Private Function __vbCallOrder/g)||[]).length,0);
 });
 
-test('named setter fixture requires SDK execution, not an unsupported source-VM oracle',async()=>{
+test('source VM executes the named setter fixture with the SDK conformance expectations',async()=>{
  const compiled=compileProject(SETTER_ORDER_FIXTURE);
  assert.deepEqual(compiled.diagnostics,[]);
- // The current source VM cannot resolve named indexed property writes. Keep
- // this boundary explicit rather than reporting a VM differential pass.
- await assert.rejects(new VirtualMachine(compiled).start(),/Invalid expression kind: named/);
+ const output=[],vm=new VirtualMachine(compiled,{print:s=>output.push(s)});
+ await vm.start();
+ assert.deepEqual(output,SETTER_ORDER_EXPECTED);
+ assert.equal(vm.lastError.number,5); // The fixture deliberately catches Err.Raise 5.
 });

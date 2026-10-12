@@ -90,8 +90,11 @@ export function parseProcedureHeader(text,defaultTypes={}) {
   const kind=p.match('sub')?'sub':p.match('function')?'function':p.match('property')?'property':null;
   let accessor;
   if(kind==='property'){accessor=p.match('get')?'get':p.match('let')?'let':p.match('set')?'set':null;if(!accessor)p.fail('Expected Property Get, Let, or Set');}
-  const name=p.name(),args=p.group(),explicit=p.match('as'),returnType=explicit?p.qualifiedName():defaultIdentifierType(name,defaultTypes);p.end();
+  const name=p.name(),args=p.group(),explicit=p.match('as'),returnType=explicit?p.qualifiedName():defaultIdentifierType(name,defaultTypes);
+  const array=explicit?p.group():null,returnArray=array!==null;
+  if(returnArray&&array.trim())p.fail('An array return type cannot specify bounds');
+  p.end();
   checkDeclarationType(name,returnType,explicit);
   if((kind==='sub'||kind==='property'&&accessor!=='get')&&(explicit||SUFFIX.test(name)))p.fail('Sub and Property Let/Set cannot specify a return type');
-  return {name,kind,accessor,scope,static:isStatic,params:parseParameters(args||'',defaultTypes),returnType};
+  return {name,kind,accessor,scope,static:isStatic,params:parseParameters(args||'',defaultTypes),returnType,...(returnArray?{returnArray:true}:{})};
 }

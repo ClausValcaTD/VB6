@@ -66,21 +66,26 @@ export function splitTop(text, separator = ',') {
   });
   result.push(text.slice(start, end).trim()); return result;
 }
-export function logicalLines(source) {
-  const out=[]; let carry='', lineStart=0;
+export function logicalLines(source,{preserveContinuations=false}={}) {
+  const out=[]; let carry='', lineStart=0,continuations=[];
   const physical=String(source).replace(/\r\n?/g,'\n').split('\n');
   for (let index=0; index<physical.length; index++) {
     const raw=physical[index]; if (!carry) lineStart=index+1;
     let s=stripComment(raw);
     // Only a lexical underscore after whitespace is a continuation, never one
     // inside a string, bracketed identifier, or comment.
-    if (/\s_\s*$/.test(s)) { carry += s.replace(/\s_\s*$/,' '); continue; }
-    s=(carry+s).trim();carry='';if(!s)continue;
+    if (/\s_\s*$/.test(s)) { carry += s.replace(/\s_\s*$/,' '); if(preserveContinuations)continuations.push(carry.length); continue; }
+    const combined=carry+s,leading=combined.length-combined.trimStart().length;
+    let joins=preserveContinuations?continuations.map(at=>at-leading):null;
+    s=combined.trim();carry='';continuations=[];if(!s)continue;
     const numbered=s.match(/^(\d+)(?=\s|:|$)\s*:?\s*/);
-    if(numbered){out.push({text:numbered[1],line:lineStart,label:true});s=s.slice(numbered[0].length);if(!s)continue;}
+    if(numbered){out.push({text:numbered[1],line:lineStart,label:true});s=s.slice(numbered[0].length);if(joins)joins=joins.map(at=>at-numbered[0].length);if(!s)continue;}
     const named=s.match(/^(\[[^\]]+\]|[A-Za-z_\u0080-\uffff][\w\u0080-\uffff]*)\s*:(?!=)\s*/);
-    if(named){out.push({text:named[1].replace(/^\[|\]$/g,''),line:lineStart,label:true});s=s.slice(named[0].length);if(!s)continue;}
-    for(const part of statementParts(s))out.push({text:part.text,line:lineStart});
+    if(named){out.push({text:named[1].replace(/^\[|\]$/g,''),line:lineStart,label:true});s=s.slice(named[0].length);if(joins)joins=joins.map(at=>at-named[0].length);if(!s)continue;}
+    for(const part of statementParts(s)){
+      const offsets=joins?.filter(at=>at>part.start&&at<=part.start+part.text.length).map(at=>at-part.start);
+      out.push({text:part.text,line:lineStart,...(offsets?.length?{continuations:offsets}:{})});
+    }
   }
   if(carry)throw new VBError('Unfinished line continuation',1002,null,lineStart);
   return out;
