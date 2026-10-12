@@ -1,3 +1,4 @@
+import {assertArrayUnlocked,bindArrayOwner} from './array-lifetime.js';
 import {matchLike} from './like.js';
 import {VBDecimal} from './decimal.js';
 export {VBDecimal};
@@ -306,11 +307,27 @@ export class VBCurrency {
   toJSON(){return {__currency:this.raw.toString()};}
   round(digits=0){digits=bankersRound(numeric(digits));if(digits<0||digits>28)throw new VBError('Invalid procedure call',5);if(digits>=4)return this;const scale=10n**BigInt(4-digits);return new VBCurrency(roundRatio(this.raw,scale)*scale,true);}
 }
-/** Value-copy semantics for records, arrays and dates. Native object references stay shared. */
+// Record members are case-insensitive. Avoid materializing and scanning every
+// field for each source read/write/ByRef argument. Exact spelling needs no cache;
+// a weak per-field-map index is allocated only for a case-folded lookup. Store
+// original keys, not cells, so replacement of a field cell cannot leave an alias
+// pointing at stale storage. Schema construction and cloning remain independent.
+const recordFieldNames=new WeakMap();
+export function recordField(record,name) {
+  const fields=record?.__fields;if(!(fields instanceof Map))return;
+  const direct=fields.get(name);if(direct!==undefined)return direct;
+  const folded=lower(name),cached=recordFieldNames.get(fields);
+  if(cached?.size===fields.size){const key=cached.names.get(folded);if(key!==undefined&&fields.has(key))return fields.get(key);}
+  const names=new Map();for(const key of fields.keys()){const folded=lower(key);if(!names.has(folded))names.set(folded,key);}
+  recordFieldNames.set(fields,{size:fields.size,names});
+  const key=names.get(folded);return key===undefined?undefined:fields.get(key);
+}
+
 export function makeRecord(name,fields){
   const result={__type:name};Object.defineProperty(result,'__fields',{value:fields});
   for(const [key,cell]of fields){if(['__type','__fields','__proto__','constructor','prototype'].includes(key))throw new VBError('Reserved record member: '+key,1002);Object.defineProperty(result,key,{enumerable:true,get:()=>cell.get(),set:value=>cell.set(value)});}return result;
 }
+/** Value-copy semantics for records, arrays and dates. Native object references stay shared. */
 export function cloneValue(value,seen=new Map(),depth=0){
   if(depth>64)throw new VBError('Value nesting exceeds runtime limit',7);
   if(value instanceof Date)return new Date(value);
@@ -348,7 +365,7 @@ export class Cell {
   constructor(type='Variant',value=defaultValue(type),constant=false,fixedLength=null){this.type=type;this.constant=constant;this.fixedLength=fixedLength;this._scalar=storageScalar(value,type,fixedLength);this._value=unbox(this._scalar);}
   get(){return this._value;}
   getScalar(){if(!scalarType(this._value))return this._value;return this._scalar instanceof VBScalar&&Object.is(this._scalar.value,this._value)?this._scalar:storageScalar(this._value,this.type,this.fixedLength);}
-  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!(next instanceof VBArray)||lower(next.type)!==lower(this.elementType))throw new VBError('Array type mismatch',13);next.dynamic=this._value instanceof VBArray?this._value.dynamic:true;}else if(next instanceof VBArray)next.dynamic=true;if(this._value?.__fields){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
+  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);if(this._value instanceof VBArray)assertArrayUnlocked(this._value);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!(next instanceof VBArray)||lower(next.type)!==lower(this.elementType))throw new VBError('Array type mismatch',13);next.dynamic=this._value instanceof VBArray?this._value.dynamic:true;}else if(next instanceof VBArray)next.dynamic=true;if(this._value?.__fields){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
 }
 /** Lazily creates As New variables; assigning Nothing resets the factory. */
 export class LazyCell extends Cell {
@@ -364,10 +381,13 @@ export class VBArray {
   constructor(bounds=[],type='Variant',elementFactory=null,fixedLength=null){this.elementFactory=elementFactory;this.fixedLength=fixedLength;this.type=type;if(bounds.length>60)throw new VBError('An array cannot exceed 60 dimensions',9);this.bounds=bounds.map(([l,u])=>{const b=[bankersRound(numeric(l)),bankersRound(numeric(u))];if(b.some(n=>n< -2147483648||n>2147483647))throw new VBError('Array bound overflow',6);return b;});this.dynamic=!bounds.length;this.allocate();}
   allocate(){let n=this.bounds.length?1:0;for(const [l,u]of this.bounds){if(u<l)throw new VBError('Subscript out of range',9);n*=u-l+1;if(n>1000000)throw new VBError('Array allocation exceeds browser runtime limit (1,000,000 elements)',7);}this.data=Array.from({length:n},()=>this.elementFactory?this.elementFactory():coerce(defaultValue(this.type),this.type,this.fixedLength));}
   offset(indices){if(indices.length!==this.bounds.length||!indices.length)throw new VBError('Subscript out of range',9);let offset=0;for(let d=0;d<indices.length;d++){const [l,u]=this.bounds[d],i=bankersRound(numeric(indices[d]));if(i<l||i>u)throw new VBError('Subscript out of range',9);offset=offset*(u-l+1)+i-l;}return offset;}
-  get(...indices){return this.data[this.offset(indices)];}
-  getScalar(...indices){const i=this.offset(indices),tag=this.scalarData?.[i];if(!scalarType(this.data[i]))return this.data[i];return tag instanceof VBScalar&&Object.is(tag.value,this.data[i])?tag:storageScalar(this.data[i],this.type,this.fixedLength);}
-  set(indices,value){const offset=this.offset(indices),tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.data[offset]?.__fields&&next?.__fields){if(!matchingRecord(this.data[offset],next))throw new VBError('User-defined type mismatch',13);commitRecord(this.data[offset],next);}else {this.data[offset]=next;(this.scalarData||=[])[offset]=tagged;}return unbox(value);}
+  elementValue(value){return value?.__fields||value instanceof VBArray?bindArrayOwner(value,this):value;}
+  get(...indices){return this.elementValue(this.data[this.offset(indices)]);}
+  getScalar(...indices){return this.scalarAt(this.offset(indices));}
+  scalarAt(i){const tag=this.scalarData?.[i];if(!scalarType(this.data[i]))return this.elementValue(this.data[i]);return tag instanceof VBScalar&&Object.is(tag.value,this.data[i])?tag:storageScalar(this.data[i],this.type,this.fixedLength);}
+  set(indices,value){const offset=this.offset(indices);if(this.data[offset] instanceof VBArray)assertArrayUnlocked(this.data[offset]);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.data[offset]?.__fields&&next?.__fields){if(!matchingRecord(this.data[offset],next))throw new VBError('User-defined type mismatch',13);commitRecord(this.data[offset],next);}else {this.data[offset]=next;(this.scalarData||=[])[offset]=tagged;}return unbox(value);}
   redim(bounds,preserve=false){
+    assertArrayUnlocked(this);
     const normalized=bounds.map(([l,u])=>[bankersRound(numeric(l)),bankersRound(numeric(u))]),old=this.bounds;
     if(preserve&&old.length&&(old.length!==normalized.length||old.some(([l,u],i)=>l!==normalized[i][0]||(i<old.length-1&&u!==normalized[i][1]))))throw new VBError('ReDim Preserve can change only the upper bound of the last dimension',9);
     if(!this.dynamic)throw new VBError('This array is fixed or temporarily locked',10);
@@ -389,10 +409,24 @@ export class VBArray {
     }
     this.bounds=next.bounds;this.data=next.data;this.scalarData=next.scalarData;return this;
   }
-  erase(){this.scalarData=[];if(this.dynamic){this.bounds=[];this.data=[];}else this.data=this.data.map(()=>this.elementFactory?this.elementFactory():coerce(defaultValue(this.type),this.type,this.fixedLength));}
+  erase(){assertArrayUnlocked(this);this.scalarData=[];if(this.dynamic){this.bounds=[];this.data=[];}else this.data=this.data.map(()=>this.elementFactory?this.elementFactory():coerce(defaultValue(this.type),this.type,this.fixedLength));}
   *indices(){if(!this.bounds.length||!this.data.length)return;const at=this.bounds.map(([l])=>l);for(;;){yield [...at];let d=0;for(;d<at.length;d++){if(++at[d]<=this.bounds[d][1])break;at[d]=this.bounds[d][0];}if(d===at.length)return;}}
-  *[Symbol.iterator](){for(const at of this.indices())yield this.get(...at);}
-  *scalarIterator(){for(const at of this.indices())yield this.getScalar(...at);}
+  /** VB enumeration advances the first subscript fastest, independently of
+   * the row-major backing store. Allocate rank-sized counters/strides once,
+   * instead of one coordinate array and numeric conversion per element. */
+  *iterationOffsets(){
+    if(!this.bounds.length||!this.data.length)return;
+    const rank=this.bounds.length,lengths=this.bounds.map(([lo,hi])=>hi-lo+1),at=new Array(rank).fill(0),strides=new Array(rank);
+    for(let d=rank-1,stride=1;d>=0;d--){strides[d]=stride;stride*=lengths[d];}
+    let offset=0;
+    for(;;){
+      yield offset;let d=0;
+      for(;d<rank;d++){offset+=strides[d];if(++at[d]<lengths[d])break;at[d]=0;offset-=lengths[d]*strides[d];}
+      if(d===rank)return;
+    }
+  }
+  *[Symbol.iterator](){for(const offset of this.iterationOffsets())yield this.elementValue(this.data[offset]);}
+  *scalarIterator(){for(const offset of this.iterationOffsets())yield this.scalarAt(offset);}
   static from(values,base=0){const a=Object.create(VBArray.prototype);a.type='Variant';a.bounds=[[base,base+values.length-1]];a.dynamic=true;a.scalarData=values.map(v=>storageScalar(v,'Variant'));a.data=a.scalarData.map(unbox);return a;}
 }
 export class VBCollection {

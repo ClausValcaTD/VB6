@@ -30,6 +30,44 @@ Allocation happens before the old descriptor is committed. Rank, unchanged earli
 
 Compiled For/For Each instructions retain their parsed control-variable expression in `variable`. The semantic checker and VM reuse it; a parse fallback remains for older manually constructed IR without that field.
 
+## Borrowed array storage and enumeration lifetime
+
+`src/runtime/array-lifetime.js` tracks temporary source-runtime array locks in WeakMaps, not in cloned values or exported descriptors. Each lease scope retains an array at most once. Distinct nested invocations hold independent retains and release them in `finally`, including argument validation/evaluation failures, host exceptions and debugger cancellation. Statement execution reuses one scope per execute invocation, clearing its retained set after each statement; it does not allocate a scope for every scalar instruction. Loop and With reconciliation runs at actual control transfers, handler/GoSub state changes and live-code replacement, not ordinary fall-through. It also checks the destination after a paused checkpoint resumes. The execution scope is installed once per invocation and releases only nonempty statement leases; recursive calls retain independent scopes.
+
+A direct array element passed ByRef is retained as soon as its address is captured, before evaluating later arguments. The lease ends when that call completes, not at the end of its containing expression. Record fields and nested Variant arrays inherit their containing array owners; ordinary object-instance fields do not. Whole-array ByRef parameters remain resizable. Grouped expression temporaries and ByVal arguments do not borrow the original element storage. Source events retain arguments across all sinks and the host callback.
+
+Array assignment targets and indexed property ByRef arguments remain valid while their right-hand sides evaluate. `ReDim`, `Erase`, and replacement of a locked Variant array report Error 10 without changing the old descriptor, contents or scalar tags. Value copies receive independent, unlocked descriptors.
+
+For Each holds its source array until the loop terminates. Normal completion, Exit For, jumps out of the loop, procedure exits and stack unwinding release it. GoSub and active error handlers suspend rather than terminate the originating loop; Return and Resume reconcile the actual destination. Paused debugger frames keep their leases; reset releases them when those frames unwind. Versioned live editing retains the old invocation's enumeration state.
+
+This is managed source-runtime lifetime tracking, **not a native SAFEARRAY locking ABI**. COM-marshaled aliases, arbitrary native pointers, native/compute compiler lock-equivalence and undocumented Microsoft implementation quirks remain separate compatibility work.
+
+## With receiver identity and lifetime
+
+The compiler emits lexical With identifiers and endpoints. The source VM retains the owner of a record-array element for the entire With activation, including nested record fields. A UDT variable remains an alias; a grouped expression or function/property result uses an independent record value. Class/object receivers preserve the captured object reference without borrowing the array descriptor or invoking a default property. Receiver/index expressions execute once.
+
+Leading-dot access binds to its lexical initializer. Skipping an initializer or resuming after a failed nested With produces Error 91 rather than accidentally selecting an outer receiver. GoSub and error handlers suspend live leases but do not expose them as unrelated receivers. End With, explicit loop exits, jumps outside the block, procedure returns, unhandled exceptions and debugger reset release ownership. Paused automatic watches use the lexical context of the paused statement. Explicit evaluation distinguishes the suspended caller from a running evaluation callee. Each Immediate statement has its own target lifetime, including multiple statements in one command, RHS failures and cancellation. Leaving Immediate never leaks a new lease into the paused statement or releases its persistent With lease.
+
+`tests/language-with-lifetime.test.mjs` tests ownership, rvalues, nested receivers, once-only evaluation, control flow, failure atomicity and debugger cleanup. This source-runtime implementation does not claim native SAFEARRAY lock/COM ABI equivalence or licensed Microsoft VB6 differential certification.
+
+## With arguments and case-insensitive record access
+
+An implicit call such as `Bump .Value` passes the lexical With member as its first argument. `Bump.Value` remains a qualified callee. `Call Bump(.Value)` passes the variable ByRef when declared; `Bump(.Value)` retains the grouped-expression temporary rule. Named, omitted and additional arguments preserve their source order and classifications.
+
+Logical-line construction optionally retains explicit continuation offsets for the compiler. A continued callee (`object _` followed by `.Bump .Value`) therefore remains qualified without swallowing the following With argument. The offsets survive labels, colon splitting, inline If branches and conditional preprocessing; the default logical-line API and physical starting line remain unchanged.
+
+Record reads, writes and ByRef references share a field lookup helper. Exact spelling uses the existing field map; mixed casing builds a weak per-map key index instead of allocating and scanning every field on every access. It stores original keys rather than cells, preserves record/array assignment aliases and Variant tags, and does not share storage between clones. Class-instance maps already use canonical keys and no longer need a copied entry-array scan.
+
+## Allocation-bounded array iteration
+
+The array iterator advances the first subscript fastest while storage remains last-dimension contiguous. It calculates rank-sized counters and strides once per traversal and yields offsets without allocating coordinates or converting subscripts for each element. Public indexed access still validates subscripts. The scalar iterator preserves the stored VB subtype and Variant tag; the raw iterator preserves its ordinary JavaScript-value contract.
+
+`tools/bench-array-iteration.mjs` compares independent source roots, validates an order-sensitive checksum and subtype counts after every warmup/sample, and records all samples. This is an array-traversal benchmark, not a compiler-wide or whole-IDE speed claim.
+
+## Typed-array live editing
+
+Strict Edit and Continue includes `returnArray` in procedure signatures. A scalar/array return-shape change is rejected before mutating active procedure/result storage. Versioned editing may retain the old invocation and give subsequent invocations the new signature. Both policies validate persistent implicit ReDim declarations in Static procedures, not only authored Static/Dim statements.
+
 ## Authored property writes
 
 `src/runtime/property-reference.js` resolves authored property assignment before evaluating a getter. `Let` and `Set` select their own accessors rather than selecting whichever accessor exists first. A wrong assignment kind receives a read-only diagnostic.
@@ -60,13 +98,17 @@ The three `tests/language-*-parity.test.mjs` suites cover matching, arrays and p
 
 ```sh
 node tools/build.mjs
-node --test tests/language-like-parity.test.mjs tests/language-array-parity.test.mjs tests/language-property-parity.test.mjs
+node --test tests/language-*-parity.test.mjs tests/language-array-lifetime.test.mjs tests/language-array-live-edit.test.mjs tests/language-with*.test.mjs tests/language-record-lookup.test.mjs
 node --test --test-concurrency=4 tests/*.test.mjs
 python tools/browser-language-parity.py
 python tools/browser-tests.py
 node tools/bench-language-runtime.mjs --root /path/to/checkout
 node tools/bench-language.mjs --root /path/to/checkout
+node tools/bench-array-iteration.mjs --root /path/to/checkout
+node tools/bench-language-execution.mjs --root /path/to/checkout
 ```
+
+`bench-language-execution.mjs` additionally measures complete source execution for scalar loops, array loops, element-ByRef calls and 64-field record With loops, so pure-iterator gains are not mistaken for whole-VM speedups. It excludes compilation and VM construction, includes module initialization, checks output and instruction counts, and disables scheduler yields only in this CPU benchmark.
 
 The browser language suite checks both the built runtime and the real IDE's run iframe and Output channel. Benchmarks are non-gating, validate results, exclude fixture creation and retain every sample. Keep revision-specific results with CI/release evidence; do not interpret a targeted runtime gain as a compiler-wide or whole-application speedup.
 
@@ -76,3 +118,9 @@ The browser language suite checks both the built runtime and the real IDE's run 
 - [MS-VBAL ReDim semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/22b5d372-0a54-4617-9462-4934b5edc88c)
 - [MS-VBAL Like expression](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/792d4f80-72c1-49da-98a7-37d5783a8615)
 - [MS-VBAL evaluation to a data value](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/ff101375-b301-4cba-80b9-e1ab59f7a8be)
+- [Microsoft Error 10: fixed or temporarily locked arrays](https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/this-array-is-fixed-or-temporarily-locked-error-10)
+
+- [MS-VBAL With statement semantics](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/52caae3d-3ded-436f-a36a-8d5a30c21600)
+
+- [MS-VBAL Call statement and With argument whitespace](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7c864a8-8fce-49dc-8347-30dc749d6576)
+- [MS-VBAL member access and explicit continuation](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a)

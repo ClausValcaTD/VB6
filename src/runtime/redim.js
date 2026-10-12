@@ -1,3 +1,4 @@
+import {assertArrayUnlocked} from './array-lifetime.js';
 import {VBArray} from './values.js';
 import {VBError} from '../language/errors.js';
 const lower=value=>String(value).toLowerCase();
@@ -12,6 +13,7 @@ export async function executeRedim(vm,decl,frame,preserve=false) {
   if(ref.constant)throw new VBError('Assignment to constant not permitted',500);
   if(ref.isArray&&lower(type)!==lower(ref.elementType))throw new VBError('Array type mismatch',13);
   if(value instanceof VBArray){
+    assertArrayUnlocked(value);
     if(lower(type)===lower(value.type))return value.redim(bounds,preserve);
     if(ref.isArray||preserve)throw new VBError('ReDim cannot change the array element type',13);
   }else if(value!==undefined||lower(ref.type)!=='variant')throw new VBError('Type mismatch',13);
