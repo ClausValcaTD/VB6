@@ -50,6 +50,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 - [Optional Figma workspace](figma-workspace.md): real VB6 Assets/Layers/Design,
   reversible workspace profiles, canvas navigation, auto layout and anchoring.
+- [Figma paint publication](figma-presentation.md): retained-renderer transactions,
+  native/canvas synchronization and composited-pixel regression gates.
 - [Optional advanced editor](ADVANCED-EDITOR.md): minimap, source navigation, split views,
   safe debugger data tips, VB6/XAML language servers, lifecycle and deployment.
 
