@@ -1,3 +1,4 @@
+import {installFigmaMode} from '../ide/figma-mode.js';
 import {installAdvancedEditor} from '../ide/advanced-editor.js';
 import {installWebBrowser} from '../ide/webbrowser.js';
 import {installIntelligentUI} from '../intelligent-ui/studio.js';
@@ -24,5 +25,6 @@ if (globalThis.vb6Studio) {
   installXaml(globalThis.vb6Studio);
   installStudioRendering(globalThis.vb6Studio);
   installAdvancedEditor(globalThis.vb6Studio);
+  installFigmaMode(globalThis.vb6Studio);
 }
-export {installXaml, installStudioRendering, installAutoLayout, VB6Studio, StudioAPI, installMcp};
+export {installFigmaMode, installXaml, installStudioRendering, installAutoLayout, VB6Studio, StudioAPI, installMcp};

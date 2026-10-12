@@ -6,7 +6,7 @@ const typing=target=>!!target?.closest?.('input,textarea,select,[contenteditable
 export function installFigmaViewport(designer,workspace){
   const root=designer.root,plane=designer.plane,view=root.ownerDocument.defaultView;
   const abort=new AbortController(),signal=abort.signal,render=designer.render,setZoom=designer.setZoom,dispose=designer.dispose;
-  const previous={zoom:designer.zoom,scrollLeft:root.scrollLeft,scrollTop:root.scrollTop,transform:plane.style.transform};
+  const previous=workspace.classicViewportStates?.get(designer)||{zoom:designer.zoom,scrollLeft:root.scrollLeft,scrollTop:root.scrollTop,transform:plane.style.transform};
   let state={x:8,y:8,zoom:designer.zoom},gesture=null,space=false,frame=0,ready=false,width=0,height=0,disposed=false;
   const viewport={designer,hand:false,get state(){return {...state};}};
   const apply=()=>{
@@ -69,7 +69,8 @@ export function installFigmaViewport(designer,workspace){
   viewport.dispose=({restore=true}={})=>{
     if(disposed)return;finish();disposed=true;abort.abort();observer.disconnect();view.cancelAnimationFrame(frame);
     designer.render=render;designer.setZoom=setZoom;designer.dispose=dispose;delete root.dataset.figmaViewport;delete root.dataset.figmaHand;delete root.dataset.figmaPanning;plane.style.transform=previous.transform;
-    if(restore){designer.zoom=previous.zoom;render.call(designer);root.scrollLeft=previous.scrollLeft;root.scrollTop=previous.scrollTop;}
+    if(restore){designer.zoom=previous.zoom;render.call(designer);root.scrollLeft=previous.scrollLeft;root.scrollTop=previous.scrollTop;
+      view.requestAnimationFrame(()=>{if(root.isConnected&&!root.hasAttribute('data-figma-viewport')){root.scrollLeft=previous.scrollLeft;root.scrollTop=previous.scrollTop;}});}
     workspace.viewports.delete(designer);
   };
   designer.dispose=function(...args){viewport.dispose({restore:false});return dispose.apply(this,args);};
