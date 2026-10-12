@@ -1,3 +1,4 @@
+import {bindRedimDeclarations} from './redim-semantics.js';
 import {validateLanguageSemantics} from './semantic-checks.js';
 import {LAYOUT_CONSTANTS,LAYOUT_ENUMS} from '../layout/contract.js';
 import {VBError} from './errors.js';
@@ -35,7 +36,7 @@ export function bindConstants(modules,settings={}) {
     }
     for(const p of m.procedures.values()){
       const names=new Map(p.params.map(d=>[lower(d.name),{m,p,d}]));locals.set(p,names);p.constantBindings=new Map();p.defaultBindings=new Map();p.constantScalars=new Map();p.defaultScalars=new Map();
-      for(const ins of p.code)if(ins.op==='dim')for(const d of ins.decls){const key=lower(d.name);if(names.has(key))report(new VBError('Duplicate declaration: '+d.name,1002),m,ins.line);else names.set(key,{m,p,d,line:ins.line});}
+      for(const ins of p.code)if(ins.op==='dim')for(const d of ins.decls){const key=lower(d.name);if(names.has(key))report(new VBError('Duplicate declaration: '+d.name,1002),m,ins.line);else names.set(key,{m,p,d,line:ins.line,static:!!ins.static});}
     }
   }
   // Build once per validation, not once for each expression/declaration.
@@ -141,6 +142,7 @@ export function bindConstants(modules,settings={}) {
       for(const ins of p.code)if(ins.op==='dim'||ins.op==='redim')for(const d of ins.decls)storage(d,p,ins.line);
     }
   }
+  diagnostics.push(...bindRedimDeclarations(modules,scopes));
   diagnostics.push(...validateLanguageSemantics(modules,scopes,recordTypes));
   return diagnostics;
 }

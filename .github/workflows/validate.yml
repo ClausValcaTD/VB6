@@ -96,6 +96,7 @@ jobs:
       - name: Existing IDE and runtime integration regressions
         run: |
           python tools/browser-tests.py
+          python tools/browser-language-parity.py
           python tools/browser-parity-tests.py
           python tools/browser-features-04.py
           python tools/recovery-browser-tests.py
