@@ -26,3 +26,8 @@ test('foreign AddRef/Release never wrap or transfer a VB error at a saturated co
  const vm=machine(),m=vm.memory,owner=vm.symbol('owner');m.write(owner,0x7fffffff);
  assert.equal(vm.invoke(I+':addref',[owner+16]),0x7fffffff);assert.equal(vm.invoke(I+':release',[owner+16]),0x7fffffff);assert.equal(m.read(owner),0x7fffffff);
 });
+test('nullable interface cleanup ignores Nothing and forwards an owned canonical interface once',()=>{
+ const vm=machine(),m=vm.memory,owner=vm.symbol('owner');
+ assert.equal(vm.invoke(I+':release-nullable',[0]),0);assert.equal(m.read(owner),2);
+ assert.equal(vm.invoke(I+':release-nullable',[owner+16]),1);assert.equal(m.read(owner),1);
+});

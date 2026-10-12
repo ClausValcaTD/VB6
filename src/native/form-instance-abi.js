@@ -14,7 +14,9 @@ export function declareFormInterface(c){
 }
 export function emitFormInterface(c){
  if(!c.nativeFormInterface)return;
- const x=c.x,invalid=x.unique(),missing=x.unique(),done=x.unique(),full=x.unique();
+ const x=c.x,nil=x.unique();
+ x.label(I+':release-nullable').enter().value(arg(8)).test().branch('e',nil).push().call(I+':release').label(nil).leave(4);
+ const invalid=x.unique(),missing=x.unique(),done=x.unique(),full=x.unique();
  x.label(I+':query').enter().value(arg(16)).test().branch('e',invalid).mov(at('eax'),0)
   .value(arg(12)).test().branch('e',invalid);
  // IID_IUnknown = 00000000-0000-0000-C000-000000000046 (little endian).
