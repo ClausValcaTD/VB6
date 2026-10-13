@@ -282,3 +282,42 @@ The source runtime enforces this guard; complete static call-site type checking
 and external/native parameter ABI equivalence are not claimed.
 
 Reference: [MS-VBAL Procedure Invocation Argument Processing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1fb9af32-fc48-4c4f-998a-ed8047048ca5).
+
+## Reference-parameter views and object copy-back
+
+`src/runtime/parameter-binding.js` binds source-variable arguments for both
+procedure calls and source events. A ByRef Variant binding exposes Variant as its
+declared type regardless of whether the referenced storage currently holds a
+scalar, UDT, array, object, or Nothing. Forwarding does not unwrap that view.
+Assignments still pass through the original storage's conversion and lifetime
+checks; reading records and arrays does not clone their aliased storage. Existing
+safe debugger getters retain scalar tags without evaluating arbitrary accessors.
+
+When an Object or class ByRef formal has a different declared type from its
+argument, the runtime validates and creates local object-reference storage. The
+callee can reassign that local binding without immediately replacing its caller's
+variable. Object field mutations remain visible because the object itself is not
+cloned. Normal completion copies values back in formal order, including checked
+conversion to the original declared type. Escaping errors, failed argument binding,
+and debugger Reset do not perform pending copy-back. Grouped expressions remain
+independent temporaries. Source events share their formal storage across sinks and
+perform copy-back only after successful completion of the event delivery.
+
+The project record resolver also respects an enclosing enum and the project
+module namespace (including forms) before searching imported records. A standard
+module name is not a declared value type; a missing qualified member of a known
+source module is diagnosed rather than silently treated as an external type.
+External library namespaces remain the responsibility of their existing adapters.
+This does not implement every public-type exposure rule or referenced-project
+namespace tier.
+
+Regression coverage: `language-parameter-binding.test.mjs`,
+`language-type-namespace.test.mjs`, and fixtures imported from
+`tools/parameter-browser-fixtures.mjs` by the normal language-browser suite. The
+fixtures execute through both the built runtime and the actual IDE Run/Output
+path. Native imported procedure behavior and COM marshaling retain their separate
+adapters; this change is not a claim of native ABI or licensed VB6 equivalence.
+
+Primary references: [MS-VBAL Procedure Invocation Argument Processing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1fb9af32-fc48-4c4f-998a-ed8047048ca5),
+[Simple Name Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/e3af3398-f090-40db-ade6-de3a93589c76),
+and [Member Access Expressions](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a).
