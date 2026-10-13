@@ -15,7 +15,7 @@ test('resource catalog preserves ordinal and counted UTF16 identifiers, language
  assert.deepEqual(b,encodeMacOSResources([record(),record('101'),record('日本語🙂','CUSTOM Ω')],1045));
 });
 test('empty data and independent designer domain are valid',()=>{
- const b=encodeMacOSResources([{...record(),bytes:new Uint8Array()},record(101,10,1)]);assert.ok(b.length>=96);
+ const b=encodeMacOSResources([{...record(),bytes:new Uint8Array()},record(101,0,1)]);assert.ok(b.length>=96);
 });
 test('invalid identifiers, duplicate identities and bounds fail before native allocation',()=>{
  for(const input of [[record(),record()],[record(-1)],[record(65536)],[record('')],[record('nul\0')],[{...record(),language:65536}],[{...record(),domain:2}],[{...record(),bytes:[1]}]])assert.throws(()=>encodeMacOSResources(input));
@@ -51,4 +51,34 @@ test('CUR validation retains hotspot bytes while sharing checked ICO image bound
  const p=newProject(),m=p.modules[0];const resolve=()=>resolveMacOSPicture(p,'data:image/x-cursor;base64,'+toBase64(b),m);
  assert.equal(resolve().format,'cur');assert.deepEqual(resolve().bytes,b);
  v.setUint16(10,1,true);assert.throws(resolve,/hotspot/);
+});
+
+test('both native compilers package identical resources outside executable metadata',async()=>{
+ const {compileMacOS}=await import('../packages/macos-native/src/compiler.js');
+ const {compileMacOSAOT}=await import('../packages/macos-native/src/aot-compiler.js');
+ const {resourceFormProject}=await import('../packages/macos-native/tests/resources.mjs');
+ const p=resourceFormProject(),before=JSON.stringify(p),a=compileMacOS(p),b=compileMacOSAOT(p);
+ assert.equal(JSON.stringify(p),before);assert.deepEqual(a.files['resources/vb6-assets.bin'],b.resourceFiles['resources/vb6-assets.bin']);
+ assert.equal(a.report.resources.pictures,5);assert.equal(b.report.resources.entries,13);
+ assert.ok(!JSON.stringify(b.metadata).includes('data:image/'));assert.ok(!JSON.stringify(b.metadata).includes('Form1.frx'));
+ assert.equal(a.project.modules.find(m=>m.name==='Form1').form.controls.find(c=>c.name==='Text1').properties.Text,'Résumé\r\nResource text');
+ const {cppText}=await import('../packages/macos-native/src/compiler.js');assert.ok(a.files['main.cpp'].includes(cppText('Résumé\r\nResource text')));
+});
+test('source resource fixture passes independent browser VM without swallowing assertions',async()=>{
+ const {VirtualMachine}=await import('../src/runtime/vm.js'),{compileProject}=await import('../src/language/compiler.js');
+ const {resourceProject}=await import('../packages/macos-native/tests/resources.mjs');
+ const program=compileProject(resourceProject());assert.ok(program.valid,JSON.stringify(program.diagnostics));
+ const printed=[],errors=[],pauses=[],vm=new VirtualMachine(program,{print:t=>printed.push(t),error:e=>errors.push(e)});
+ vm.on('pause',e=>{pauses.push(e.reason);queueMicrotask(()=>vm.stop());});
+ await vm.start();assert.deepEqual(errors,[]);assert.deepEqual(pauses,[]);assert.ok(printed.includes('NATIVE_RESOURCES_OK'));
+});
+test('signed resource catalog cannot be replaced by custom packaging or modified undetected',async()=>{
+ const {syntheticAOTRuntime}=await import('../packages/macos-native/tests/aot-fixture.mjs');
+ const {exportMacOSAOT,verifyMacOSAOTArchive,writeMacOSAppZip}=await import('../packages/macos-native/src/aot-export.js');
+ const {resourceProject}=await import('../packages/macos-native/tests/resources.mjs');
+ const runtime=await syntheticAOTRuntime(),p=resourceProject(),result=await exportMacOSAOT(p,runtime);
+ const name=p.name+'.app/Contents/Resources/vb6-assets.bin';assert.ok(result.files[name].length>100);
+ await assert.rejects(exportMacOSAOT(p,runtime,{}, {resources:{'Resources/vb6-assets.bin':'override'}}),/reserved/);
+ const files={...result.files,[name]:result.files[name].slice()};files[name][100]^=1;
+ await assert.rejects(verifyMacOSAOTArchive(writeMacOSAppZip(files,p.name+'.app/Contents/MacOS/'+p.name),result.options),/seal/);
 });

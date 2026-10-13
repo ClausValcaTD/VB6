@@ -14,7 +14,7 @@ export function encodeMacOSResources(records,language=0){
   if(!Number.isInteger(language)||language<0||language>65535)fail('Invalid native resource language');
   if(!Array.isArray(records)||records.length>20000)fail('Native resource catalog exceeds 20,000 records');
   let length=32+32*records.length;const chunks=[],pool=new Map(),keys=new Set();
-  const put=bytes=>{const key=toBase64(bytes);if(pool.has(key))return pool.get(key);const offset=length;length=align(length+bytes.length);if(length>MAX_RESOURCE_BYTES)fail('Native resource catalog exceeds 20 MiB');chunks.push([offset,bytes]);pool.set(key,offset);return offset;};
+  const put=bytes=>{if(bytes.length>MAX_RESOURCE_BYTES-(32+32*records.length))fail('Native resource catalog exceeds 20 MiB');const key=toBase64(bytes);if(pool.has(key))return pool.get(key);const offset=length;length=align(length+bytes.length);if(length>MAX_RESOURCE_BYTES)fail('Native resource catalog exceeds 20 MiB');chunks.push([offset,bytes]);pool.set(key,offset);return offset;};
   const identifier=value=>{
     if(typeof value==='number'){if(!Number.isInteger(value)||value<0||value>65535)fail('Invalid resource ordinal');return [0,value];}
     if(typeof value!=='string'||!value||value.length>1024||value.includes('\0'))fail('Invalid resource name');
@@ -23,6 +23,7 @@ export function encodeMacOSResources(records,language=0){
   const entries=records.map(record=>{
     const {domain=0,language:lang=0,type,name,bytes}=record;
     if(![0,1].includes(domain)||!Number.isInteger(lang)||lang<0||lang>65535||!(bytes instanceof Uint8Array))fail('Invalid native resource record');
+    if(domain===1&&(type!==0||!Number.isInteger(name)||name<1||lang!==0))fail('Invalid designer resource identity');
     const key=JSON.stringify([domain,type,name,lang]);if(keys.has(key))fail('Duplicate native resource identity');keys.add(key);
     return [domain,lang,...identifier(type),...identifier(name),put(bytes),bytes.length];
   });

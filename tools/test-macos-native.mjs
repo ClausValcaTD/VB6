@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {buildMacOSPackage} from './build-macos-native.mjs';
 import {runTool,writeBuildKit,buildNativeKit} from '../packages/macos-native/src/build-driver.mjs';
+import {resourceFormProject} from '../packages/macos-native/tests/resources.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
@@ -19,7 +20,7 @@ const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.lengt
 const report={platform:process.platform,arch:process.arch,macOSExecutionVerified:false,checks:[]};
 const run=async(executable,args,options={})=>{console.log('RUN',path.basename(executable),args.slice(0,4).join(' '));return runTool(executable,args,{cwd:work,timeout:180000,...options});};
 const generatedPassed=output=>{
-  for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
+  for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
 };
 // Compile SDK objects once; all sanitizer executables link the identical objects.
 // Settle every in-flight compiler before propagating a failure or removing work.
@@ -62,10 +63,14 @@ try {
   report.checks.push('sanitized-program-root-lifecycle','generated-normal-root-cleanup','generated-abrupt-End-skips-finalizers');
   const project=conformanceProject(),compiled=compileMacOS(project),source=path.join(work,'main.cpp');
   await fs.writeFile(source,compiled.files['main.cpp']);
-  const portable=path.join(work,'portable');
+  const portable=path.join(work,'portable.app/Contents/MacOS/portable');
+  await fs.mkdir(path.dirname(portable),{recursive:true});await fs.mkdir(path.join(work,'portable.app/Contents/Resources'));
+  const catalogPath=path.join(work,'portable.app/Contents/Resources/vb6-assets.bin');await fs.writeFile(catalogPath,compiled.files['resources/vb6-assets.bin']);
+  const resourceTest=path.join(work,'resource-contracts');await run(compiler,[...flags,path.join(sdk,'tests/resources.cpp'),...objects,'-o',resourceTest]);
+  assert.match(await run(resourceTest,[catalogPath]),/NATIVE_RESOURCE_PARSER_OK/);report.checks.push('sanitized-resource-parser');
   await run(compiler,[...flags,source,...objects,'-o',portable]);
   const portableOutput=await run(portable,[]);generatedPassed(portableOutput);report.checks.push('sanitized-generated-program','native-interface-dispatch','native-class-finalization');
-  const lifetime=path.join(work,'interface-lifetime');
+  const lifetime=path.join(path.dirname(portable),'interface-lifetime');
   await run(compiler,[...flags,'-DVB6_NATIVE_NO_MAIN',source,...objects,path.join(sdk,'tests/interface-lifetime.cpp'),'-o',lifetime]);
   assert.match(await run(lifetime,[]),/NATIVE_INTERFACE_LIFETIME_OK/);report.checks.push('sanitized-interface-view-lifetime');
   const classes=path.join(work,'class-lifetime');
@@ -85,7 +90,7 @@ try {
     const uiSources=(await fs.readdir(path.join(sdk,'tests'))).filter(name=>/^appkit(?:-[a-z-]+)?\.mm$/.test(name)).sort().map(name=>path.join(sdk,'tests',name));
     await run(compiler,['-std=c++17','-arch','arm64','-isysroot',sdkPath,'-mmacosx-version-min=11.0','-fobjc-arc','-I',native,...uiSources,path.join(cache,built.runtimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-o',ui]);
     await run('/usr/bin/codesign',['--sign','-','--timestamp=none',ui]);
-    const uiOutput=await run(ui,[],{timeout:30000});assert.match(uiOutput,/APPKIT_CONFORMANCE_OK/);assert.match(uiOutput,/APPKIT_EDIT_SELECTION_LIST_OK/);assert.match(uiOutput,/APPKIT_RICH_SELECTION_OK/);report.checks.push('appkit-controls-events-api','appkit-live-edit-selection-lists','appkit-rich-selection-formatting');
+    const uiOutput=await run(ui,[],{timeout:30000});assert.match(uiOutput,/APPKIT_CONFORMANCE_OK/);assert.match(uiOutput,/APPKIT_EDIT_SELECTION_LIST_OK/);assert.match(uiOutput,/APPKIT_RICH_SELECTION_OK/);assert.match(uiOutput,/APPKIT_PICTURES_OK/);report.checks.push('appkit-controls-events-api','appkit-live-edit-selection-lists','appkit-rich-selection-formatting');
     const richKit=createMacOSBuildKit(richTextProject()),richDir=path.join(work,'rich-form-kit');
     await writeBuildKit(richDir,richKit.files);
     const richBuilt=await buildNativeKit(richDir,{out:path.join(work,'rich-form-out'),cache,jobs:3,log});
@@ -99,6 +104,11 @@ try {
     assert.match(await run(formBuilt.executable,[]),/NATIVE_FORM_LIFETIME_OK/);
     report.checks.push('signed-default-form-lifetime-execution');
 
+    const pictureKit=createMacOSBuildKit(resourceFormProject()),pictureDir=path.join(work,'picture-kit');
+    await writeBuildKit(pictureDir,pictureKit.files);
+    const pictureBuilt=await buildNativeKit(pictureDir,{out:path.join(work,'picture-out'),cache,jobs:3,log});
+    assert.equal(pictureBuilt.signatureVerified,true);assert.equal(pictureBuilt.cacheHit,true);
+    assert.match(await run(pictureBuilt.executable,[]),/NATIVE_RESOURCE_FORM_OK/);report.checks.push('signed-resource-form-execution');
     const reused=await buildNativeKit(kitDir,{out:path.join(work,'reused'),cache,jobs:3,log});assert.equal(reused.cacheHit,true);report.checks.push('native-cache-reuse');
     // Verify the exact signed bytes produced by ditto; do not repack the bundle.
     const archive=await verifyMacOSAppArchive(new Uint8Array(await fs.readFile(built.zip)),kit.options);

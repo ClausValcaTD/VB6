@@ -1,6 +1,7 @@
 // Native AppKit control implementation. MIT.
 #include "appkit-control-utils.hpp"
 #include "appkit-edit.hpp"
+#include "appkit-pictures.hpp"
 #include "appkit-richtext.hpp"
 namespace vb6 {
 Value MacControl::get(Runtime&rt,const std::string&raw){
@@ -35,7 +36,7 @@ Value MacControl::get(Runtime&rt,const std::string&raw){
   if(name=="text"&&!grid.empty()){auto r=size_t(number("row",0)),c=size_t(number("col",0));if(r>=grid.size()||c>=grid[r].size())fail(381);return Value::string(grid[r][c]);}
   if(name=="currentx")return Value::real(currentX,Type::Single);if(name=="currenty")return Value::real(currentY,Type::Single);
   if(name=="scalewidth")return property(name,Value::real(view.bounds.size.width/unit(-1,true),Type::Single));if(name=="scaleheight")return property(name,Value::real(view.bounds.size.height/unit(-1,false),Type::Single));
-  if(name=="picture"||name=="image")return property(name,Value::object(nullptr));
+  if(nativePictureProperty(name))return property(name,Value::object(nullptr));
   if(name=="hDC"||name=="hdc")return invoke(rt,"getdc",{});
   auto it=properties.find(name);if(it!=properties.end())return it->second;
   if(name=="enabled")return Value::boolean(true);if(name=="tag")return Value::string(u"");if(name=="tabindex")return Value::integer(0,Type::Integer);
@@ -70,10 +71,9 @@ void MacControl::set(Runtime&rt,const std::string&raw,Value value,bool){
   }
   if(name=="row"||name=="col"){auto n=value.integral();if(n<0||name=="row"&&size_t(n)>=grid.size()||name=="col"&&(grid.empty()||size_t(n)>=grid[0].size()))fail(381);properties[name]=Value::integer(n);return;}
   if(name=="currentx"||name=="currenty"){double n=value.floating();if(name=="currentx")currentX=n;else currentY=n;return;}
-  if(name=="picture"||name=="image"){
-    if(value.type!=Type::Object)fail(13);auto object=std::get<ObjectPtr>(value.payload);auto image=std::dynamic_pointer_cast<MacImage>(object);if(object&&!image)fail(13);
-    properties[name]=value;if([widget isKindOfClass:NSImageView.class])((NSImageView*)widget).image=image?image->image:nil;else if([widget isKindOfClass:NSButton.class])((NSButton*)widget).image=image?image->image:nil;view.needsDisplay=YES;return;
-  }
+  if(nativePictureProperty(name)){setNativePicture(*this,name,std::move(value));return;}
+  if(name=="autosize"){properties[name]=Value::boolean(value.truth());if(value.truth())setNativePicture(*this,"picture",property("picture",Value::object(nullptr)));return;}
+  if(name=="mousepointer"){const auto n=value.integral();if(n<0||(n>15&&n!=99))fail(380);properties[name]=Value::integer(n,Type::Integer);refreshNativePictures(*this);return;}
   if(name=="text"||name=="caption"){
     auto next=value.string(),old=property(name,Value::string(u"")).string();properties[name]=Value::string(next);refresh();
     if(name=="text"&&next!=old)event("change");return;
