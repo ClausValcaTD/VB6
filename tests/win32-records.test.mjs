@@ -32,7 +32,6 @@ test('numeric Len and LenB use physical storage widths rather than padded stack 
 });
 for(const [name,body,pattern]of [
  ['managed String','Private Type T\n text As String\nEnd Type\nDim v As T',/managed|String/],
- ['recursive record','Private Type T\n self As T\nEnd Type\nDim v As T',/Recursive/],
  ['dynamic array field','Private Type T\n values() As Long\nEnd Type\nDim v As T',/fixed-size/],
  ['record array',point+'Dim values() As POINTAPI',/arrays of records/],
  ['ByVal record',point+'Private Sub F(ByVal p As POINTAPI)\nEnd Sub',/ByRef|ByVal/],
@@ -40,6 +39,12 @@ for(const [name,body,pattern]of [
  ['external ByVal Any','Private Declare Sub F Lib "x" (ByVal p As Any)',/Declare/],
  ['too large','Private Type T\n data(0 To 524288) As Byte\nEnd Type\nDim v As T',/512 KiB/]
 ])test('record ABI fails closed: '+name,()=>assert.throws(()=>compile(body+'\n'+main),pattern));
+test('record ABI fails closed on the earlier recursive-field frontend diagnostic',()=>{
+ assert.throws(()=>compile('Private Type T\n self As T\nEnd Type\nDim v As T\n'+main),error=>{
+  assert.deepEqual(error.diagnostics.map(({code,source,line,number})=>({code,source,line,number})),[{code:'VB_RECORD_RECURSION',source:'Module1',line:2,number:1002}]);
+  assert.match(error.message,/Circular user-defined type dependency: Module1\.T\.self As Module1\.T/);return true;
+ });
+});
 test('mismatched record and scalar ByRef calls are diagnosed',()=>{
  for(const parameter of ['Long','OTHER'])assert.throws(()=>compile(point+'Private Type OTHER\n x As Long\n y As Long\nEnd Type\nPrivate Sub F(p As '+parameter+')\nEnd Sub\nPublic Sub Main()\nDim p As POINTAPI\nF p\nEnd Sub'),/exact/);
 });

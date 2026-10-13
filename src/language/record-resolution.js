@@ -1,3 +1,4 @@
+import {recursiveRecordFields} from './record-recursion.js';
 const lower=value=>String(value).toLowerCase();
 
 /** Declaration index owned by one validation pass or VM. Never cache
@@ -59,5 +60,10 @@ export function validateRecordDeclarations(modules) {
     }
     for(const event of m.events?.values()||[])for(const d of event.params)parameter(d,event.line);
   }
+  for(const {definition,field,target}of recursiveRecordFields(index))diagnostics.push({
+    severity:'error',number:1002,code:'VB_RECORD_RECURSION',
+    message:'Circular user-defined type dependency: '+definition.owner.name+'.'+definition.name+'.'+field.name+' As '+target.owner.name+'.'+target.name,
+    source:definition.owner.name,line:field.line||1,column:1
+  });
   return diagnostics;
 }
