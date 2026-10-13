@@ -84,7 +84,7 @@ class FigmaWorkspace(unittest.TestCase):
         self.page.get_by_label('Position units',exact=True).select_option('twips');self.page.wait_for_timeout(60);self.assertEqual(self.field('Width').input_value(),'2400')
         self.change(self.field('Height'),600);self.assertEqual(self.props('button')['Height'],600)
         self.page.evaluate('void vb6Studio.command("undo")');self.page.wait_for_timeout(70);self.assertEqual(self.props('button')['Height'],450)
-        self.page.locator('.figma-all-properties>summary').click();caption=self.page.locator('.figma-all-properties input[data-property="Caption"]');self.change(caption,'Saved caption');self.assertEqual(self.props('button')['Caption'],'Saved caption');self.done()
+        caption=self.page.locator('.figma-all-properties input[data-property="Caption"]');self.change(caption,'Saved caption');self.assertEqual(self.props('button')['Caption'],'Saved caption');self.done()
     def test_05_layer_tree_search_multiselect_and_visibility(self):
         self.enable();self.page.locator('[data-layer-id="button"]').click();self.assertEqual(self.page.evaluate('[...vb6Studio.designer.selection]'),['button'])
         self.page.locator('[data-layer-id="text"]').click(modifiers=['Control']);self.assertEqual(set(self.page.evaluate('[...vb6Studio.designer.selection]')),{'button','text'})
