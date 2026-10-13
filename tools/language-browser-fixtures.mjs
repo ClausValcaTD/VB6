@@ -3,6 +3,30 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Unused recursive records are rejected before startup',project:project(`Private Type Item
+Next As Item
+End Type
+Sub Main()
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:2,number:1002,message:'Circular user-defined type dependency'}]},
+ {name:'Cross-module record-array cycles are diagnosed at both fields',project:withClass(`Public Type A
+Items(1) As Other.B
+End Type
+Sub Main()
+Debug.Print "must not run"
+End Sub`,{id:'other',name:'Other',kind:'module',code:`Public Type B
+Parent As M.A
+End Type`}),diagnostics:[{source:'M',line:2,number:1002,message:'Circular user-defined type dependency'},{source:'Other',line:2,number:1002,message:'Circular user-defined type dependency'}]},
+ {name:'Class references break inline record dependency cycles',project:withClass(`Public Type Item
+Value As Long
+Link As Link
+End Type
+Sub Main()
+Dim item As Item, link As New Link
+item.Value = 7
+Set item.Link = link
+Debug.Print item.Value, item.Link Is link
+End Sub`,{id:'link',name:'Link',kind:'class',code:'Public Data As Item'}),expected:['7 True'],error:null},
  {name:'Typed record array rejects scalar replacement atomically',project:project(`Private Type Item
 Value As Long
 End Type
