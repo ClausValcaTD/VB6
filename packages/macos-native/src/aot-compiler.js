@@ -58,7 +58,7 @@ class DirectLowering extends MacOSLowering {
         const parts=node.name.split('.'),name=lower(parts.pop());let owners;
         if(parts.length)owners=[this.program.modules.get(lower(parts.join('.')))];else if(this.module.procedures.has(name))owners=[this.module];else owners=[...this.program.modules.values()].filter(m=>m.kind==='module'&&m.procedures.has(name)&&m.procedures.get(name).scope!=='private');
         owners=owners.filter(Boolean);if(owners.length!==1||owners[0].kind!=='module')this.fail('AddressOf must resolve one standard-module procedure','MAC230');
-        const p=owners[0].procedures.get(name);if(!p||p.external||p.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
+        const p=owners[0].procedures.get(name);if(!p||p.external||p.returnArray||p.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
         return f.call('callback',this.n(owners[0].name),this.n(p.name));
       }
       default:this.fail('Unsupported AOT expression '+node.kind,'MACA100');
@@ -70,6 +70,7 @@ class DirectLowering extends MacOSLowering {
     if(node.kind==='call'){
       if(node.args.length===0&&node.callee.kind==='id'&&this.canReference(node))return this.reference(node.callee);
       if(node.callee.kind==='member'){const receiver=this.expression(node.callee.object),args=this.arguments(node.args);return f.call('object_ref',receiver,this.n(node.callee.name),args);}
+      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name))return f.call('index_ref',f.call('get',this.n(node.callee.name)),this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));
       if(node.callee.kind==='id'&&['get','let','set'].some(a=>this.module.procedures.has(lower(node.callee.name)+':'+a)))return f.call('property_ref',this.n(node.callee.name),this.arguments(node.args));
       return f.call('index_ref',this.expression(node.callee),this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));
     }
@@ -149,6 +150,7 @@ class DirectLowering extends MacOSLowering {
   emitProcedure(proc){
     this.procedure=proc;this.instruction=null;this.procedures++;const f=this.startFunction();
     if(proc.external){const adapter=resolveMacOSDeclaration(proc,this.module.name);this.external.push({...adapter,procedure:proc.name,source:this.module.name});f.call('api',this.n(adapter.id),proc.kind==='sub'?0:this.n(proc.storageReturnType||proc.returnType));f.end();this.finishFunction();return f.id;}
+    for(const d of proc.redimDeclarations||[]){f.reset();this.declaration(d,false,false);}
     for(const ins of proc.code)if(ins.op==='dim')for(const d of ins.decls){f.reset();this.declaration(d,false,ins.static);}
     this.instructions+=proc.code.length;
     for(let i=0;i<proc.code.length;i++){const ins=proc.code[i];f.label('L'+i);f.nextSlot=1;f.call('step',i,i+1,ins.line||proc.line||1);this.sourceMap.push({function:'aot_entry_'+f.id,instruction:i,module:this.module.name,procedure:proc.name,line:ins.line,sequencePoint:ins.sequencePoint});this.instructionCode(ins,i);}
@@ -164,7 +166,7 @@ class DirectLowering extends MacOSLowering {
       this.module=module;this.procedure=null;this.instruction=null;
       const m={name:module.name,kind:module.kind,defaultMember:module.defaultMember||'',optionExplicit:!!module.optionExplicit,optionBase:module.optionBase,textCompare:module.optionCompare==='text',defaultTypes:module.defaultTypes,interfaces:module.interfaces.map(i=>i.name),publicFields:module.declarations.filter(d=>d.scope!=='private').map(d=>lower(d.name)),interfaceBindings:{},records:[],procedures:[]};
       for(const [name,contract]of Object.entries(module.interfaceBindings||{}))m.interfaceBindings[name]={defaultMember:contract.defaultMember||'',members:Object.fromEntries(Object.entries(contract.members).map(([key,member])=>[key,{procedure:member.procedure,parameters:member.signature.params.map(p=>lower(p.name))}]))};
-      for(const [key,proc]of module.procedures)m.procedures.push({key,name:proc.name,scope:proc.scope,returnType:proc.storageReturnType||proc.returnType,accessor:proc.accessor||'',isFunction:proc.kind==='function'||proc.accessor==='get',isStatic:!!proc.static,external:!!proc.external,entry:this.emitProcedure(proc),parameters:proc.params.map(p=>({name:p.name,type:p.storageType||p.type,byRef:!!p.byRef,optional:!!p.optional,paramArray:!!p.paramArray,array:p.bounds!==null&&p.bounds!==undefined,...(proc.defaultScalars.has(lower(p.name))?{initial:this.literalId(proc.defaultScalars.get(lower(p.name)))}:{})}))});
+      for(const [key,proc]of module.procedures)m.procedures.push({key,name:proc.name,scope:proc.scope,returnType:proc.storageReturnType||proc.returnType,returnArray:!!proc.returnArray,accessor:proc.accessor||'',isFunction:proc.kind==='function'||proc.accessor==='get',isStatic:!!proc.static,external:!!proc.external,entry:this.emitProcedure(proc),parameters:proc.params.map(p=>({name:p.name,type:p.storageType||p.type,byRef:!!p.byRef,optional:!!p.optional,paramArray:!!p.paramArray,array:p.bounds!==null&&p.bounds!==undefined,...(proc.defaultScalars.has(lower(p.name))?{initial:this.literalId(proc.defaultScalars.get(lower(p.name)))}:{})}))});
       this.procedure=null;this.instruction=null;
       m.initialize=this.startFunction().id;for(const d of module.declarations){this.f.reset();this.declaration(d,true);}this.f.end();this.finishFunction();
       for(const [name,fields]of Object.entries(module.types)){

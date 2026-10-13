@@ -27,6 +27,8 @@ Value Runtime::create(const std::string&raw){auto name=lower(raw);if(modules.cou
 Value Runtime::invoke(const std::shared_ptr<Instance>&object,const std::string&raw,Args args,bool internal){
   auto name=lower(raw);auto found=object->module->procedures.find(name);if(found==object->module->procedures.end())fail(438,"Unknown procedure: "+raw);
   auto&proc=found->second;if(!internal&&proc.scope=="private")fail(438);if(!proc.code)fail(453);
+  if(proc.returnArray&&proc.parameters.empty()&&!args.empty())
+    return callValue(*this,invoke(object,raw,{},internal),std::move(args));
   Value result;
   {Frame frame(*this,object,&proc,std::move(args));result=proc.code(frame);}
   drainNativeFinalizers(*this);return result;

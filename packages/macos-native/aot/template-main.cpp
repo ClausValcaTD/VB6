@@ -27,7 +27,7 @@ int main(int argc,char**argv) {
       throw std::runtime_error("Invalid AOT project section sizes");
     std::string metadata(reinterpret_cast<const char*>(p+16),size);
     auto root=vb6::aot::JsonReader(metadata).parse();std::vector<vb6::aot::Entry> entries;
-    if(root.at("abi").integer()!=1||root.at("entries").list().size()>65536)throw std::runtime_error("Invalid AOT entry table");
+    if(root.at("abi").integer()!=vb6::aot::AbiVersion||root.at("entries").list().size()>65536)throw std::runtime_error("Invalid AOT entry table");
     for(const auto&j:root.at("entries").list()){
       auto offset=j.integer();if(offset<0||uint32_t(offset)>=codeSize||offset%16)throw std::runtime_error("Invalid AOT procedure address");
       entries.push_back(reinterpret_cast<vb6::aot::Entry>(reinterpret_cast<uintptr_t>(code)+uintptr_t(offset)));

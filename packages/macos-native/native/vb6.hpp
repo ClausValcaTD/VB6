@@ -99,15 +99,16 @@ struct Arg {
 using Args=std::vector<Arg>;
 using Bounds=std::vector<std::pair<int32_t,int32_t>>;
 struct Cell {
-  Value value; std::string type="variant"; size_t fixedLength=0; bool constant=false;
+  Value value; std::string type="variant"; size_t fixedLength=0; bool constant=false,arrayStorage=false;
   std::function<Value()> lazy;
   std::function<void(Value)> changed;
-  Cell(Value value={},std::string type="variant",size_t fixedLength=0,bool constant=false);
+  Cell(Value value={},std::string type="variant",size_t fixedLength=0,bool constant=false,bool arrayStorage=false);
   Value get(); void set(Value value,bool objectSet=false);
 };
 Ref cellRef(CellPtr cell);
 struct Array : std::enable_shared_from_this<Array> {
   std::string elementType; Bounds bounds; bool dynamic=true, allocated=false; size_t fixedLength=0;
+  size_t borrowedElements=0;
   std::vector<Value> values; std::function<Value()> initializer;
   Array(std::string type, Bounds bounds, bool dynamic, size_t maxElements, size_t fixedLength=0,std::function<Value()> initializer={});
   size_t offset(const std::vector<Value>& indices) const;
@@ -144,7 +145,7 @@ struct Parameter {
 };
 struct Procedure {
   std::string name,returnType="variant",scope="public",accessor;
-  bool isFunction=false,isStatic=false,external=false;
+  bool isFunction=false,isStatic=false,external=false,returnArray=false;
   std::vector<Parameter> parameters;
   std::function<Value(Frame&)> code;
 };
@@ -257,7 +258,7 @@ struct Runtime {
   Value create(const std::string& name);
   Value defaultValue(const std::string& type,Frame* frame=nullptr);
   Value invoke(const std::shared_ptr<Instance>&,const std::string& name,Args={},bool internal=false);
-  Value dispatch(const std::shared_ptr<Instance>&,const std::string& name,Args={});
+  Value dispatch(const std::shared_ptr<Instance>&,const std::string&,Args={});
   void load(const std::shared_ptr<Instance>&); void unload(const std::shared_ptr<Instance>&);
   void bindEvents(std::shared_ptr<Instance>,const std::string&,Value);
   void raiseEvent(const std::shared_ptr<Instance>&,const std::string&,Args);

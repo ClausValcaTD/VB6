@@ -31,7 +31,15 @@ try{
   await Promise.all(Array.from({length:3},worker));if(errors.length)throw errors[0];
   const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
   await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
-  report.portableOracleVerified=true;report.checks.push('ASan/UBSan native-helper graph, interfaces and lifetimes');
+  // A faulty expected error must fail the native test, not be swallowed by
+  // the VB Resume Next statement used to provoke the error under test.
+  const broken=structuredClone(project),arrayModule=broken.modules.find(m=>m.name==='NativeArrayChecks');
+  arrayModule.code=arrayModule.code.replace('Debug.Assert Err.Number = 10','Debug.Assert Err.Number = 999');
+  const badSource=path.join(work,'negative-oracle.cpp'),badOracle=path.join(work,'negative-oracle');
+  await fs.writeFile(badSource,emitAOTPortableTestSource(compileMacOSAOT(broken)));
+  await run(compiler,[...flags,badSource,...objects,'-o',badOracle]);
+  await assert.rejects(run(badOracle,[]),error=>/VB6 error 5: Debug.Assert failed/.test(error.output||''));
+  report.portableOracleVerified=true;report.checks.push('ASan/UBSan native-helper graph, interfaces and lifetimes','Array acceptance rejects an intentionally false error assertion');
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;

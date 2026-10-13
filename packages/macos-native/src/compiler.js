@@ -80,7 +80,7 @@ export class MacOSLowering {
         else if(this.module.procedures.has(name))owners=[this.module];
         else owners=[...this.program.modules.values()].filter(m=>m.kind==='module'&&m.procedures.has(name)&&m.procedures.get(name).scope!=='private');
         owners=owners.filter(Boolean);if(owners.length!==1||owners[0].kind!=='module')this.fail('AddressOf must resolve one standard-module procedure','MAC230');
-        const procedure=owners[0].procedures.get(name);if(!procedure||procedure.external||procedure.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
+        const procedure=owners[0].procedures.get(name);if(!procedure||procedure.external||procedure.returnArray||procedure.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
         return `f.callback(${q(owners[0].name)},${q(procedure.name)})`;
       }
       default:this.fail('Unsupported native expression '+node.kind);
@@ -92,6 +92,7 @@ export class MacOSLowering {
     if(node.kind==='call'){
       if(node.args.length===0&&node.callee.kind==='id'&&this.canReference(node))return this.reference(node.callee);
       if(node.callee.kind==='member')return wrapped(`auto receiver=${this.expression(node.callee.object)};auto args=${this.arguments(node.args)};return objectReference(f.runtime,receiver,${q(node.callee.name)},args);`);
+      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name))return wrapped(`auto receiver=f.get(${q(node.callee.name)});std::vector<Value> indices{${node.args.map(a=>this.expression(a.kind==='named'?a.expr:a)).join(',')}};return indexedRef(f.runtime,receiver,indices);`);
       if(node.callee.kind==='id'&&(this.module.procedures.has(lower(node.callee.name)+':get')||this.module.procedures.has(lower(node.callee.name)+':let')||this.module.procedures.has(lower(node.callee.name)+':set')))return `f.propertyRef(${q(node.callee.name)},${this.arguments(node.args)})`;
       return wrapped(`auto receiver=${this.expression(node.callee)};std::vector<Value> indices{${node.args.map(a=>this.expression(a.kind==='named'?a.expr:a)).join(',')}};return indexedRef(f.runtime,receiver,indices);`);
     }
@@ -111,7 +112,7 @@ export class MacOSLowering {
     if(node.kind==='member')return !this.constant(node);
     if(node.kind==='call'&&node.callee.kind==='id'){
       const name=lower(node.callee.name),variables=[...(this.procedure?.params||[]),...this.module.declarations,...(this.procedure?.code||[]).flatMap(i=>i.decls||[])];
-      return variables.some(v=>lower(v.name)===name&&v.bounds!==null&&v.bounds!==undefined);
+      return !!(this.procedure?.returnArray&&lower(this.procedure.name)===name)||variables.some(v=>lower(v.name)===name&&v.bounds!==null&&v.bounds!==undefined);
     }
     return false;
   }
@@ -190,14 +191,14 @@ export class MacOSLowering {
     this.procedure=procedure;this.instruction=null;this.procedures++;
     if(procedure.external){const adapter=resolveMacOSDeclaration(procedure,this.module.name);this.external.push({...adapter,procedure:procedure.name,source:this.module.name});return `static Value p${id}(Frame&f){auto result=f.runtime.host->api(f.runtime,${q(adapter.id)},f.arguments);return ${procedure.kind==='sub'?'Value{}':`coerce(result,${q(procedure.storageReturnType||procedure.returnType)})`};}\n`;}
     const code=procedure.code;this.instructions+=code.length;
-    const locals=code.filter(ins=>ins.op==='dim').flatMap(ins=>ins.decls.map(d=>this.declaration(d,false,ins.static))).join('\n');
+    const locals=(procedure.redimDeclarations||[]).map(d=>this.declaration(d,false,false)).join('\n')+code.filter(ins=>ins.op==='dim').flatMap(ins=>ins.decls.map(d=>this.declaration(d,false,ins.static))).join('\n');
     const instructions=code.map((ins,i)=>{this.sourceMap.push({function:`p${id}`,instruction:i,module:this.module.name,procedure:procedure.name,line:ins.line,sequencePoint:ins.sequencePoint});return `L${i}:{f.mark(${i},${i+1},${ins.line||procedure.line});${this.instructionCode(ins,i)}}`;});
     return `static Value p${id}(Frame&f){\n${locals}\ndispatch:\ntry {\nswitch(f.pc){${code.map((_,i)=>`case ${i}:goto L${i};`).join('')}default:goto L${code.length};}\n${instructions.join('\n')}\nL${code.length}:return f.result();\n}catch(const Error&e){if(!f.handle(e))throw;}\ngoto dispatch;\n}\n`;
   }
   recordCode(name,fields){
     return `m.records[${q(lower(name))}]=[](Frame&f){(void)f;auto record=std::make_shared<Record>();record->name=${q(name)};${fields.map(field=>{
       const type=field.storageType||field.type;const init=field.bounds?.length?`Value::array(std::make_shared<Array>(${q(type)},${this.bounds(field)},false,f.runtime.maxArrayElements,${field.fixedLength||0},[prototype=f.runtime.defaultValue(${q(type)},&f)]{return prototype.copy();}))`:`f.runtime.defaultValue(${q(type)},&f)`;
-      return `record->order.push_back(${q(lower(field.name))});record->fields[${q(lower(field.name))}]=std::make_shared<Cell>(${init},${q(field.bounds?.length?'variant':type)},${field.fixedLength||0});`;
+      return `record->order.push_back(${q(lower(field.name))});record->fields[${q(lower(field.name))}]=std::make_shared<Cell>(${init},${q(type)},${field.fixedLength||0},false,${bool(!!field.bounds?.length)});`;
     }).join('')}return Value::record(record);};`;
   }
   spec(control){
@@ -210,7 +211,7 @@ export class MacOSLowering {
     for(const module of this.program.modules.values()){
       this.module=module;this.procedure=null;this.instruction=null;
       const registrations=[];
-      for(const [key,proc]of module.procedures){functions.push(this.procedureCode(proc,id));registrations.push(`{Procedure p;p.name=${q(proc.name)};p.scope=${q(proc.scope)};p.returnType=${q(proc.storageReturnType||proc.returnType)};p.accessor=${q(proc.accessor||'')};p.isFunction=${bool(proc.kind==='function'||proc.accessor==='get')};p.isStatic=${bool(proc.static)};p.external=${bool(proc.external)};p.code=&p${id++};p.parameters={${proc.params.map(param=>{
+      for(const [key,proc]of module.procedures){functions.push(this.procedureCode(proc,id));registrations.push(`{Procedure p;p.name=${q(proc.name)};p.scope=${q(proc.scope)};p.returnType=${q(proc.storageReturnType||proc.returnType)};p.accessor=${q(proc.accessor||'')};p.isFunction=${bool(proc.kind==='function'||proc.accessor==='get')};p.returnArray=${bool(proc.returnArray)};p.isStatic=${bool(proc.static)};p.external=${bool(proc.external)};p.code=&p${id++};p.parameters={${proc.params.map(param=>{
         const initial=proc.defaultScalars.get(lower(param.name));return `Parameter{${q(param.name)},${q(param.storageType||param.type)},${bool(param.byRef)},${bool(param.optional)},${bool(param.paramArray)},${bool(param.bounds!==null&&param.bounds!==undefined)},${initial?`[](Frame&)->Value{return ${cppScalar(initial)};}`:'{}'}}`;
       }).join(',')}};m.procedures[${q(key)}]=std::move(p);}`);}
       this.procedure=null;this.instruction=null;

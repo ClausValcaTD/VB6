@@ -6,7 +6,7 @@ static CellPtr makeCell(Frame& frame,const std::string&type,Bounds bounds,int ar
   auto&rt=frame.runtime;Value initial;
   if(arrayKind){auto prototype=rt.defaultValue(type,&frame);auto init=[prototype]{return prototype.copy();};initial=Value::array(std::make_shared<Array>(type,bounds,arrayKind==1,rt.maxArrayElements,fixed,init));}
   else initial=rt.defaultValue(type,&frame);
-  auto cell=std::make_shared<Cell>(initial,arrayKind?"variant":type,fixed,constant);
+  auto cell=std::make_shared<Cell>(initial,type,fixed,constant,arrayKind!=0);
   if(autoNew)cell->lazy=[&rt,type]{return rt.create(type);};
   return cell;
 }
@@ -35,7 +35,7 @@ Frame::Frame(Runtime&rt,std::shared_ptr<Instance> object,Procedure*proc,Args arg
       Arg arg=bound[i]?*bound[i]:Arg();
       if(arg.value.type==Type::Missing){if(!p.optional)fail(449);if(p.initial)arg=Arg(p.initial(*this));else if(lower(p.type)!="variant")arg=Arg(rt.defaultValue(p.type,this));}
       if(proc->external){arg.nativeByRef=p.byRef;if(!(arg.value.type==Type::Object&&std::dynamic_pointer_cast<NativeCallback>(std::get<ObjectPtr>(arg.value.payload)))&&lower(p.type)!="any"&&arg.value.type!=Type::Record&&arg.value.type!=Type::Array)arg.value=coerce(arg.value,p.type);arguments.push_back(arg);continue;}
-      if(p.array && arg.value.type!=Type::Array)fail(13,"Array argument required");
+      if(p.array && (arg.value.type!=Type::Array||lower(arg.value.asArray()->elementType)!=lower(p.type)))fail(13,"Matching array argument required");
       if(p.byRef&&arg.reference&&arg.reference.direct){
         auto sourceType=lower(arg.reference.type),target=lower(p.type);
         if(!p.array&&target!="variant"&&target!=sourceType&&!(arg.value.type==Type::Object&&(!std::get<ObjectPtr>(arg.value.payload)||std::get<ObjectPtr>(arg.value.payload)->supports(target))))fail(13,"ByRef argument type mismatch: "+p.name);
@@ -50,10 +50,13 @@ Frame::Frame(Runtime&rt,std::shared_ptr<Instance> object,Procedure*proc,Args arg
       }else{
         Value value=arg.value;
         if(value.type!=Type::Missing&&!p.array)value=coerce((lower(p.type)=="variant"||typeCode(p.type)==Type::Object||typeCode(p.type)==Type::Record)?value:scalar(rt,value),p.type);
-        auto cell=std::make_shared<Cell>(value,p.array?"variant":p.type);locals[name]=cellRef(cell);
+        if(p.array){value=value.copy();value.asArray()->dynamic=true;}
+        auto cell=std::make_shared<Cell>(value,p.type,0,false,p.array);locals[name]=cellRef(cell);
       }
     }
-    if(proc->isFunction)declare(proc->name,proc->returnType);
+    // Function result storage is always per invocation, even in a Static
+    // procedure. Typed array results start as unallocated dynamic arrays.
+    if(proc->isFunction)locals[lower(proc->name)]=cellRef(makeCell(*this,proc->returnType,{},proc->returnArray?1:0,0,false,false));
   }catch(...){--runtime.depth;throw;}
 }
 Frame::~Frame(){--runtime.depth;}
@@ -108,6 +111,10 @@ Value Frame::get(const std::string&raw){
 }
 Value Frame::call(const std::string&raw,Args args){
   auto name=lower(raw);
+  if(procedure&&procedure->returnArray&&name==lower(procedure->name)){
+    const auto value=locals.at(name).get();
+    return args.empty()?value:callValue(runtime,value,std::move(args));
+  }
   if(module.procedures.count(name))return runtime.invoke(self,name,std::move(args),true);
   if(module.procedures.count(name+":get"))return runtime.invoke(self,name+":get",std::move(args),true);
   if(auto it=locals.find(name);it!=locals.end())return callValue(runtime,it->second.get(),std::move(args));
@@ -138,8 +145,23 @@ bool Frame::eachStart(const std::string&id,Ref variable,Value iterable){
 }
 bool Frame::eachNext(const std::string&id){auto&state=each.at(id);if(state.position==state.values.size())return false;auto v=state.values[state.position++];state.variable.set(v,v.type==Type::Object);return true;}
 void Frame::redim(Ref ref,Bounds bounds,bool preserve,const std::string&explicitType){
-  auto old=ref.get();if(old.type==Type::Array){if(!explicitType.empty()&&lower(explicitType)!=lower(old.asArray()->elementType))fail(13);ref.set(Value::array(old.asArray()->resized(bounds,preserve,runtime.maxArrayElements)));}
-  else{auto type=explicitType.empty()?"variant":explicitType;auto prototype=runtime.defaultValue(type,this);auto init=[prototype]{return prototype.copy();};ref.set(Value::array(std::make_shared<Array>(type,bounds,true,runtime.maxArrayElements,0,init)));}
+  auto old=ref.get();
+  const auto type=explicitType.empty()?(old.type==Type::Array?old.asArray()->elementType:ref.array?ref.type:"variant"):lower(explicitType);
+  if(ref.array&&lower(type)!=lower(ref.type))fail(13,"ReDim cannot change declared array element type");
+  if(old.type==Type::Array){
+    auto array=old.asArray();
+    if(lower(type)==lower(array->elementType)){
+      // Construct first; invalid bounds/allocation must leave every alias intact.
+      // Commit in place so an existing whole-array ByRef alias sees the resize,
+      // without a redundant deep copy through Cell::set.
+      auto next=array->resized(std::move(bounds),preserve,runtime.maxArrayElements);
+      array->bounds.swap(next->bounds);array->values.swap(next->values);array->allocated=next->allocated;
+      return;
+    }
+    if(ref.array||preserve)fail(13,"ReDim cannot change array element type with Preserve");
+  }else if(old.type!=Type::Empty||lower(ref.type)!="variant")fail(13,"ReDim requires an array or an Empty Variant");
+  auto prototype=runtime.defaultValue(type,this);auto init=[prototype]{return prototype.copy();};
+  ref.set(Value::array(std::make_shared<Array>(type,std::move(bounds),true,runtime.maxArrayElements,0,init)));
 }
 void Frame::mark(int current,int nextInstruction,int sourceLine){drainNativeFinalizers(runtime);site=current;next=nextInstruction;line=sourceLine;}
 bool Frame::handle(const Error& e){

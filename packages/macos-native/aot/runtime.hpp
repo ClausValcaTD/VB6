@@ -6,6 +6,7 @@
 #include <exception>
 #include <limits>
 namespace vb6::aot {
+inline constexpr int AbiVersion = 2;
 using Word=uint64_t;
 constexpr Word failed=std::numeric_limits<Word>::max();
 struct Scope;
