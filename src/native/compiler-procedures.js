@@ -1,3 +1,4 @@
+import {beginNativeTemporaryStatement,endNativeTemporaryStatements} from './statement-temporaries.js';
 import {privateNeedsCheckpoints,zeroPrivateFrame} from './private-frames.js';
 import {nativeStringStatement} from './string-statements.js';
 import {preparePrivateErrorScope,enterPrivateErrorScope,leavePrivateErrorScope} from './private-error-scope.js';
@@ -12,6 +13,7 @@ export const nativeCompilerProcedureMethods={
     // Lower first so temporary text buffers are stack-local, including recursive calls.
     x.sequence=outer.sequence;context.stringTemps=[];context.variantTemps=[];context.arrayPins=[];context.nativeOwnedTemps=[];this.prepareNativeFlow(context);preparePrivateErrorScope(this,context);context.privateSkipCheckpoints=!privateNeedsCheckpoints(context);
     for (let i = 0; i < code.length; i++) {
+      beginNativeTemporaryStatement(context);
       this.typeCache=new WeakMap();
       const ins = this.instruction = code[i]; x.label(context.label + ':' + i).call(context.label+':clear-strings');this.errorCheckpoint(context,i,ins);
       if(!context.module.nativeInternal)this.sourceMap.push({symbol:context.label + ':' + i,source:ins.source,line:ins.line,procedure:ins.procedure});
@@ -67,6 +69,7 @@ export const nativeCompilerProcedureMethods={
       }
       else this.fail('Native instruction is not yet lowered: ' + ins.op);
     }
+    endNativeTemporaryStatements(context);
     x.label(context.label + ':' + code.length).label(end);
     if(context.variantReturn){
       this.rawStorageAddress(context.returnValue);x.push().push({argument:8}).call('native:variant:copy');

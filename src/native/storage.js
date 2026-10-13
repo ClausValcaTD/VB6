@@ -1,3 +1,4 @@
+import {nativeStatementTemporary} from './statement-temporaries.js';
 import {mem32} from './x86-operands.js';
 /** Native storage lowering. BSTR ownership is explicit; no JS or VB runtime is embedded. */
 import {NATIVE_ARRAY_MAX_BYTES, NATIVE_ARRAY_MAX_RANK} from './arrays.js';
@@ -63,6 +64,7 @@ export const nativeStorageMethods = {
   },
   temporaryString() {
     const c = this.context;
+    return nativeStatementTemporary(c,'string',()=>{
     const variable = {name: this.x.unique('string-temp'), type: 'String', nativeCount: 1, nativeBytes: 4, temporary: true};
     if (c?.proc?.name) {
       c.size += 4;
@@ -71,6 +73,7 @@ export const nativeStorageMethods = {
       (c.stringTemps ||= []).push(variable);
     } else { variable.label = variable.name; this.allocateStorage(variable); }
     return variable;
+    });
   },
   /** Adopt one statement-scoped native reference in EAX. Error dispatch and
    * normal instruction cleanup share the same release path. */

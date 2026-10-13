@@ -90,6 +90,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Runtime intrinsic controls](WIN32-DYNAMIC-CONTROLS.md): owned HWND references, sparse control arrays, generation-safe creation and native callbacks.
 - [Typed source events](WIN32-EVENTS.md): synchronous WithEvents/RaiseEvent, reentrant delivery and subscription ownership.
 - [Independent native Forms and MDI](WIN32-FORM-INSTANCES.md): per-instance HWND/control state, embedded interface ownership, cancellation and admission limits.
+- [Native Recordset/grid binding](WIN32-DATA-BINDING.md): owned snapshots, source cursor preservation, atomic publication and bounded bulk conversion.
 - [Native external Automation](WIN32-AUTOMATION.md): real IDispatch calls, argument ABI, ownership and COM errors.
 - [Native InputBox](WIN32-INPUTBOX.md): Unicode modal dialogs, argument snapshots, callback lifetime and Windows acceptance.
 - [Typed native classes](WIN32-CLASSES.md): instance ownership, properties, runtime member dispatch and counted String mutation.

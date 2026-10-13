@@ -1,3 +1,4 @@
+import {nativeGridDataType,nativeGridDataGet,nativeGridDataAssignment} from './grid-data-source.js';
 /** External Automation values remain owned VARIANTs. Every chain hop executes
  * IDispatch, never a JS object model. Input views borrow statement snapshots;
  * typed ByRef views pin exact caller storage. Results publish only on success.
@@ -52,6 +53,7 @@ export const nativeAutomationMethods={
   return null;
  },
  computeNativeType(node){
+  const dataType=nativeGridDataType(this,node);if(dataType)return dataType;
   if(this.nativeAutomationMode){
    if(this.automationCreate(node)||node.kind==='nothing'||this.automationMember(node))return 'variant';
    if(node.kind==='with'&&this.nativeWithBinding().object?.nativeAutomationWith)return 'variant';
@@ -60,6 +62,7 @@ export const nativeAutomationMethods={
   return base.computeNativeType.call(this,node);
  },
  expression(node){
+  if(nativeGridDataGet(this,node))return;
   if(!this.nativeAutomationMode)return base.expression.call(this,node);
   if(this.automationCreate(node)){
    this.automationUse();const plan=planNativeArguments({name:'CreateObject',params:[{name:'class'},{name:'servername',optional:true}]},node.args,m=>this.fail(m));
@@ -108,6 +111,7 @@ export const nativeAutomationMethods={
   for(const pin of pins)this.releaseArrayPin(pin);
  },
  nativeFlowInstruction(ins,context,index){
+  if(nativeGridDataAssignment(this,ins))return true;
   if(!this.nativeAutomationMode)return base.nativeFlowInstruction.call(this,ins,context,index);
   if(ins.op==='assign'){
    const member=this.automationMember(ins.target);if(member){this.automationInvoke(member.receiver,member.name,ins.objectSet?8:4,[...member.args,ins.expr],{put:true});return true;}

@@ -5,11 +5,11 @@
  */
 const coreOps=new Set(['dim','assign','expr','branch','jump','return','raiseError','onError','forInit','forNext','temp','case']);
 export function privateNeedsCheckpoints(context){
- if(!context.module.deferredNativeKernel)return true;
+ if(!context.module.deferredNativeKernel&&!context.module.nativeCompactFrame)return true;
  return context.proc.code.some(ins=>!coreOps.has(ins.op)||ins.op==='onError'&&ins.mode==='next');
 }
 export function zeroPrivateFrame(c,context){
- if(!context.module.deferredNativeKernel)return false;
+ if(!context.module.deferredNativeKernel&&!context.module.nativeCompactFrame)return false;
  // EBP+8 and above hold incoming arguments; the saved callee registers are
  // below EBP-size. Only the newly allocated frame is cleared, once, before any
  // owned parameter or local initialization. Globals/instance fields are intact.

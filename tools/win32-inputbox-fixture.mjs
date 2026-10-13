@@ -23,8 +23,14 @@ export function nativeInputBoxFixture(fixture){
  check('answer="another" And InputDriver.DriverError=0','reopening does not reuse a previous call result or state');
  check('InputDriver.TimerID=0 And InputDriver.Fired=8','every actual dialog was answered and its timer released');
  const result=finish();
- project.modules.push({id:'native-input-driver',name:'InputDriver',kind:'module',code:`Option Explicit
-Public Const DialogTitle As String="InputBox native acceptance"
+ project.modules.push(nativeInputBoxDriver());
+ return result;
+}
+
+/** Reusable same-process real-dialog driver for source-preserving samples. */
+export function nativeInputBoxDriver(dialogTitle='InputBox native acceptance'){
+ return {id:'native-input-driver',name:'InputDriver',kind:'module',code:`Option Explicit
+Public Const DialogTitle As String="${String(dialogTitle).replaceAll('"','""')}"
 Public Fired As Long,DriverError As Long,TimerID As Long,Limit As Long,ChildCount As Long
 Public X As Long,Y As Long,DpiX As Long,DpiY As Long
 Private NextText As String,NextAction As Long
@@ -87,6 +93,5 @@ Private Sub Pulse(ByVal hwnd As Long,ByVal message As Long,ByVal id As Long,ByVa
   n=PostMessageW(dialog,&H111,1,0)
  End If
  If n=0 Then DriverError=2
-End Sub`});
- return result;
+End Sub`};
 }

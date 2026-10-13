@@ -13,6 +13,9 @@ const DLL='oleaut32.dll';
 const arg=argument=>({argument});
 const addr=address=>({address});
 const literal=value=>({kind:'literal',value});
+// Call staging slots are compiler-owned direct frame/global storage: no receiver,
+// pin or user evaluation is hidden in obtaining their address.
+const callSlot=(v,n=0)=>v.label?mem32({label:v.label,displacement:n}):mem32({base:'ebp',displacement:v.offset+n});
 export const nativeParameterBytes=p=>!p.byRef && (p.bounds===null||p.bounds===undefined) && ['double','currency','date'].includes(key(p.type))?8:4;
 
 export const nativeNumericMethods = {
@@ -172,9 +175,9 @@ export const nativeNumericMethods = {
       else if(key(p.type)==='date'){slot.type=p.type;this.dateExpression(node);this.storeDate(slot);slots[i]=slot;return;}
       else if(REAL_TYPES.has(key(p.type))){slot.type=p.type;this.floatExpression(node,key(p.type)==='single');this.storeFloat(slot);slots[i]=slot;return;}
       else if(key(p.type)==='string')this.textExpression(node);else if(key(p.type)==='boolean'){this.truth(node);this.check('Boolean');}else{if(p.nativeCoerce&&this.type(node)==='string')this.call({kind:'call',callee:{kind:'id',name:'CLng'},args:[node]});else this.numeric(node);this.check(p.type);}
-      x.push();this.rawStorageAddress(slot);x.emit(0x5a,0x89,0x10);slots[i]=slot;
+      x.mov(callSlot(slot),'eax');slots[i]=slot;
     });
-    for(const slot of [...slots].reverse()){this.rawStorageAddress(slot);if(slot.nativeBytes===8)x.emit(0xff,0x70,4);x.emit(0xff,0x30);}
+    for(const slot of [...slots].reverse()){if(slot.nativeBytes===8)x.pushOperand(callSlot(slot,4));x.pushOperand(callSlot(slot));}
     if(target.instanceOffset)x.push(target.nativeInstanceArgument);
     let variantResult=null;
     if(target.variantReturn){variantResult=this.temporaryVariant();this.rawStorageAddress(variantResult);x.push();}

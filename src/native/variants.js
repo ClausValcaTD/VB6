@@ -1,3 +1,4 @@
+import {nativeStatementTemporary} from './statement-temporaries.js';
 /** Owned Automation VARIANT lowering for the native PE32 target.
  * Expression results are pointers to statement-owned 16-byte snapshots. Project
  * calls pass Variant addresses; a ByVal callee copies into its own frame and a
@@ -20,10 +21,12 @@ export const nativeVariantMethods={
     if(name==='condition'||name==='assign')this.nativeVariantsUsed.add('change');
   },
   temporaryVariant() {
-    this.useVariant();const v=this.arrayWorkspace(16,'variant-temp');v.type='Variant';
+    this.useVariant();return nativeStatementTemporary(this.context,'variant',()=>{
+    const v=this.arrayWorkspace(16,'variant-temp');v.type='Variant';
     if(this.context?.proc?.name)(this.context.variantTemps ||= []).push(v);
     else (this.globalVariantTemps ||= []).push(v);
     return v;
+    });
   },
   clearVariantStorage(v) {this.useVariant();this.rawStorageAddress(v);this.x.push().call(P+'clear');},
   variantSeed(tag,value=0) {
