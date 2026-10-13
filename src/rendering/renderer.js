@@ -134,7 +134,13 @@ export class UIRenderer {
       if (name === 'html') { this.backend = 'html'; this.initializing = false; this.publish(); return this.getStats(); }
       const canvas = this.canvasForBackend(); let painter;
       try {
-        painter = await this.factory(name, canvas, {onLost: reason => {
+        // Retained document layers skip unchanged frames. Preserve their WebGL
+        // drawing buffer across browser compositing; an ephemeral backbuffer
+        // can otherwise publish the preceding workspace colors in WebKit.
+        // This is a context-creation contract, not a GPU fence/readback or an
+        // idle repaint loop. Low-level/benchmark painters keep their default.
+        // https://registry.khronos.org/webgl/specs/latest/1.0/#2.2
+        painter = await this.factory(name, canvas, {...(name === 'webgl2' ? {preserveDrawingBuffer: true} : {}), onLost: reason => {
           if (!this.disposed && this.generation === generation && this.driver === painter) this.fallback(reason);
         }});
         if (this.disposed || generation !== this.generation) { painter?.dispose(); canvas.remove(); return this.getStats(); }
