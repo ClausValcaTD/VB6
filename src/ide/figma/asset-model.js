@@ -32,7 +32,10 @@ export function insertDesignerAsset(form,type,{x,y,parentId=null,beforeId=null,i
     if(beforeId!==null){index=draft.controls.findIndex(c=>c.id===beforeId);if(index<0||parents.get(beforeId)!==parentId)throw new Error('The insertion target changed.');}
     else if(parentId!==null){const siblings=draft.controls.filter(c=>parents.get(c.id)===parentId);index=siblings.length?draft.controls.indexOf(siblings.at(-1))+1:draft.controls.indexOf(parent)+1;}
     for(const [key,value]of Object.entries(model.properties))if(/^(Left|Top|Width|Height)$/.test(key)&&(!Number.isFinite(value)||Math.abs(value)>300000||/Width|Height/.test(key)&&value<0))throw new RangeError('Invalid component geometry: '+key);
-    registry?.validateProperties?.(type,model.properties);
+    // Read-only values originate in trusted registration metadata, not a
+    // property edit. Preserve their defaults while validating editable values.
+    const writable=Object.fromEntries(Object.entries(model.properties).filter(([key])=>!registry?.property?.(type,key)?.readOnly));
+    registry?.validateProperties?.(type,writable);
     draft.controls.splice(index,0,model);worldBounds(draft);return [model.id];
   };
   if(layout)return layoutEdit(form,operation);
