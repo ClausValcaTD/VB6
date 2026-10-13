@@ -4,7 +4,7 @@ const typing=target=>!!target?.closest?.('input,textarea,select,[contenteditable
 /** View-only transform: model coordinates, selection geometry and undo stay in
  * twips. The entire designer plane moves, including the form resize handles. */
 export function installFigmaViewport(designer,workspace){
-  const root=designer.root,plane=designer.plane,view=root.ownerDocument.defaultView;
+  const root=designer.root,plane=designer.plane,view=root.ownerDocument.defaultView,captureRoot=designer.container;
   const abort=new AbortController(),signal=abort.signal,render=designer.render,setZoom=designer.setZoom,dispose=designer.dispose;
   const previous=workspace.classicViewportStates?.get(designer)||{zoom:designer.zoom,scrollLeft:root.scrollLeft,scrollTop:root.scrollTop,transform:plane.style.transform};
   let state={x:8,y:8,zoom:designer.zoom},gesture=null,space=false,frame=0,ready=false,width=0,height=0,disposed=false;
@@ -46,7 +46,12 @@ export function installFigmaViewport(designer,workspace){
     if(event.ctrlKey||event.metaKey){const rect=root.getBoundingClientRect();viewport.zoom(state.zoom*Math.exp(-Math.max(-200,Math.min(200,event.deltaY*factor))*.008),{x:event.clientX-rect.left,y:event.clientY-rect.top});}
     else{state.x-=event.shiftKey?event.deltaY*factor:event.deltaX*factor;state.y-=event.shiftKey?event.deltaX*factor:event.deltaY*factor;apply();}
   },{signal,capture:true,passive:false});
-  root.addEventListener('pointerdown',event=>{
+  // The persistent designer pane is an ancestor of the editing surface.
+  // Capture here before auto-layout's root capture listener can start an edit;
+  // same-element listeners run in registration order, not tool priority.
+  // The pane and listener survive document adoption; the mode abort releases it.
+  captureRoot.addEventListener('pointerdown',event=>{
+    if(!root.contains(event.target))return;
     if(!(event.button===1||event.button===0&&(viewport.hand||space))||typing(event.target))return;
     event.preventDefault();event.stopImmediatePropagation();root.focus({preventScroll:true});
     gesture={id:event.pointerId,x:event.clientX,y:event.clientY,state:{...state}};root.setPointerCapture(event.pointerId);apply();

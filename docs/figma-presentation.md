@@ -66,10 +66,27 @@ VB6_BROWSER=webkit VB6_TEST_TRANSPORT=http python tools/figma-presentation-brows
 VB6_BROWSER=webkit VB6_TEST_TRANSPORT=file python tools/figma-presentation-browser-tests.py
 ```
 
-The Figma workflow executes 25 workspace cases per browser/origin (22 authoring
-plus three paint-publication cases), separately from the classic auto-layout
-regressions. Four pure presentation tests cover call ordering, retained resource
+The Figma workflow executes 27 workspace cases per browser/origin (22 authoring,
+three paint-publication and two navigation cases), separately from the classic
+auto-layout regressions. Four pure presentation tests cover call ordering, retained resource
 identity, detached documents, idle exclusions and failure propagation. Six WebGL
 submission tests cover ordered batches, retained geometry, empty clears, color
 changes, lost/disposed contexts and submission failures. Memory transport remains
 a labelled local-only fallback, not origin-persistence or WebKit GPU evidence.
+
+## Navigation event priority
+
+Hand and Space-drag navigation capture pointer starts on the persistent designer
+pane, before the form surface's auto-layout capture listener. Registering another
+capture listener on the same surface is insufficient: registration order would
+let auto layout begin a control move or reparent transaction first. Capturing at
+the ancestor resolves the event order without coupling the solver to a particular
+workspace. Events outside the designer root are ignored. Mode disposal aborts the
+listener, restoring canonical Pointer editing in both Figma and Classic modes.
+
+`tools/figma-navigation-browser-tests.py` exercises physical Hand and Space drags
+over a real flow-layout control and requires the expected viewport delta with an
+identical project, selection and Undo stack. A second case verifies editing and
+Undo after switching to Pointer and after returning to Classic. These checks use
+the shared real-IDE harness and retain evidence in a separate `navigation`
+directory. They run on HTTP and file origins in all three browser engines.
