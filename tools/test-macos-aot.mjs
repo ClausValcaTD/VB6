@@ -17,7 +17,7 @@ const artifacts=path.join(root,'artifacts/macos-aot'),reports=path.join(root,'re
 let transcript='';const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.length>16*1024*1024)transcript=transcript.slice(-16*1024*1024);};
 const report={platform:process.platform,arch:process.arch,portableOracleVerified:false,arm64ExecutionVerified:false,nativeSignatureVerified:false,checks:[]};
 const run=(exe,args,options={})=>runTool(exe,args,{cwd:work,timeout:180000,log,...options});
-const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
+const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
 try{
   await fs.mkdir(artifacts,{recursive:true});
   const mac=process.platform==='darwin';if(mac)assert.equal(process.arch,'arm64','Native test requires actual Apple Silicon, not Rosetta');
