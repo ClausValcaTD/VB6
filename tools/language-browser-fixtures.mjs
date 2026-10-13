@@ -3,6 +3,106 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Grouped records cannot bypass private declaration identity',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim value As Item
+value.Value = 7
+On Error Resume Next
+Other.Change (value)
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'other',name:'Other',kind:'module',code:`Private Type Item
+Value As Long
+End Type
+Public Sub Change(ByRef value As Item)
+Debug.Print "wrong procedure entered"
+value.Value = 99
+End Sub`}),expected:['13 7'],error:13},
+ {name:'Source event validates record type even without subscribers',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim source As New Emitter, value As Item
+value.Value = 7
+On Error Resume Next
+source.Work value
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'emitter',name:'Emitter',kind:'class',code:`Private Type Item
+Value As Long
+End Type
+Public Event Changed(ByRef value As Item)
+Public Sub Work(ByRef value As Variant)
+RaiseEvent Changed(value)
+End Sub`}),expected:['13 7'],error:13},
+ {name:'Qualified record names and ByRef identity',project:withClass(`Sub Main()
+Dim a As Types.Item, b As Item
+a.Value = 7
+b = a
+Change b
+Debug.Print a.Value, b.Value, TypeName(b)
+End Sub
+Sub Change(ByRef a As Types.Item)
+a.Value = 9
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['7 9 Item'],error:null},
+ {name:'Private records are rejected before Run',project:withClass(`Sub Main()
+Dim a As Types.Item
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Private Type Item\nValue As Long\nEnd Type'}),diagnostics:[{source:'M',line:2,number:1002,message:'not accessible'}]},
+ {name:'Record As New is rejected before Run',project:withClass(`Sub Main()
+Dim a As New Types.Item
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),diagnostics:[{source:'M',line:2,number:1002,message:'requires a class'}]},
+ {name:'Distinct private record values cannot overwrite matching-shaped storage',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim a As Item
+a.Value = 5
+On Error Resume Next
+a = Types.MakeItem()
+Debug.Print Err.Number, a.Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Private Type Item
+Value As Long
+End Type
+Public Function MakeItem() As Variant
+Dim a As Item
+a.Value = 9
+MakeItem = a
+End Function`}),expected:['13 5'],error:13},
+ {name:'Nested record type resolves in the provider module',project:withClass(`Private Type Detail
+Wrong As String
+End Type
+Sub Main()
+Dim a As Envelope
+a.Data(0).Value = 17
+Debug.Print a.Data(0).Value, a.Data(1).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Private Type Detail
+Value As Long
+End Type
+Public Type Envelope
+Data(1) As Detail
+End Type`}),expected:['17 0'],error:null},
+ {name:'Qualified record arrays retain identity through file IO and Preserve',project:withClass(`Sub Main()
+Dim a() As Types.Item, b() As Item
+ReDim a(1 To 2)
+a(2).Value = 29
+Open "items.dat" For Random As #1 Len = 18
+Put #1, 1, a
+Get #1, 1, b
+Close
+ReDim Preserve b(1 To 3) As Types.Item
+Debug.Print b(2).Value, b(3).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['29 0'],error:null},
+ {name:'Typed record array results retain qualified element metadata',project:withClass(`Function MakeItems() As Types.Item()
+Dim a(1) As Item
+a(0).Value = 31
+MakeItems = a
+End Function
+Sub Main()
+Dim a() As Item
+a = MakeItems()
+ReDim Preserve a(3)
+Debug.Print a(0).Value, a(3).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['31 0'],error:null},
  {name:'Compile rejection: variable-sized fixed array',project:project(`Sub Main()
 Dim size As Long
 Dim a(size) As Long

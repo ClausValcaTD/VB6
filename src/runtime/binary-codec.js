@@ -1,5 +1,5 @@
 import {VBError} from '../language/lexer.js';
-import {VBScalar,SCALAR_TYPES,scalarType,tagScalar,unbox,VBArray,VBCurrency,VBDecimal,VBErrorValue,NOTHING,coerce,numeric,vbString,Cell,makeRecord as buildRecord} from './values.js';
+import {VBScalar,SCALAR_TYPES,scalarType,tagScalar,unbox,VBArray,VBCurrency,VBDecimal,VBErrorValue,NOTHING,coerce,numeric,vbString,Cell,recordIdentity,makeRecord as buildRecord} from './values.js';
 
 // Classic VB files use an ANSI code page. This browser runtime explicitly uses
 // Windows-1252 rather than silently writing UTF-8 or host-locale-dependent bytes.
@@ -13,7 +13,7 @@ const VARTYPES={0:'Empty',1:'Null',2:'Integer',3:'Long',4:'Single',5:'Double',6:
 const MAX_BYTES=20*1024*1024;
 
 /** Builds a typed UDT value with non-enumerable field metadata. */
-export function makeRecord(name,fields){return buildRecord(name,fields);}
+export function makeRecord(name,fields,identity=null){return buildRecord(name,fields,identity);}
 export function recordLength(value){
   if(!value?.__fields)throw new VBError('User-defined type required',13);
   let n=0;
@@ -69,11 +69,11 @@ function get(reader,schema,current,mode,inRecord=false,depth=0){
       bounds=[];for(let i=0;i<rank;i++){const size=reader.number('long'),lower=reader.number('long');if(size<1)throw new VBError('Invalid array descriptor',63);bounds.push([lower,lower+size-1]);}
     }
     if(!bounds.length)throw new VBError('Dimension the array before Binary Get',9);
-    const result=new VBArray(bounds,elementType,current?.elementFactory,current?.fixedLength);result.dynamic=dynamic;
+    const result=new VBArray(bounds,elementType,current?.elementFactory,current?.fixedLength);result.dynamic=dynamic;result.elementIdentity=current?.elementIdentity||schema.elementIdentity;
     for(const idx of arrayIndices(bounds))result.set(idx,get(reader,{type:elementType,fixedLength:current?.fixedLength},result.get(...idx),mode,inRecord,depth+1));
     return result;
   }
-  if(current?.__fields){const fields=new Map();for(const [name,cell]of current.__fields){const value=get(reader,cell,cell.get(),mode,true,depth+1),next=new Cell(cell.type,value,false,cell.fixedLength);next.isArray=cell.isArray;next.elementType=cell.elementType;fields.set(name,next);}return makeRecord(current.__type,fields);}
+  if(current?.__fields){const fields=new Map();for(const [name,cell]of current.__fields){const value=get(reader,cell,cell.get(),mode,true,depth+1),next=new Cell(cell.type,value,false,cell.fixedLength);next.isArray=cell.isArray;next.elementType=cell.elementType;next.elementIdentity=cell.elementIdentity;fields.set(name,next);}return makeRecord(current.__type,fields,recordIdentity(current));}
   if(type==='object'||current===NOTHING)throw new VBError('Objects cannot be read with Get',458);
   if(type==='variant'){
     const kind=reader.number('integer');if(kind===0)return undefined;if(kind===1)return null;if(!VARTYPES[kind])throw new VBError('Unsupported Variant file descriptor: '+kind,458);

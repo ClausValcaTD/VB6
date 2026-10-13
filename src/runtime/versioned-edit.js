@@ -3,7 +3,7 @@ import {uniqueInstructionLines} from './instruction-map.js';
 import {planLiveEdit,validateStaticStorage} from './live-edit.js';
 
 const json=value=>JSON.stringify(value,(_,v)=>v instanceof Map?[...v]:v);
-const shape=m=>({kind:m.kind,interfaces:m.interfaces,defaultTypes:m.defaultTypes,defaultMember:m.defaultMember,declarations:m.declarations,types:m.types,events:m.events,enums:m.enums,form:m.form,optionExplicit:m.optionExplicit,optionBase:m.optionBase,optionCompare:m.optionCompare});
+const shape=m=>({kind:m.kind,interfaces:m.interfaces,defaultTypes:m.defaultTypes,defaultMember:m.defaultMember,declarations:m.declarations,types:m.types,typeScopes:m.typeScopes,events:m.events,enums:m.enums,form:m.form,optionExplicit:m.optionExplicit,optionBase:m.optionBase,optionCompare:m.optionCompare});
 const execution=s=>{const {errorTrapping,...rest}=s||{};return rest;};
 /** Prefer in-place Edit and Continue. If an active statement/control region or
  * signature cannot be migrated, retain its invocation's code revision and apply
