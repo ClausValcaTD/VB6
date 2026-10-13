@@ -31,7 +31,20 @@ def main():
             for fixture in fixtures:
                 start=time.perf_counter()
                 try:
-                    if mode=='runtime':
+                    if 'diagnostics' in fixture:
+                        if mode=='runtime':
+                            result=page.evaluate('project=>({diagnostics:VB6Runtime.RuntimeAPI.compileProject(project).diagnostics})',fixture['project'])
+                        else:
+                            page.evaluate('p=>vb6Studio.loadProject(p)',fixture['project'])
+                            page.locator('[data-command="run"]').first.click()
+                            page.wait_for_function("vb6Studio.statusMessage.textContent.includes('Build failed')")
+                            result=page.evaluate("()=>({diagnostics:vb6Studio.diagnostics,state:vb6Studio.runState,output:vb6Studio.output,frame:!!vb6Studio.runtimeFrame?.isConnected})")
+                            if result['state']!='design' or result['output'] or result['frame']: raise AssertionError(repr(result))
+                        if len(result['diagnostics'])!=len(fixture['diagnostics']): raise AssertionError(repr(result))
+                        for actual,expected in zip(result['diagnostics'],fixture['diagnostics']):
+                            if any(actual.get(key)!=expected[key] for key in ['source','line','number']): raise AssertionError(repr(result))
+                            if expected['message'] not in actual['message']: raise AssertionError(repr(result))
+                    elif mode=='runtime':
                         result=page.evaluate('''async project=>{
                           const api=VB6Runtime.RuntimeAPI,p=api.compileProject(project),output=[];
                           if(p.diagnostics.length)throw new Error(JSON.stringify(p.diagnostics));
@@ -52,13 +65,51 @@ def main():
                         result['output']=page.evaluate('vb6Studio.output')
                         page.locator('[data-command="stop"]').first.click()
                         page.wait_for_function('vb6Studio.runState === "design"')
-                    if result['output']!=fixture['expected']: raise AssertionError(repr(result))
-                    if result['error']!=fixture['error']: raise AssertionError(repr(result))
+                    if 'diagnostics' not in fixture:
+                        if result['output']!=fixture['expected']: raise AssertionError(repr(result))
+                        if result['error']!=fixture['error']: raise AssertionError(repr(result))
                     if errors or requests: raise AssertionError(repr({'errors':errors,'requests':requests}))
                     results.append({'name':mode+': '+fixture['name'],'passed':True,'milliseconds':round((time.perf_counter()-start)*1000,2)})
                 except Exception as error:
                     results.append({'name':mode+': '+fixture['name'],'passed':False,'error':str(error)})
                 print(('PASS' if results[-1]['passed'] else 'FAIL')+' '+results[-1]['name'],flush=True)
+            if mode=='ide':
+                for backend in ['worker','fallback']:
+                    name=backend+': semantic reuse, dependency invalidation and repair in actual IDE'
+                    start=time.perf_counter()
+                    try:
+                        result=page.evaluate(r'''async backend=>{
+                          const ide=vb6Studio,scheduler=ide.syntaxDiagnostics;
+                          scheduler.cancel();scheduler.workerUnavailable=backend==='fallback';
+                          ide.appearance.autoSyntaxCheck=true;
+                          const project={...structuredClone(ide.project),name:'WorkerBounds',startup:'Sub Main',modules:[
+                            {id:'consumer',name:'Consumer',kind:'module',code:'Sub Main()\nDim a(Size) As Long\nDebug.Print "must not run"\nEnd Sub'},
+                            {id:'provider',name:'Provider',kind:'module',code:'Public Const Size = 3'}]};
+                          const next=change=>new Promise((resolve,reject)=>{
+                            const timeout=setTimeout(()=>{off();reject(new Error('No diagnostic response'));},5000);
+                            const off=ide.on('diagnostics',r=>{clearTimeout(timeout);off();resolve(r);});
+                            try{change();}catch(e){clearTimeout(timeout);off();reject(e);}
+                          });
+                          const responses=[];
+                          responses.push(await next(()=>ide.loadProject(project)));
+                          responses.push(await next(()=>scheduler.schedule(ide.project,0)));
+                          responses.push(await next(()=>{ide.project.modules[1].code='Public Const Size = -1';scheduler.schedule(ide.project,0);}));
+                          responses.push(await next(()=>{ide.project.modules[1].code='Public Const Size = 6';scheduler.schedule(ide.project,0);}));
+                          responses.push(await next(()=>scheduler.schedule(ide.project,0)));
+                          return {responses,state:ide.runState,output:ide.output};
+                        }''',backend)
+                        expected_valid=[True,True,False,True,True]
+                        expected_hit=[False,True,False,False,True]
+                        expected_parses=[2,0,1,1,0]
+                        for i,response in enumerate(result['responses']):
+                            if response['mode']!=backend or response['valid']!=expected_valid[i] or response['semanticCacheHit']!=expected_hit[i] or response['stats']['compiledModules']!=expected_parses[i]: raise AssertionError(repr(result))
+                        diagnostic=result['responses'][2]['diagnostics'][0]
+                        if diagnostic['source']!='Consumer' or diagnostic['line']!=2 or 'lower bound' not in diagnostic['message']: raise AssertionError(repr(result))
+                        if result['state']!='design' or result['output'] or errors or requests: raise AssertionError(repr(result))
+                        results.append({'name':name,'passed':True,'milliseconds':round((time.perf_counter()-start)*1000,2)})
+                    except Exception as error:
+                        results.append({'name':name,'passed':False,'error':str(error)})
+                    print(('PASS' if results[-1]['passed'] else 'FAIL')+' '+name,flush=True)
             page.close()
         version=browser.version;browser.close()
     report={'browser':version,'passed':sum(r['passed'] for r in results),'failed':sum(not r['passed'] for r in results),'tests':results}

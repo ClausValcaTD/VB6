@@ -124,3 +124,52 @@ The browser language suite checks both the built runtime and the real IDE's run 
 
 - [MS-VBAL Call statement and With argument whitespace](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/f7c864a8-8fce-49dc-8347-30dc749d6576)
 - [MS-VBAL member access and explicit continuation](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a)
+
+## Compile-time fixed dimensions and diagnostic reuse
+
+Fixed bounds on `Dim`, `Static`, module variables, and record fields are now bound
+as constant expressions in their declaring module/procedure. Forward and imported
+constants, private-module visibility, ambiguity, enum members and `Option Base`
+use the existing binder. Each endpoint is Let-coerced to `Long` with the existing
+checked half-even numeric conversion; a lower bound above its upper bound is a
+compile-time diagnostic. User function calls and variable reads cannot size fixed
+arrays. `ReDim` still evaluates runtime expressions once, and its declarations
+never acquire fixed-bound metadata.
+
+The declaration's original `bounds` syntax is retained. Successful binding adds
+immutable `boundValues`; rebinding clears its value before evaluating again, so
+an edited or removed dependency cannot leave a previous successful dimension in
+an invalid program. Compilation does not allocate array elements or replace the
+runtime's separate allocation limit. Numeric literals are interned only within
+one binding pass, up to 256 entries, with separate subtype identities; negative
+zero, authored overflow, and expression-complexity checks are preserved. Fixed
+metadata keeps a stable declaration shape during edits instead of deleting and
+recreating the property on every binding pass. The source VM consumes dimensions for
+fixed declarations and record fields. This also fixes imported record arrays
+resolving a private bound or implicit base from the caller's module.
+
+The diagnostics cache retains at most one completed semantic result, in addition
+to its existing module syntax entries. It can skip the semantic pass only when
+all ordered module entries, detached layout/form metadata and compiler settings
+match. Any source/dependency, module-order, declaration, attribute, layout or
+settings change triggers whole-project revalidation. This is **unchanged-snapshot
+reuse**, not partial dependency-graph compilation. Returned diagnostics are
+caller-owned copies. Cancelled/interleaved generators cannot publish an
+incomplete result or swap a suspended generator's layout context; clearing the
+cache prevents an older generator from repopulating it. Existing `stats` fields
+are unchanged; the result adds a `semanticCacheHit` boolean.
+
+Tests: `language-fixed-bounds.test.mjs`, `diagnostics-semantic-cache.test.mjs` and
+additional shipped-runtime/actual-IDE fixtures in `browser-language-parity.py`.
+The browser runner checks rejected declarations cannot start an application and
+exercises repeated snapshots, dependency edits, and repairs in both the real
+bundled worker and the yielding main-thread fallback.
+`node tools/bench-declarations.mjs --root <checkout>` reports cold compilation,
+unchanged diagnostics, changed public-constant dependencies, and complete VM
+execution of repeated fixed-array declarations. It checks results, retains every
+timing sample, and does not gate CI on hardware-dependent timing thresholds.
+
+References: Microsoft MS-VBAL 5.2.3.1.3, [Array Dimensions and Bounds](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/7c97ad30-4b76-45d9-9827-7455f98a5503),
+and [Declaring arrays](https://learn.microsoft.com/en-us/office/vba/language/concepts/getting-started/declaring-arrays).
+These references support this declaration increment; they are not certification
+against the licensed Microsoft VB6 compiler or every native/COM array ABI.
