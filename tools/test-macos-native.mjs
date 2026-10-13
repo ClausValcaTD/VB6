@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {buildMacOSPackage} from './build-macos-native.mjs';
 import {runTool,writeBuildKit,buildNativeKit} from '../packages/macos-native/src/build-driver.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
+import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
 const root=path.resolve(import.meta.dirname,'..');buildMacOSPackage(root);
 const {compileMacOS,createMacOSBuildKit,MacOSCompilerClient,verifyMacOSAppArchive}=await import('../packages/macos-native/dist/index.js');
@@ -18,7 +19,7 @@ const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.lengt
 const report={platform:process.platform,arch:process.arch,macOSExecutionVerified:false,checks:[]};
 const run=async(executable,args,options={})=>{console.log('RUN',path.basename(executable),args.slice(0,4).join(' '));return runTool(executable,args,{cwd:work,timeout:180000,...options});};
 const generatedPassed=output=>{
-  for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
+  for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
 };
 // Compile SDK objects once; all sanitizer executables link the identical objects.
 // Settle every in-flight compiler before propagating a failure or removing work.
@@ -39,6 +40,26 @@ try {
   const values=path.join(work,'values');
   await run(compiler,[...flags,path.join(sdk,'tests/values.cpp'),...objects,'-o',values]);
   assert.match(await run(values,[]),/native value contracts passed/);report.checks.push('sanitized-values');
+  const ownership=path.join(work,'scope-ownership');
+  await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
+  assert.match(await run(ownership,[]),/NATIVE_SCOPE_OWNERSHIP_OK/);report.checks.push('sanitized-nested-scope-ownership');
+  const programLife=path.join(work,'program-lifetime');
+  await run(compiler,[...flags,path.join(sdk,'tests/program-lifetime.cpp'),...objects,'-o',programLife]);
+  assert.match(await run(programLife,[]),/NATIVE_PROGRAM_LIFETIME_OK/);
+  const rootSource=path.join(work,'root-lifetime.cpp'),rootExecutable=path.join(work,'root-lifetime');
+  await fs.writeFile(rootSource,compileMacOS(programLifetimeProject()).files['main.cpp']);
+  await run(compiler,[...flags,rootSource,...objects,'-o',rootExecutable]);
+  const rootOutput=await run(rootExecutable,[]);
+  for(const label of ['global','array','static'])assert.ok(rootOutput.includes('NATIVE_ROOT_RELEASED:'+label));
+  assert.deepEqual((await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8')).trim().split(/\r?\n/).sort(),['array','global','static']);
+  const abruptSource=path.join(work,'abrupt-lifetime.cpp'),abruptExecutable=path.join(work,'abrupt-lifetime');
+  await fs.writeFile(abruptSource,compileMacOS(abruptLifetimeProject()).files['main.cpp']);
+  await run(compiler,[...flags,abruptSource,...objects,'-o',abruptExecutable]);
+  const abruptOutput=await run(abruptExecutable,[]);
+  assert.ok(!abruptOutput.includes('NATIVE_PROGRAM_BODY_OK'));
+  assert.ok(!abruptOutput.includes('NATIVE_ROOT_RELEASED:'));
+  assert.equal(await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8'),'');
+  report.checks.push('sanitized-program-root-lifecycle','generated-normal-root-cleanup','generated-abrupt-End-skips-finalizers');
   const project=conformanceProject(),compiled=compileMacOS(project),source=path.join(work,'main.cpp');
   await fs.writeFile(source,compiled.files['main.cpp']);
   const portable=path.join(work,'portable');
@@ -71,6 +92,13 @@ try {
     assert.equal(richBuilt.architecture,'arm64');assert.equal(richBuilt.signatureVerified,true);assert.equal(richBuilt.cacheHit,true);
     assert.match(await run(richBuilt.executable,[]),/NATIVE_RICH_FORM_OK/);
     report.checks.push('signed-generated-rich-form-execution');
+    const formKit=createMacOSBuildKit(formLifetimeProject()),formDir=path.join(work,'form-lifetime-kit');
+    await writeBuildKit(formDir,formKit.files);
+    const formBuilt=await buildNativeKit(formDir,{out:path.join(work,'form-lifetime-out'),cache,jobs:3,log});
+    assert.equal(formBuilt.signatureVerified,true);assert.equal(formBuilt.cacheHit,true);
+    assert.match(await run(formBuilt.executable,[]),/NATIVE_FORM_LIFETIME_OK/);
+    report.checks.push('signed-default-form-lifetime-execution');
+
     const reused=await buildNativeKit(kitDir,{out:path.join(work,'reused'),cache,jobs:3,log});assert.equal(reused.cacheHit,true);report.checks.push('native-cache-reuse');
     // Verify the exact signed bytes produced by ditto; do not repack the bundle.
     const archive=await verifyMacOSAppArchive(new Uint8Array(await fs.readFile(built.zip)),kit.options);

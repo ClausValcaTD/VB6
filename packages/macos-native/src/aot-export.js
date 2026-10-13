@@ -1,4 +1,5 @@
 /** Browser/Node direct arm64 executable linker and .app ZIP packager. */
+import {resizeAOTImage} from './aot-resize.js';
 import {compileMacOSAOT} from './aot-compiler.js';
 import {linkARM64} from '../../../src/native/arm64.js';
 import {writeZip,readZip} from '../../../src/project/zip.js';
@@ -24,15 +25,15 @@ export function writeMacOSAppZip(files,executable){
 }
 export async function linkMacOSAOT(compiled,runtime,{resources={}}={}){
   if(!compiled?.section||compiled.report?.codegen!=='arm64-aot')throw new TypeError('Expected compiled macOS AOT object code');
-  const layout=await verifyAOTRuntime(runtime?.bytes,runtime?.manifest),o=compiled.options,metadata=encoder.encode(JSON.stringify(compiled.metadata));
-  if(compiled.section.length>layout.code.size)throw new MacOSCompileError('Native code exceeds the 2 MiB direct AOT capacity','',0,'MACA204');
-  if(metadata.length>layout.metadata.size-16)throw new MacOSCompileError('Native metadata exceeds the direct AOT capacity','',0,'MACA202');
-  const image=runtime.bytes.slice(),code=linkARM64(compiled.section,layout.code.address,layout.symbols),v=new DataView(image.buffer);
+  await verifyAOTRuntime(runtime?.bytes,runtime?.manifest);
+  const o=compiled.options,metadata=encoder.encode(JSON.stringify(compiled.metadata));
+  let resized;try{resized=resizeAOTImage(runtime.bytes,compiled.section.length,metadata.length);}catch(e){throw new MacOSCompileError(e.message,'',0,'MACA204');}
+  const {bytes:image,layout}=resized,code=linkARM64(compiled.section,layout.code.address,layout.symbols),v=new DataView(image.buffer);
   image.fill(0,layout.code.offset,layout.code.offset+layout.code.size);image.set(code,layout.code.offset);
   image.fill(0,layout.metadata.offset,layout.metadata.offset+layout.metadata.size);image.set(encoder.encode('VB6AOT1\0'),layout.metadata.offset);
   v.setUint32(layout.metadata.offset+8,metadata.length,true);v.setUint32(layout.metadata.offset+12,code.length,true);image.set(metadata,layout.metadata.offset+16);
   const version=o.minimumVersion.split('.').map(Number);v.setUint32(layout.buildCommand+12,version[0]*65536+(version[1]||0)*256+(version[2]||0),true);
-  const buildReport={...compiled.report,artifact:'native-executable',compiled:true,name:o.name,codeCapacity:layout.code.size,metadataCapacity:layout.metadata.size,runtimeSha256:runtime.manifest.sha256,minimumVersion:o.minimumVersion,optimization:2,signing:'ad-hoc',notarized:false};
+  const buildReport={...compiled.report,artifact:'native-executable',compiled:true,name:o.name,codeCapacity:layout.code.size,metadataCapacity:layout.metadata.size,runtimeSha256:runtime.manifest.sha256,minimumVersion:o.minimumVersion,optimization:o.optimization,projectOptimization:compiled.report.optimization,runtimeOptimization:2,signing:'ad-hoc',notarized:false};
   const bundleResources=Object.create(null);let total=0;
   for(const [name,value]of Object.entries(resources)){
     if(!resourcePath(name)||['Resources/vb6-source-map.json','Resources/vb6-build.json'].includes(name))throw new Error('Invalid or reserved native resource path');
@@ -62,4 +63,11 @@ export async function verifyMacOSAOTArchive(bytes,options={}){
   if(!seal||seal.length!==expected.length||!seal.every((b,i)=>b===expected[i]))throw new Error('Native resource seal does not match archive contents');
   const binary=files.get(root+'MacOS/'+o.name),layout=aotImageLayout(binary),signature=await verifyAOTSignature(binary,layout,{identifier:o.bundleIdentifier,infoPlist:files.get(root+'Info.plist'),codeResources:seal});
   return {...report,signature,browserSignatureCryptographicallyVerified:true};
+}
+
+/** Verified in-memory input for trusted local distribution. Does not touch disk. */
+export async function unpackMacOSAOTArchive(input,options={}) {
+  const bytes=Uint8Array.from(input),normalized=macOSOptions(options);
+  await verifyMacOSAOTArchive(bytes,normalized);
+  return {options:normalized,files:await readZip(bytes,{maxExpandedBytes:128*1024*1024,maxFiles:4096,filenameEncoding:'utf-8'})};
 }

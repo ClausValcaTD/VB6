@@ -27,7 +27,7 @@ Value execute(Frame&f,std::shared_ptr<Program>p,Entry entry){
   scope.items.clear();if(scope.error)std::rethrow_exception(scope.error);return std::move(scope.result);
 }
 void initialize(Runtime&rt,const Json&root,const std::vector<Entry>&entries){
-  if(root.at("abi").integer()!=1)throw std::runtime_error("AOT runtime ABI mismatch");
+  if(root.at("abi").integer()!=AbiVersion)throw std::runtime_error("AOT runtime ABI mismatch");
   auto p=std::make_shared<Program>();p->entries=entries;
   for(const auto&name:root.at("names").list())p->names.push_back(name.str());
   for(const auto&item:root.at("literals").list())p->literals.push_back(literal(item));
@@ -51,7 +51,7 @@ void initialize(Runtime&rt,const Json&root,const std::vector<Entry>&entries){
       auto entry=p->entries.at(size_t(record.at("entry").integer()));m.records[lower(record.at("name").str())]=[p,entry](Frame&f){return execute(f,p,entry);};
     }
     for(const auto&proc:j.at("procedures").list()){
-      Procedure out;out.name=proc.at("name").str();out.scope=proc.at("scope").str();out.returnType=proc.at("returnType").str();out.accessor=proc.at("accessor").str();out.isFunction=proc.at("isFunction").boolean();out.isStatic=proc.at("isStatic").boolean();out.external=proc.at("external").boolean();
+      Procedure out;out.name=proc.at("name").str();out.scope=proc.at("scope").str();out.returnType=proc.at("returnType").str();out.returnArray=proc.at("returnArray").boolean();out.accessor=proc.at("accessor").str();out.isFunction=proc.at("isFunction").boolean();out.isStatic=proc.at("isStatic").boolean();out.external=proc.at("external").boolean();
       auto entry=p->entries.at(size_t(proc.at("entry").integer()));out.code=[p,entry](Frame&f){return execute(f,p,entry);};
       for(const auto&parameter:proc.at("parameters").list()){
         Parameter item;item.name=parameter.at("name").str();item.type=parameter.at("type").str();item.byRef=parameter.at("byRef").boolean();item.optional=parameter.at("optional").boolean();item.paramArray=parameter.at("paramArray").boolean();item.array=parameter.at("array").boolean();

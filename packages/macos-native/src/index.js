@@ -13,6 +13,6 @@ export {MacOSCompilerClient,verifyMacOSAppArchive,sha256Bytes,MACOS_PROTOCOL,MAC
 
 import {compileMacOSAOT} from './aot-compiler.js';
 import {exportMacOSApplication} from './aot-application.js';
-import {exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive} from './aot-export.js';
+import {exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive,unpackMacOSAOTArchive} from './aot-export.js';
 import {loadMacOSAOTRuntime,macOSAOTRuntimeInfo} from './aot-runtime.js';
-export {compileMacOSAOT,exportMacOSApplication,exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive,loadMacOSAOTRuntime,macOSAOTRuntimeInfo};
+export {compileMacOSAOT,exportMacOSApplication,exportMacOSAOT,linkMacOSAOT,verifyMacOSAOTArchive,unpackMacOSAOTArchive,loadMacOSAOTRuntime,macOSAOTRuntimeInfo};

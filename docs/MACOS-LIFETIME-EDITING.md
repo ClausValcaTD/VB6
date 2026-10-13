@@ -37,11 +37,50 @@ stack unwinding; teardown invalidates the lifetime controller before destroying
 host state. Native clients can subsequently release retained objects safely,
 but must not call them after their runtime is gone.
 
-Reference-count cycles are not collected. Normal global/static/default-form
-shutdown ordering and complete default-form recreation/lifecycle behavior remain
-unfinished. The runtime can queue an initialized, unloaded form's termination
-when its final owner disappears; default instances still rooted by the runtime
-do not thereby obtain complete `Form_Terminate` semantics.
+## Normal completion, abrupt End and default forms
+
+`Runtime::finish` runs only with an idle native call stack and no loaded native
+windows. It releases standard-module globals, procedure-static object variables,
+and objects inside array/record roots while scalar module state, file handles,
+and the native host are still available to `Class_Terminate`. Finalizers run once
+per instance, not once per alias. Root traversal is iterative and uses aggregate
+identity to avoid revisiting shared storage. Pending callbacks drain before host
+and file teardown.
+
+A finalizer may publish another root or open a window. Cleanup drains new roots
+in bounded passes; a new window resumes the native event loop instead of being
+silently destroyed. A self-recreating shutdown program fails after 1,024 passes.
+This is a termination guard, not a claim about the original VB6 shutdown order.
+`Runtime::stop`, unhandled program errors, native destruction and abrupt `End`
+release state without running user finalizers. Normal completion and `End` have
+separate generated-source and direct-ARM64 acceptance programs; file contents
+prove both post-body finalization and its absence after `End`.
+
+Form construction calls `Form_Initialize` (or `MDIForm_Initialize`) before native
+loading; `Load` creates controls and calls the corresponding Load event. Reading
+globals, builtins, authored fields, methods and Property Get members does not
+implicitly create a native window. Accessing a native/control member still loads
+it. Failed initialization removes only the failed default instance, rolls back
+loaded native resources and permits a later fresh construction.
+
+The default form name is a writable, type-checked object slot. Assigning `Nothing`
+does not instantiate an absent form. Resetting that slot does not invalidate an
+explicit alias or a loaded window; they remain independent owners. Unloading
+native controls preserves authored instance state while aliases remain, and
+`Form_Terminate` runs when the last owner of the initialized, unloaded form is
+released. User-close requests use QueryUnload mode 0; code unload uses mode 1.
+QueryUnload and Unload cancellation remain effective. A startup form which
+unloads itself in Load is not shown again automatically.
+
+Native clients must not call retained objects after the runtime is destroyed.
+Reference cycles, exact original resurrection behavior, external Automation
+ownership and exhaustive MDI/application termination event ordering remain
+separate compatibility boundaries. These tests establish the stated native
+contracts, not complete licensed VB6 differential certification.
+
+Microsoft's shared language references describe the distinction between
+[normal completion and abrupt End](https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/end-statement)
+and the [last-reference Terminate event](https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/terminate-event-visual-basic-for-applications).
 
 ## Native text, selection and events
 

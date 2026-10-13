@@ -46,7 +46,7 @@ class DirectLowering extends MacOSLowering {
       case 'literal':case 'currency':case 'date':return this.literal(literalScalar(node));
       case 'empty':return this.literal(undefined);case 'nothing':return this.literal(NOTHING);case 'missing':return this.literal(MISSING);
       case 'group':case 'byval':return e(node.expr);
-      case 'id':return f.call('get',this.n(node.name));case 'with':return f.call('with');case 'new':return f.call('create',this.n(node.name));
+      case 'id':return f.call('get',this.n(node.name));case 'with':return f.call('with',this.n(this.instruction?.withId||''));case 'new':return f.call('create',this.n(node.name));
       case 'member':return f.call('member',e(node.object),this.n(node.name));
       case 'call':{const c=node.callee;if(c.kind==='id')return f.call('call',this.n(c.name),this.arguments(node.args));
         if(c.kind==='member'){const receiver=e(c.object),args=this.arguments(node.args);return f.call('call_member',receiver,this.n(c.name),args);}
@@ -58,7 +58,7 @@ class DirectLowering extends MacOSLowering {
         const parts=node.name.split('.'),name=lower(parts.pop());let owners;
         if(parts.length)owners=[this.program.modules.get(lower(parts.join('.')))];else if(this.module.procedures.has(name))owners=[this.module];else owners=[...this.program.modules.values()].filter(m=>m.kind==='module'&&m.procedures.has(name)&&m.procedures.get(name).scope!=='private');
         owners=owners.filter(Boolean);if(owners.length!==1||owners[0].kind!=='module')this.fail('AddressOf must resolve one standard-module procedure','MAC230');
-        const p=owners[0].procedures.get(name);if(!p||p.external||p.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
+        const p=owners[0].procedures.get(name);if(!p||p.external||p.returnArray||p.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
         return f.call('callback',this.n(owners[0].name),this.n(p.name));
       }
       default:this.fail('Unsupported AOT expression '+node.kind,'MACA100');
@@ -69,13 +69,14 @@ class DirectLowering extends MacOSLowering {
     if(node.kind==='member')return f.call('member_ref',this.expression(node.object),this.n(node.name));
     if(node.kind==='call'){
       if(node.args.length===0&&node.callee.kind==='id'&&this.canReference(node))return this.reference(node.callee);
-      if(node.callee.kind==='member'){const receiver=this.expression(node.callee.object),args=this.arguments(node.args);return f.call('object_ref',receiver,this.n(node.callee.name),args);}
+      if(node.callee.kind==='member'){const receiver=this.expression(node.callee.object),hold=f.call('retain',receiver),args=this.arguments(node.args),out=f.call('object_ref',receiver,this.n(node.callee.name),args);f.call('release',hold);return out;}
+      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name)){const receiver=f.call('get',this.n(node.callee.name)),hold=f.call('retain',receiver),out=f.call('index_ref',receiver,this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));f.call('release',hold);return out;}
       if(node.callee.kind==='id'&&['get','let','set'].some(a=>this.module.procedures.has(lower(node.callee.name)+':'+a)))return f.call('property_ref',this.n(node.callee.name),this.arguments(node.args));
-      return f.call('index_ref',this.expression(node.callee),this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));
+      const receiver=this.expression(node.callee),hold=f.call('retain',receiver),out=f.call('index_ref',receiver,this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));f.call('release',hold);return out;
     }
     this.fail('AOT assignment target is not a variable, member or indexed reference','MACA101');
   }
-  arguments(nodes){const args=this.f.call('args');for(let node of nodes){let name='';if(node.kind==='named'){name=node.name;node=node.expr;}const reference=this.canReference(node),value=reference?this.reference(node):this.expression(node);this.f.call(reference?'arg_ref':'arg_value',args,value,this.n(name));}return args;}
+  arguments(nodes){const args=this.f.call('args');for(let node of nodes){let name='';if(node.kind==='named'){name=node.name;node=node.expr;}const reference=this.canReference(node),value=reference?this.reference(node):this.expression(node);this.f.call(reference?'arg_ref':'arg_value',args,value,this.n(name),reference&&node.kind==='call'&&node.callee.kind!=='id'?1:0);}return args;}
   values(nodes,scalar=true){const out=this.f.call('values');for(const node of nodes)this.f.call('value_push',out,this.expression(node),scalar?1:0);return out;}
   references(nodes){const out=this.f.call('refs');for(const node of nodes)this.f.call('ref_push',out,this.reference(node));return out;}
   bounds(decl){const out=this.f.call('bounds');for(const pair of decl.bounds||[])this.f.call('bound_push',out,this.f.call('coerce',pair[0]?this.expression(pair[0]):this.literal(this.module.optionBase),this.n('long')),this.f.call('coerce',this.expression(pair[1]),this.n('long')));return out;}
@@ -110,13 +111,13 @@ class DirectLowering extends MacOSLowering {
       }
       case 'forInit':f.branch(f.call('for_start',n(ins.id),r(parseExpression(ins.name)),s(ins.start),s(ins.end),s(ins.step)),go(ins.target),true);break;
       case 'forNext':f.branch(f.call('for_next',n(ins.id)),go(ins.target));break;
-      case 'eachInit':f.branch(f.call('each_start',n(ins.id),r(parseExpression(ins.name)),e(ins.expr)),go(ins.target),true);break;
+      case 'eachInit':{f.call('each_close',n(ins.id));const iterable=e(ins.expr),hold=f.call('retain',iterable,1),variable=r(ins.variable||parseExpression(ins.name)),out=f.call('each_start',n(ins.id),variable,iterable,ins.target);f.call('release',hold);f.branch(out,go(ins.target),true);break;}
       case 'eachNext':f.branch(f.call('each_next',n(ins.id)),go(ins.target));break;
       case 'redim':for(const d of ins.decls)f.call('redim',f.call('ref',n(d.name)),this.bounds(d),ins.preserve?1:0,n(d.explicitType?d.storageType||d.type:''));break;
       case 'erase':for(const node of ins.exprs)f.call('erase',e(node));break;
-      case 'withPush':f.call('with_push',e(ins.expr));break;
-      case 'withPop':f.call('with_pop',1);break;
-      case 'withUnwind':f.call('with_pop',ins.count);break;
+      case 'withPush':{f.call('with_pop',n(ins.id),0);const ref=this.canReference(ins.expr),source=ref?r(ins.expr):e(ins.expr);f.call('with_push',n(ins.id),source,ins.target,ref?1:0);break;}
+      case 'withPop':f.call('with_pop',n(ins.id),0);break;
+      case 'withUnwind':f.call('with_pop',0,ins.count);break;
       case 'onError':f.call('on_error',n(ins.mode),(ins.target??-1)>>>0);break;
       case 'resume':f.dispatch(f.call('resume',n(ins.mode),(ins.target??-1)>>>0));break;
       case 'gosub':f.call('gosub',index+1);f.jump(go(ins.target));break;
@@ -149,6 +150,7 @@ class DirectLowering extends MacOSLowering {
   emitProcedure(proc){
     this.procedure=proc;this.instruction=null;this.procedures++;const f=this.startFunction();
     if(proc.external){const adapter=resolveMacOSDeclaration(proc,this.module.name);this.external.push({...adapter,procedure:proc.name,source:this.module.name});f.call('api',this.n(adapter.id),proc.kind==='sub'?0:this.n(proc.storageReturnType||proc.returnType));f.end();this.finishFunction();return f.id;}
+    for(const d of proc.redimDeclarations||[]){f.reset();this.declaration(d,false,false);}
     for(const ins of proc.code)if(ins.op==='dim')for(const d of ins.decls){f.reset();this.declaration(d,false,ins.static);}
     this.instructions+=proc.code.length;
     for(let i=0;i<proc.code.length;i++){const ins=proc.code[i];f.label('L'+i);f.nextSlot=1;f.call('step',i,i+1,ins.line||proc.line||1);this.sourceMap.push({function:'aot_entry_'+f.id,instruction:i,module:this.module.name,procedure:proc.name,line:ins.line,sequencePoint:ins.sequencePoint});this.instructionCode(ins,i);}
@@ -164,7 +166,7 @@ class DirectLowering extends MacOSLowering {
       this.module=module;this.procedure=null;this.instruction=null;
       const m={name:module.name,kind:module.kind,defaultMember:module.defaultMember||'',optionExplicit:!!module.optionExplicit,optionBase:module.optionBase,textCompare:module.optionCompare==='text',defaultTypes:module.defaultTypes,interfaces:module.interfaces.map(i=>i.name),publicFields:module.declarations.filter(d=>d.scope!=='private').map(d=>lower(d.name)),interfaceBindings:{},records:[],procedures:[]};
       for(const [name,contract]of Object.entries(module.interfaceBindings||{}))m.interfaceBindings[name]={defaultMember:contract.defaultMember||'',members:Object.fromEntries(Object.entries(contract.members).map(([key,member])=>[key,{procedure:member.procedure,parameters:member.signature.params.map(p=>lower(p.name))}]))};
-      for(const [key,proc]of module.procedures)m.procedures.push({key,name:proc.name,scope:proc.scope,returnType:proc.storageReturnType||proc.returnType,accessor:proc.accessor||'',isFunction:proc.kind==='function'||proc.accessor==='get',isStatic:!!proc.static,external:!!proc.external,entry:this.emitProcedure(proc),parameters:proc.params.map(p=>({name:p.name,type:p.storageType||p.type,byRef:!!p.byRef,optional:!!p.optional,paramArray:!!p.paramArray,array:p.bounds!==null&&p.bounds!==undefined,...(proc.defaultScalars.has(lower(p.name))?{initial:this.literalId(proc.defaultScalars.get(lower(p.name)))}:{})}))});
+      for(const [key,proc]of module.procedures)m.procedures.push({key,name:proc.name,scope:proc.scope,returnType:proc.storageReturnType||proc.returnType,returnArray:!!proc.returnArray,accessor:proc.accessor||'',isFunction:proc.kind==='function'||proc.accessor==='get',isStatic:!!proc.static,external:!!proc.external,entry:this.emitProcedure(proc),parameters:proc.params.map(p=>({name:p.name,type:p.storageType||p.type,byRef:!!p.byRef,optional:!!p.optional,paramArray:!!p.paramArray,array:p.bounds!==null&&p.bounds!==undefined,...(proc.defaultScalars.has(lower(p.name))?{initial:this.literalId(proc.defaultScalars.get(lower(p.name)))}:{})}))});
       this.procedure=null;this.instruction=null;
       m.initialize=this.startFunction().id;for(const d of module.declarations){this.f.reset();this.declaration(d,true);}this.f.end();this.finishFunction();
       for(const [name,fields]of Object.entries(module.types)){
@@ -175,18 +177,17 @@ class DirectLowering extends MacOSLowering {
       if(module.form){m.form=this.spec({...module.form,name:module.name});m.controls=module.form.controls.map(c=>this.spec(c));m.menus=(module.form.menus||[]).map(c=>this.spec({...c,type:'Menu'}));}
       this.modules.push(m);
     }
-    const section=emitAOTFunctions(this.functions),metadata={abi:AOT_ABI,name:this.options.name,startup:this.program.startup,maxArrayElements:this.options.maxArrayElements,maxCallDepth:this.options.maxCallDepth,names:this.names,literals:this.literals,modules:this.modules,entries:this.functions.map(f=>section.labels.get('aot_entry_'+f.id))};
-    const text=JSON.stringify(metadata);if(new TextEncoder().encode(text).length>2*1024*1024-16)this.fail('Project metadata exceeds direct native runtime capacity','MACA202');
+    const section=emitAOTFunctions(this.functions,this.options.optimization),metadata={abi:AOT_ABI,name:this.options.name,startup:this.program.startup,maxArrayElements:this.options.maxArrayElements,maxCallDepth:this.options.maxCallDepth,names:this.names,literals:this.literals,modules:this.modules,entries:this.functions.map(f=>section.labels.get('aot_entry_'+f.id))};
+    const text=JSON.stringify(metadata);if(new TextEncoder().encode(text).length>8*1024*1024)this.fail('Project metadata exceeds the bounded 8 MiB native reader','MACA202');
     return {section,metadata,functions:this.functions};
   }
 }
 export function compileMacOSAOT(input,options={}){
   const project=normalizeProject(input),normalized=macOSOptions({name:project.name,...options});
   project.settings={...project.settings,conditionalConstants:{...project.settings.conditionalConstants,VBWEB:0,Win32:0,Win64:0,Mac:-1,MacOS:-1,ARM64:-1}};
-  if(normalized.optimization!==2)throw new MacOSCompileError('Direct AOT uses the optimized native runtime (optimization 2); use the source/bridge target for other optimization levels', '', 0, 'MACA203');
   const program=compileProject(project);if(!program.valid){const error=new MacOSCompileError('VB6 frontend rejected the project');error.diagnostics=program.diagnostics;throw error;}
   const controls=macOSControlReport(project),lowering=new DirectLowering(program,normalized),emitted=lowering.emit();
-  const report={target:'macos-arm64',architecture:'arm64',format:'Mach-O',artifact:'native-object-code',compiled:false,codegen:'arm64-aot',runtime:'vb6-native',abi:AOT_ABI,modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,codeBytes:emitted.section.length,metadataBytes:new TextEncoder().encode(JSON.stringify(emitted.metadata)).length,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,diagnostics:[]};
+  const report={target:'macos-arm64',architecture:'arm64',format:'Mach-O',artifact:'native-object-code',compiled:false,codegen:'arm64-aot',runtime:'vb6-native',abi:AOT_ABI,modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,codeBytes:emitted.section.length,optimization:emitted.section.optimization,metadataBytes:new TextEncoder().encode(JSON.stringify(emitted.metadata)).length,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,diagnostics:[]};
   return {...emitted,options:normalized,project,report,sourceMap:lowering.sourceMap};
 }
 /** Test-only native C++ oracle generated from the same lowered helper-call graph.
