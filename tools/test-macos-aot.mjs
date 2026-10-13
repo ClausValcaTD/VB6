@@ -17,7 +17,7 @@ const artifacts=path.join(root,'artifacts/macos-aot'),reports=path.join(root,'re
 let transcript='';const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.length>16*1024*1024)transcript=transcript.slice(-16*1024*1024);};
 const report={platform:process.platform,arch:process.arch,portableOracleVerified:false,arm64ExecutionVerified:false,nativeSignatureVerified:false,checks:[]};
 const run=(exe,args,options={})=>runTool(exe,args,{cwd:work,timeout:180000,log,...options});
-const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
+const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
 try{
   await fs.mkdir(artifacts,{recursive:true});
   const mac=process.platform==='darwin';if(mac)assert.equal(process.arch,'arm64','Native test requires actual Apple Silicon, not Rosetta');
@@ -29,6 +29,10 @@ try{
   const objects=sources.map((_,i)=>path.join(work,i+'.o'));let next=0;const errors=[];
   async function worker(){while(!errors.length){const i=next++;if(i>=sources.length)return;try{await run(compiler,[...flags,'-c',sources[i],'-o',objects[i]]);}catch(error){errors.push(error);}}}
   await Promise.all(Array.from({length:3},worker));if(errors.length)throw errors[0];
+  const ownership=path.join(work,'scope-ownership');
+  await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
+  assert.ok((await run(ownership,[])).includes('NATIVE_SCOPE_OWNERSHIP_OK'));
+  report.scopeOwnershipVerified=true;
   const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
   await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
   // A faulty expected error must fail the native test, not be swallowed by

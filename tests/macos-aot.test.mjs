@@ -55,7 +55,9 @@ test('native loader and compiler agree on the array-aware helper ABI',async()=>{
  const header=await readFile(new URL('../packages/macos-native/aot/runtime.hpp',import.meta.url),'utf8');
  assert.match(header,new RegExp('AbiVersion = '+AOT_ABI+';'));
  assert.equal(compileMacOSAOT(conformanceProject()).metadata.abi,AOT_ABI);
- const legacy={bytes:runtime.bytes,manifest:{...runtime.manifest,abi:1}};
- await assert.rejects(exportMacOSAOT(conformanceProject(),legacy),/ABI mismatch/);
+ for(const abi of [1,2]){
+  const legacy={bytes:runtime.bytes,manifest:{...runtime.manifest,abi}};
+  await assert.rejects(exportMacOSAOT(conformanceProject(),legacy),/ABI mismatch/);
+ }
  await verifyAOTRuntime(runtime.bytes,runtime.manifest);
 });
