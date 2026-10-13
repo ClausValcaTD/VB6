@@ -127,8 +127,13 @@ class FigmaWorkspace(unittest.TestCase):
         before=self.snapshot();self.page.evaluate('vb6Studio.figmaMode.chooseTool("CommandButton");vb6Studio.figmaMode.enableLayout()');self.assertEqual(before,self.snapshot());self.done()
     def test_11_new_project_designer_lifecycle_and_code(self):
         self.enable(True);old=self.page.evaluate('vb6Studio.figmaMode.viewports.size');self.page.evaluate(FIXTURE,False);self.page.wait_for_timeout(80);self.assertEqual(self.page.evaluate('vb6Studio.figmaMode.viewports.size'),old)
-        self.page.get_by_role('button',name='Code',exact=True).click();self.assertFalse(self.page.locator('.figma-canvas-toolbar').is_visible());self.assertTrue(self.page.locator('.mdi-window.mdi-active .code-pane').is_visible())
-        self.page.get_by_role('button',name='Design',exact=True).click();self.assertTrue(self.page.locator('.figma-canvas-toolbar').is_visible());self.done()
+        # Workspace chrome is coalesced at the next rendering opportunity;
+        # a click completing is not the completion boundary for that frame.
+        self.page.get_by_role('button',name='Code',exact=True).click()
+        expect(self.page.locator('.figma-canvas-toolbar')).not_to_be_visible()
+        expect(self.page.locator('.mdi-window.mdi-active .code-pane')).to_be_visible()
+        self.page.get_by_role('button',name='Design',exact=True).click()
+        expect(self.page.locator('.figma-canvas-toolbar')).to_be_visible();self.done()
     def test_12_responsive_panels_and_dark_screenshots(self):
         self.enable(True);self.select(['frame']);self.page.screenshot(path=str(REPORT/'figma-light.png'),timeout=10000)
         self.page.evaluate('vb6Studio.figmaMode.configure({mode:"figma",scheme:"dark",units:"px"})');self.page.wait_for_timeout(80);self.page.screenshot(path=str(REPORT/'figma-dark.png'),timeout=10000)
