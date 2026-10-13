@@ -11,7 +11,7 @@ export function createFigmaLayers(workspace){
   const panel=el('section',{class:'figma-layers-panel','aria-label':'Layers'}),search=el('input',{type:'search',placeholder:'Search layers…','aria-label':'Search layers',spellcheck:false});
   const title=el('strong',{}),count=el('span',{class:'figma-muted'}),tree=el('div',{class:'figma-layer-tree',role:'tree','aria-label':'VB6 form layers','aria-multiselectable':'true',tabindex:0}),content=el('div',{class:'figma-layer-content'});
   tree.append(content);panel.append(ide.caption('Layers',()=>ide.docking.show('figma-layers',false)),el('div',{class:'figma-search'},figmaIcon('search'),search),el('div',{class:'figma-section-title'},title,count),tree);
-  let rows=[],key='',focused='@form',anchor=null,drag=null,frame=0;
+  let rows=[],key='',focused='@form',anchor=null,drag=null,frame=0,disposed=false;
   const current=()=>workspace.contextDesigner(),form=()=>current()?.module.form;
   const selected=id=>id==='@form'?!current()?.selection.size:current()?.selection.has(id);
   const focusAt=index=>{
@@ -77,8 +77,12 @@ export function createFigmaLayers(workspace){
     else if(event.key==='Enter'||event.code==='Space'){event.preventDefault();event.stopPropagation();choose(focused,event);}
     else if(event.key==='F2'&&workspace.writable()){event.preventDefault();event.stopPropagation();choose(focused);ide.docking.activate('properties');workspace.ui.inspector.focusName();}
   });
-  tree.addEventListener('scroll',()=>{if(!frame)frame=tree.ownerDocument.defaultView.requestAnimationFrame(()=>{frame=0;paint();});});
+  // Do not replace observed rows/SVGs during ResizeObserver delivery. Moving
+  // tool docks changes the tree's height; deferred paint avoids creating more
+  // depth-limited resize work inside that same browser delivery loop.
+  const schedulePaint=()=>{if(!disposed&&!frame)frame=tree.ownerDocument.defaultView.requestAnimationFrame(()=>{frame=0;if(!disposed)paint();});};
+  tree.addEventListener('scroll',schedulePaint);
   search.addEventListener('input',()=>{tree.scrollTop=0;sync();});search.addEventListener('keydown',e=>e.stopPropagation());
-  const observer=new ResizeObserver(paint);observer.observe(tree);
-  return {panel,sync,dispose(){observer.disconnect();tree.ownerDocument.defaultView.cancelAnimationFrame(frame);panel.remove();}};
+  const observer=new ResizeObserver(schedulePaint);observer.observe(tree);
+  return {panel,sync,dispose(){disposed=true;observer.disconnect();tree.ownerDocument.defaultView.cancelAnimationFrame(frame);panel.remove();}};
 }

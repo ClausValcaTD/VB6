@@ -76,6 +76,52 @@ class ServiceState(base.ServicesAssets):
 
 
 
+    def test_native_drag_from_card_padding_preserves_button_and_classic_children(self):
+        self.enable();source=self.asset('Label')
+        surface=source.locator('.figma-asset-drag-surface');expect(surface).to_have_count(1)
+        geometry=source.evaluate("n=>{const a=n.getBoundingClientRect(),b=n.firstElementChild.getBoundingClientRect();return [a.width,a.height,b.width,b.height];}")
+        self.assertAlmostEqual(geometry[0],geometry[2],delta=1)
+        self.assertAlmostEqual(geometry[1],geometry[3],delta=1)
+        before=self.snapshot();count=self.page.evaluate('vb6Studio.history.undoStack.length')
+        target=self.page.locator('.mdi-active .vb-form-content');r=target.bounding_box()
+        source.drag_to(target,source_position={'x':2,'y':2},target_position={'x':20,'y':r['height']-40})
+        self.assertEqual(self.inserted()['type'],'Label')
+        self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),count+1)
+        self.page.evaluate('void vb6Studio.command("undo")');self.assertEqual(self.snapshot(),before)
+        self.page.evaluate("window.testAssetButton=document.querySelector('.toolbox-grid [data-control-type=Label]')")
+        self.page.evaluate('vb6Studio.figmaMode.configure({mode:"classic"})')
+        self.assertEqual(self.page.locator('.figma-asset-drag-surface').count(),0)
+        self.assertTrue(self.page.evaluate('testAssetButton.querySelector(".figma-asset-drag-surface")===null'))
+        self.assertEqual(self.page.evaluate('testAssetButton.tagName'),'BUTTON');self.done()
+
+    def test_workspace_resize_observers_schedule_paint_without_synchronous_dom_writes(self):
+        self.page.evaluate("""()=>{
+          const Native=window.ResizeObserver;window.figmaResizeAudit=[];
+          window.ResizeObserver=class extends Native {
+            constructor(callback){super((entries,observer)=>{
+              const targets=entries.filter(e=>e.target.matches('.figma-layer-tree,.figma-code-outline'));
+              if(!targets.length)return callback(entries,observer);
+              const mutations=new MutationObserver(()=>{});
+              mutations.observe(document.documentElement,{subtree:true,childList:true,attributes:true,characterData:true});
+              try {callback(entries,observer);}
+              finally {
+                window.figmaResizeAudit.push({targets:targets.map(e=>e.target.className),writes:mutations.takeRecords().length});
+                mutations.disconnect();
+              }
+            });}
+          };
+        }""")
+        self.enable();self.page.get_by_role('button',name='Agent',exact=True).click()
+        self.page.get_by_role('button',name='MCP',exact=True).click()
+        self.page.get_by_role('button',name='Code',exact=True).click()
+        self.page.set_viewport_size({'width':1400,'height':800})
+        self.page.wait_for_function('figmaResizeAudit.some(r=>r.targets.includes("figma-code-outline"))')
+        audit=self.page.evaluate('figmaResizeAudit')
+        self.assertGreater(len(audit),0)
+        self.assertEqual(sum(row['writes'] for row in audit),0)
+        self.done()
+
+
 def load_tests(loader,standard,pattern):
     return unittest.TestSuite(ServiceState(name) for name in sorted(ServiceState.__dict__) if name.startswith('test_'))
 if __name__=='__main__':unittest.main(verbosity=2)

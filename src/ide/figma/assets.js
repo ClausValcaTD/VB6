@@ -129,6 +129,12 @@ export function createFigmaAssets(workspace){
       if(decorated.has(button))continue;decorated.add(button);const type=button.dataset.controlType;
       if(!isDesignerAsset(type,ide.controlRegistry))continue;
       button.draggable=true;
+      // Firefox before 147 only starts a BUTTON drag on its child content,
+      // not the button's own padding/gaps. Keep the semantic button and give
+      // its entire client area a noninteractive content surface.
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=568313#c23
+      const surface=el('span',{class:'figma-asset-drag-surface'});
+      surface.append(...button.childNodes);button.append(surface);
       const card=el('div',{class:'figma-asset-card'}),grip=el('button',{class:'figma-asset-grip','aria-label':'Place '+type+' on designer',title:'Drag to place; Enter for keyboard placement','data-asset-grip':type},'⠿');
       button.before(card);card.append(button,grip);
     }
@@ -193,6 +199,11 @@ export function createFigmaAssets(workspace){
   },{capture:true});
   listen(view,'blur',()=>cancel());listen(view,'pagehide',()=>cancel());
   return {decorate,cancel,get active(){return !!drag;},dispose(){if(disposed)return;disposed=true;cancel(false);abort.abort();
-    for(const b of ide.toolboxGrid.querySelectorAll('button[data-control-type]')){b.removeAttribute('draggable');const card=b.parentElement;if(card?.classList.contains('figma-asset-card')){card.before(b);card.remove();}}
+    for(const b of ide.toolboxGrid.querySelectorAll('button[data-control-type]')){
+      b.removeAttribute('draggable');
+      const surface=b.querySelector(':scope > .figma-asset-drag-surface');
+      if(surface)surface.replaceWith(...surface.childNodes);
+      const card=b.parentElement;if(card?.classList.contains('figma-asset-card')){card.before(b);card.remove();}
+    }
     for(const n of [ghost,targetBox,footprint,line,status])n.remove();}};
 }

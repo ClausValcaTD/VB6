@@ -112,7 +112,17 @@ class ServicesAssets(base.FigmaWorkspace):
     def test_asset_flow_drop_inserts_before_sibling_and_solves(self):
         self.enable(True);self.select(['frame'])
         self.page.locator('[data-auto-property="LayoutMode"]').select_option('1');self.page.wait_for_timeout(100)
-        self.drop_asset('Label','.mdi-active [data-control-id="frame"]>.vb-frame-client',15,30)
+        source=self.asset('Label');source.hover()
+        target=self.page.locator('.mdi-active [data-control-id="frame"]>.vb-frame-client').bounding_box()
+        zoom=self.page.evaluate('vb6Studio.designer.zoom')
+        # A real layout-padding handle intentionally covers this insertion point.
+        # Use the physical native drag gesture so it lands on that overlay, not
+        # locator hit-target actionability which requires its underlying client.
+        origin=source.bounding_box();self.page.mouse.down()
+        self.page.mouse.move(origin['x']+origin['width']/2+10,origin['y']+30,steps=3)
+        self.page.mouse.move(target['x']+zoom,target['y']+2*zoom,steps=10)
+        self.page.mouse.move(target['x']+zoom+.1,target['y']+2*zoom)
+        self.page.mouse.up();self.page.wait_for_timeout(80)
         c=self.inserted();self.assertEqual(c['parent'],'Frame1')
         self.assertEqual(c['properties']['Left'],0)
         self.assertGreater(self.props('button')['Left'],0)

@@ -40,7 +40,8 @@
 /* Native desktop dragging; explicit 28x44 grip for pointer/touch/keyboard.
    The remainder of each Assets card retains browser scrolling and tool clicks. */
 :root[data-ide-workspace="figma"] .figma-asset-card {display:flex;min-width:0;border:1px solid var(--fg-line);border-radius:6px;overflow:hidden;background:var(--fg-panel);}
-:root[data-ide-workspace="figma"] .figma-asset-card>[data-control-type] {display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:7px;height:76px!important;width:auto!important;padding:8px 0!important;border:0!important;cursor:grab;}
+:root[data-ide-workspace="figma"] .figma-asset-card>[data-control-type] {display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;height:76px!important;width:auto!important;padding:0!important;border:0!important;cursor:grab;}
+:root[data-ide-workspace="figma"] .figma-asset-drag-surface {display:flex;flex:1;min-width:0;width:100%;height:100%;box-sizing:border-box;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:8px 0;}
 :root[data-ide-workspace="figma"] .figma-asset-card:has(.active) {border-color:var(--fg-blue);background:var(--fg-selected);}
 :root[data-ide-workspace="figma"] .figma-asset-card>.figma-asset-grip {flex:0 0 28px;width:28px!important;height:76px!important;min-height:44px!important;padding:0!important;touch-action:none;cursor:grab;font-size:18px;color:var(--fg-muted);border-left:1px solid var(--fg-line);border-radius:0;}
 :root[data-ide-workspace="figma"] :is(.figma-asset-ghost,.figma-asset-target,.figma-asset-footprint,.figma-asset-insertion) {position:fixed;pointer-events:none;z-index:2147483100;box-sizing:border-box;}
