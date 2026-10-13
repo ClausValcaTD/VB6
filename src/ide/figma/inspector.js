@@ -1,4 +1,5 @@
 import {el} from '../../core/core.js';
+import {createFigmaPropertyPanel} from './property-panel.js';
 import {layoutEnabled,layoutDefaults,layoutEligible} from '../../layout/contract.js';
 import {editLayoutProperties,layoutTargets} from '../../layout/authoring.js';
 import {displayLength,modelLength,constraintAxis,setConstraintAxis} from './model.js';
@@ -35,17 +36,19 @@ export function createFigmaInspector(workspace){
   constraint.append(el('strong',{class:'figma-section-title'},'Constraints'),el('div',{class:'figma-constraints'},pad,axisFields),el('p',{class:'figma-help'},'Anchors resize against the parent. Flow children use auto layout; Ignore auto layout enables absolute constraints.'));
   const enable=el('button',{class:'figma-enable-layout',onclick:()=>workspace.enableLayout()},'Enable auto layout and anchoring');
   const layout=el('details',{class:'figma-inspector-section',open:true}),layoutContent=el('div',{class:'figma-layout-content'});layout.append(el('summary',{},'Auto layout'),el('p',{class:'figma-help'},'Layout dimensions use VB6 twips (15 twips = 1 CSS pixel).'),layoutContent);
-  const all=el('details',{class:'figma-inspector-section figma-all-properties',open:false}),allContent=el('div',{class:'figma-all-properties-content'});all.append(el('summary',{},'All VB6 properties'),allContent);
+  const all=el('section',{class:'figma-all-properties','aria-label':'VB6 property sections'}),allContent=el('div',{class:'figma-all-properties-content'});all.append(allContent);
   const originals=[ide.inspector.object,ide.inspector.tabs,ide.inspector.wrapper,ide.inspector.description],places=originals.map(node=>({node,parent:node.parentNode,next:node.nextSibling}));allContent.append(...originals);
   const events=el('button',{class:'figma-events',onclick:()=>{if(workspace.writable()){const target=getTargets()[0];ide.eventDialog(target===workspace.currentDesigner()?.module.form?'Form':target?.name||'Form');}}},'Edit VB6 events…');
-  root.append(el('div',{class:'figma-selection-title'},name,type),alignment,positionTitle,position,constraint,enable,layout,all,events);
+  root.append(el('div',{class:'figma-selection-title'},name,type),alignment,positionTitle,position,all,constraint,enable,layout,events);
   ide.propertiesPanel.append(root);
+  const properties=createFigmaPropertyPanel(workspace);
   let mounted=null,selectionKey='';
   const getTargets=()=>{const d=workspace.currentDesigner();return d?(d.selected().length?d.selected():[d.module.form]):[];};
   name.addEventListener('change',()=>workspace.safe(()=>{if(workspace.writable()&&!name.dataset.cancel)ide.setProperty('Name',name.value);}));
   name.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Escape'){e.preventDefault();name.dataset.cancel='true';sync(true);name.blur();delete name.dataset.cancel;}});
   units.addEventListener('change',()=>workspace.configure({...workspace.settings,units:units.value}));
   function sync(force=false){
+    root.hidden=ide.activeDoc?.view==='code';
     const targets=getTargets(),selection=ide.activeDoc?.key+':'+targets.map(t=>t.id||t.name).join(','),changed=selection!==selectionKey;selectionKey=selection;
     const writable=workspace.writable(),active=root.ownerDocument.activeElement;
     if(force||changed||active!==name)name.value=targets.length===1?targets[0].name:targets.length?targets.length+' controls':'';
@@ -68,6 +71,7 @@ export function createFigmaInspector(workspace){
     if(ide.autoLayout?.panel&&!ide.docking.model.windows.get('auto-layout')?.hidden){ide.docking.model.show('auto-layout',false);ide.docking.render();}
   }
   return {root,sync,focusName(){sync(true);name.focus({preventScroll:true});name.select();},showLayout(){layout.open=true;ide.docking.activate('properties');layout.scrollIntoView({block:'nearest'});},dispose(){
+    properties.dispose();
     if(mounted){if(ide.autoLayout?.panel)ide.autoLayout.panel.append(mounted);else mounted.remove();}
     for(let i=places.length-1;i>=0;i--){const {node,parent,next}=places[i];parent.insertBefore(node,next?.parentNode===parent?next:null);}root.remove();
   }};
