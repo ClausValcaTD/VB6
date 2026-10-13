@@ -81,7 +81,13 @@ std::vector<uint8_t> NativeResources::picture(Value name,int format)const{
   for(size_t i=0;i<count;++i){
     size_t at=6+i*14,target=6+i*16;auto component=bytes(find(0,uint16_t(reader.u16(at+12)),uint16_t(cursor?1:3),group.language));
     if(component.size()!=reader.u32(at+8)||component.size()<(cursor?5u:1u)||out.size()+component.size()>NativeResourceLimit)fail(481,"Invalid image resource component size");
-    uint32_t width=cursor?reader.u16(at):data[at],height=cursor?reader.u16(at+2):data[at+1];width=width?width:256;height=height?height:256;
+    uint32_t width=cursor?reader.u16(at):data[at],height=cursor?reader.u16(at+2):data[at+1];
+    width=width?width:256;
+    // RT_GROUP_CURSOR stores XOR + AND bitmap height, unlike a CUR directory.
+    // llvm/tools/llvm-rc/ResourceFileWriter.cpp doubles the file-header height.
+    // A zero byte in a 256-pixel CUR can remain zero in a compiled group.
+    if(cursor){height=height?height:512;if(height%2)fail(481,"Odd cursor resource bitmap height");height/=2;}
+    else height=height?height:256;
     if(width>256||height>256)fail(481,"Invalid icon/cursor resource dimensions");
     out[target]=uint8_t(width);out[target+1]=uint8_t(height);out[target+2]=cursor?0:data[at+2];
     word(out,target+4,cursor?Reader{component}.u16(0):reader.u16(at+4),2);word(out,target+6,cursor?Reader{component}.u16(2):reader.u16(at+6),2);

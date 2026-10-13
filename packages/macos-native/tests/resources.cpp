@@ -63,6 +63,12 @@ void pictures(const std::vector<uint8_t>& bytes){
   bad=bmp;word(bad,10,UINT32_MAX);error([&]{(void)decodeNativePicture(bad);},481);
   bad=r.picture(Value::integer(203),1);word(bad,18,UINT32_MAX);error([&]{(void)decodeNativePicture(bad);},481);
   bad=r.picture(Value::integer(204),2);bad[10]=16;error([&]{(void)decodeNativePicture(bad);},481);
+  const auto& cursorGroup=r.find(0,uint16_t(204),uint16_t(12));
+  assert(bytes.at(cursorGroup.offset+8)==32); // Windows RC stores combined bitmap height.
+  bad=bytes;bad.at(cursorGroup.offset+8)=31;
+  NativeResources oddCursor(bad);error([&]{(void)oddCursor.picture(Value::integer(204),2);},481);
+  bad=bytes;bad.at(cursorGroup.offset+8)=16; // file height in a resource header is inconsistent
+  NativeResources shortCursor(bad);error([&]{(void)decodeNativePicture(shortCursor.picture(Value::integer(204),2));},481);
   for(auto n:{size_t(0),size_t(1),size_t(7),size_t(32),size_t(53)}){bad=bmp;bad.resize(n);error([&]{(void)decodeNativePicture(bad);},481);}
 }
 void files(const std::filesystem::path& path){

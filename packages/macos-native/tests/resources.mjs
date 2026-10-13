@@ -16,7 +16,7 @@ export function resourceModel(){
   for(const [name,type,data]of [[101,10,new Uint8Array([0,1,127,128,255])],['101',10,new Uint8Array([33])],['日本語🙂','CUSTOM Ω',new Uint8Array([9,0,8])],['empty',10,new Uint8Array()],[202,2,bitmapBytes().slice(14)]])m=setResource(m,{type,name,data:toBase64(data)});
   for(const cursor of [false,true]){
     const ico=iconBytes(cursor),image=ico.slice(22),component=cursor?new Uint8Array([3,0,5,0,...image]):image,group=new Uint8Array(20),v=new DataView(group.buffer);
-    v.setUint16(2,cursor?2:1,true);v.setUint16(4,1,true);if(cursor){v.setUint16(6,16,true);v.setUint16(8,16,true);}else group.set([16,16],6);
+    v.setUint16(2,cursor?2:1,true);v.setUint16(4,1,true);if(cursor){v.setUint16(6,16,true);v.setUint16(8,32,true);}else group.set([16,16],6);
     v.setUint16(10,1,true);v.setUint16(12,32,true);v.setUint32(14,component.length,true);v.setUint16(18,cursor?12:11,true);
     m=setResource(m,{type:cursor?1:3,name:cursor?12:11,language:1045,data:toBase64(component)});
     m=setResource(m,{type:cursor?12:14,name:cursor?204:203,language:1045,data:toBase64(group)});
