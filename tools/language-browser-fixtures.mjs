@@ -3,6 +3,101 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Unused recursive records are rejected before startup',project:project(`Private Type Item
+Next As Item
+End Type
+Sub Main()
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:2,number:1002,message:'Circular user-defined type dependency'}]},
+ {name:'Cross-module record-array cycles are diagnosed at both fields',project:withClass(`Public Type A
+Items(1) As Other.B
+End Type
+Sub Main()
+Debug.Print "must not run"
+End Sub`,{id:'other',name:'Other',kind:'module',code:`Public Type B
+Parent As M.A
+End Type`}),diagnostics:[{source:'M',line:2,number:1002,message:'Circular user-defined type dependency'},{source:'Other',line:2,number:1002,message:'Circular user-defined type dependency'}]},
+ {name:'Class references break inline record dependency cycles',project:withClass(`Public Type Item
+Value As Long
+Link As Link
+End Type
+Sub Main()
+Dim item As Item, link As New Link
+item.Value = 7
+Set item.Link = link
+Debug.Print item.Value, item.Link Is link
+End Sub`,{id:'link',name:'Link',kind:'class',code:'Public Data As Item'}),expected:['7 True'],error:null},
+ {name:'Typed record array rejects scalar replacement atomically',project:project(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim a() As Item
+ReDim a(1)
+a(0).Value = 7
+On Error Resume Next
+a(0) = 42
+Debug.Print Err.Number, a(0).Value
+Err.Clear
+ReDim Preserve a(3)
+Debug.Print Err.Number, a(0).Value, a(3).Value
+End Sub`),expected:['13 7','0 7 0'],error:13},
+ {name:'Variant record payloads can change type in cells and arrays',project:project(`Private Type Item
+Value As Long
+End Type
+Private Type OtherItem
+Text As String
+End Type
+Sub Main()
+Dim a As Item, b As OtherItem, payload As Variant, values(1) As Variant
+a.Value = 7
+b.Text = "next"
+payload = a
+payload = b
+Debug.Print TypeName(payload), payload.Text
+payload = CLng(19)
+Debug.Print payload, TypeName(payload)
+values(0) = a
+values(0) = CInt(12)
+Debug.Print values(0), TypeName(values(0))
+values(0) = b
+values(0) = Empty
+Debug.Print IsEmpty(values(0)), a.Value
+End Sub`),expected:['OtherItem next','19 Long','12 Integer','True 7'],error:null},
+ {name:'Aggregate assignment respects nested Variant payload types',project:project(`Private Type Item
+Value As Long
+End Type
+Private Type Envelope
+Payload As Variant
+End Type
+Private Type Outer
+Data As Envelope
+End Type
+Sub Main()
+Dim a As Outer, b As Outer, item As Item
+item.Value = 7
+a.Data.Payload = item
+b.Data.Payload = CInt(12)
+a = b
+Debug.Print a.Data.Payload, TypeName(a.Data.Payload), item.Value
+End Sub`),expected:['12 Integer 7'],error:null},
+ {name:'Typed ByRef record rejects Variant alias but accepts grouped copy',project:project(`Private Type Item
+Value As Long
+End Type
+Sub Change(ByRef value As Item)
+value.Value = 9
+Debug.Print value.Value
+End Sub
+Sub Main()
+Dim item As Item, payload As Variant
+item.Value = 7
+payload = item
+On Error Resume Next
+Change payload
+Debug.Print Err.Number, payload.Value
+Err.Clear
+Change (payload)
+Debug.Print Err.Number, payload.Value
+End Sub`),expected:['13 7','9','0 7'],error:13},
  {name:'Grouped records cannot bypass private declaration identity',project:withClass(`Private Type Item
 Value As Long
 End Type
