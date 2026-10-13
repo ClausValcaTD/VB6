@@ -77,7 +77,7 @@ export class VirtualMachine extends Signal {
   replaceBreakpoints(breakpoints=[]){
     if(!Array.isArray(breakpoints)||breakpoints.length>10000)throw new VBError('Invalid breakpoint list',5);
     const next=new Map();for(const bp of breakpoints){const value={...this.breakpointLocation(bp.module,bp.line),condition:String(bp.condition||''),enabled:bp.enabled!==false};if(value.condition.length>4096)throw new VBError('Breakpoint condition is too long',5);if(value.condition)this.debugInspector.parse(value.condition);next.set(lower(value.module)+':'+value.line,value);}
-    this.breakpoints=next;this.emit('breakpoints',[...next.values()]);
+    this.breakpoints=next;this.emit('breakpoints',[...this.breakpoints.values()]);
   }
   removeBreakpoint(module,line){this.breakpoints.delete(lower(module)+':'+line);this.emit('breakpoints',[...this.breakpoints.values()]);}
   toggleBreakpoint(module,line){const key=lower(module)+':'+line;if(this.breakpoints.has(key))this.removeBreakpoint(module,line);else this.setBreakpoint(module,line);}
@@ -172,7 +172,7 @@ export class VirtualMachine extends Signal {
         if(!param.byRef||!actual?.ref||!arrayTypeMatches(value,type,record?.identity))throw new VBError('ByRef array type mismatch',13);
         args.push(actual);
       }else if(param.byRef&&actual?.ref){
-        if(record&&!recordTypeMatches(await actual.ref.get(),type,record.identity))throw new VBError('ByRef user-defined type mismatch',13);
+        if(record&&(lower(actual.ref.type)==='variant'||!recordTypeMatches(await actual.ref.get(),type,record.identity)))throw new VBError('ByRef user-defined type mismatch',13);
         if(Object.hasOwn(SCALAR_TYPES,lower(type))&&lower(actual.ref.type)!==lower(type))throw new VBError('ByRef argument type mismatch',13);
         args.push(actual);
       }else if(param.byRef)args.push({ref:record?createRecordCell(type,actual,record.identity):new Cell(type,actual)});
@@ -554,7 +554,7 @@ export class VirtualMachine extends Signal {
       if(param.byRef&&actual?.ref){
         const ref=actual.ref,value=await ref.get();
         if(param.bounds!==null){if(!arrayTypeMatches(value,declared,this.recordDefinition(declared,frame.module)?.identity))throw new VBError('ByRef array type mismatch',13);cell=ref;}
-        else if(this.recordSchema(param.type,frame.module)){if(!recordTypeMatches(value,param.type,this.recordDefinition(param.type,frame.module)?.identity))throw new VBError('ByRef user-defined type mismatch',13);cell=ref;}
+        else if(this.recordSchema(param.type,frame.module)){if(lower(ref.type)==='variant'||!recordTypeMatches(value,param.type,this.recordDefinition(param.type,frame.module)?.identity))throw new VBError('ByRef user-defined type mismatch',13);cell=ref;}
         else if(Object.hasOwn(SCALAR_TYPES,lower(declared))&&lower(ref.type)!==lower(declared))throw new VBError('ByRef argument type mismatch',13);
         else if(lower(declared)==='variant'&&scalarType(value)){
           cell=inheritReferenceOwners(ref,new Ref(()=>ref.get(),v=>ref.set(v),'Variant',ref.fixedLength,async()=>storageScalar(await readScalar(ref),'Variant')));
@@ -719,8 +719,8 @@ export class VirtualMachine extends Signal {
           default:throw new VBError('Invalid bytecode instruction '+ins.op,1002);
         }
       }catch(error){
-        reconcile=true;
         if(error instanceof StopExecution||error.debugEvaluationAbort)throw error;
+        reconcile=true;
         if(!(error instanceof VBError))error=new VBError(error.message||String(error),Number.isInteger(error.number)?error.number:5);
         error.source ||= ins.source;error.line ||= ins.line;if(error.erl===undefined)error.erl=frame.erl;this.lastErrorErl=error.erl;this.err.Number=error.number;this.err.Description=error.message;this.err.Source=error.source;this.err.HelpFile=error.helpFile||'';this.err.HelpContext=error.helpContext||0;this.lastError=error;
         const debugResult=await this.debugger.error(error,frame,current,ins);if(debugResult===true)continue;
