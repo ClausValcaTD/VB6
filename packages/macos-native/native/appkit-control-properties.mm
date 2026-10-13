@@ -72,7 +72,7 @@ void MacControl::set(Runtime&rt,const std::string&raw,Value value,bool){
   if(name=="row"||name=="col"){auto n=value.integral();if(n<0||name=="row"&&size_t(n)>=grid.size()||name=="col"&&(grid.empty()||size_t(n)>=grid[0].size()))fail(381);properties[name]=Value::integer(n);return;}
   if(name=="currentx"||name=="currenty"){double n=value.floating();if(name=="currentx")currentX=n;else currentY=n;return;}
   if(nativePictureProperty(name)){setNativePicture(*this,name,std::move(value));return;}
-  if(name=="autosize"){properties[name]=Value::boolean(value.truth());if(value.truth())setNativePicture(*this,"picture",property("picture",Value::object(nullptr)));return;}
+  if(name=="autosize"||name=="stretch"){setNativePictureLayout(*this,name,std::move(value));return;}
   if(name=="mousepointer"){const auto n=value.integral();if(n<0||(n>15&&n!=99))fail(380);properties[name]=Value::integer(n,Type::Integer);refreshNativePictures(*this);return;}
   if(name=="text"||name=="caption"){
     auto next=value.string(),old=property(name,Value::string(u"")).string();properties[name]=Value::string(next);refresh();

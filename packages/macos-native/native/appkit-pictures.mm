@@ -58,13 +58,33 @@ void refreshNativePictures(MacControl& c){
   }
   c.view.needsDisplay=YES;
 }
+namespace {
+std::optional<NSSize> naturalSize(MacControl& c,const std::shared_ptr<MacImage>& image,bool stretch,bool autoSize){
+  if(!image||!image->image||!((c.spec.type=="Image"&&!stretch)||(c.spec.type=="PictureBox"&&autoSize)))return {};
+  const auto size=image->image.size;
+  const double left=c.number("left",0)/15,top=c.number("top",0)/15;
+  if(!std::isfinite(size.width)||!std::isfinite(size.height)||size.width<0||size.height<0||
+      size.width>20000||size.height>20000||!std::isfinite(left)||!std::isfinite(top)||
+      std::abs(left)>20000||std::abs(top)>20000)fail(380,"Picture geometry exceeds native control limits");
+  return size;
+}
+void applyNaturalSize(MacControl& c,const std::optional<NSSize>& size){
+  if(!size)return;
+  c.properties["width"]=Value::real(size->width*15);c.properties["height"]=Value::real(size->height*15);c.applyFrame();
+}
+}
 void setNativePicture(MacControl& c,const std::string& name,Value value){
   auto image=picture(value);checkType(name,image);
-  c.properties[name]=std::move(value);
-  if(name=="picture"&&image&&image->image&&((c.spec.type=="Image"&&!c.flag("stretch",false))||(c.spec.type=="PictureBox"&&c.flag("autosize",false)))){
-    c.properties["width"]=Value::real(image->image.size.width*15);c.properties["height"]=Value::real(image->image.size.height*15);c.applyFrame();
-  }
-  refreshNativePictures(c);
+  // Validate before replacing the old object or geometry. A valid decoded
+  // image may exceed the smaller control-layout budget when AutoSize is used.
+  const auto size=name=="picture"?naturalSize(c,image,c.flag("stretch",false),c.flag("autosize",false)):std::optional<NSSize>{};
+  c.properties[name]=std::move(value);applyNaturalSize(c,size);refreshNativePictures(c);
+}
+void setNativePictureLayout(MacControl& c,const std::string& name,Value value){
+  if(name!="autosize"&&name!="stretch")fail(438);
+  const bool enabled=value.truth();
+  const auto size=naturalSize(c,controlPicture(c,"picture"),name=="stretch"?enabled:c.flag("stretch",false),name=="autosize"?enabled:c.flag("autosize",false));
+  c.properties[name]=Value::boolean(enabled);applyNaturalSize(c,size);refreshNativePictures(c);
 }
 } // namespace vb6
 @implementation VB6ControlDelegate (Pictures)

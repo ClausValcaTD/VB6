@@ -50,6 +50,20 @@ void checkNativePictures(Runtime& rt,MacHost& host,const std::shared_ptr<Instanc
   control->set(rt,"mouseicon",cursor,true);control->set(rt,"mousepointer",Value::integer(99));updateNativeCursor(*control);
   assert(NSEqualPoints(NSCursor.currentCursor.hotSpot,NSMakePoint(3,5))&&control->cursorTracking);
   expectError(380,[&]{control->set(rt,"mousepointer",Value::integer(100));});
+  // No pixel allocation is required to exercise layout rejection: an image
+  // object can be valid storage while its natural size exceeds control limits.
+  auto oversized=Value::object(std::make_shared<MacImage>([[NSImage alloc]initWithSize:NSMakeSize(24000,2)]));
+  control->set(rt,"picture",picture,true);control->set(rt,"stretch",Value::boolean(false));
+  auto priorFrame=control->view.frame;
+  expectError(380,[&]{control->set(rt,"picture",oversized,true);});
+  assert(sameObject(control->get(rt,"picture").asObject(),picture.asObject())&&NSEqualRects(control->view.frame,priorFrame));
+  control->set(rt,"stretch",Value::boolean(true));control->set(rt,"picture",oversized,true);
+  expectError(380,[&]{control->set(rt,"stretch",Value::boolean(false));});
+  assert(control->flag("stretch")&&NSEqualRects(control->view.frame,priorFrame));
+  box->set(rt,"autosize",Value::boolean(false));box->set(rt,"picture",oversized,true);
+  priorFrame=box->view.frame;expectError(380,[&]{box->set(rt,"autosize",Value::boolean(true));});
+  assert(!box->flag("autosize")&&NSEqualRects(box->view.frame,priorFrame));
+  box->set(rt,"picture",picture,true);control->set(rt,"picture",picture,true);
   int32_t oldHandle;{auto temporary=loadNativeImage(host,bitmap());oldHandle=temporary.asObject()->get(rt,"handle").integral();assert(host.handles.find(oldHandle));}
   assert(!host.handles.find(oldHandle)); // dead picture cannot be resolved through a stale handle
   auto malformed=bitmap();malformed.resize(60);expectError(481,[&]{(void)loadNativeImage(host,malformed);});

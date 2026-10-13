@@ -82,6 +82,15 @@ try{
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;
+    // Qualify decoded pixels and real controls against the exact SDK archive
+    // that supplied this template, not only generated image-property getters.
+    const ui=path.join(work,'appkit-resource-controls');
+    const uiSources=(await fs.readdir(path.join(sdk,'tests'))).filter(name=>/^appkit(?:-[a-z-]+)?\.mm$/.test(name)).sort().map(name=>path.join(sdk,'tests',name));
+    await run(compiler,['-std=c++17','-arch','arm64','-isysroot',await run('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-path']),'-mmacosx-version-min=11.0','-fobjc-arc','-I',path.join(sdk,'native'),...uiSources,path.join(work,'cache',runtime.manifest.provenance.nativeRuntimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-o',ui]);
+    await run('/usr/bin/codesign',['--sign','-','--timestamp=none',ui]);
+    const uiOutput=await run(ui,[]);
+    for(const marker of ['APPKIT_PICTURES_OK','APPKIT_CONFORMANCE_OK','APPKIT_EDIT_SELECTION_LIST_OK','APPKIT_RICH_SELECTION_OK'])assert.ok(uiOutput.includes(marker),marker);
+    report.pictureControlsVerified=true;
     for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))],['resources',resourceFormProject(),output=>{markersForResource(output);}]] ){
       const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
       const result=await exportMacOSAOT(p,runtime,options);
