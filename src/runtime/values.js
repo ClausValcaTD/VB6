@@ -349,9 +349,9 @@ export function cloneValue(value,seen=new Map(),depth=0){
 }
 function matchingRecord(target,source){
   if(!recordTypeMatches(source,target.__type,recordIdentity(target))||target.__fields.size!==source.__fields.size)return false;
-  for(const [key,cell]of target.__fields){const next=source.__fields.get(key);if(!next||lower(cell.type)!==lower(next.type)||cell.fixedLength!==next.fixedLength||!!cell.isArray!==!!next.isArray)return false;if(cell.get()?.__fields&&(!next.get()?.__fields||!matchingRecord(cell.get(),next.get())))return false;}return true;
+  for(const [key,cell]of target.__fields){const next=source.__fields.get(key);if(!next||lower(cell.type)!==lower(next.type)||cell.fixedLength!==next.fixedLength||!!cell.isArray!==!!next.isArray)return false;if(lower(cell.type)!=='variant'&&cell.get()?.__fields&&(!next.get()?.__fields||!matchingRecord(cell.get(),next.get())))return false;}return true;
 }
-function commitRecord(target,source){for(const [key,cell]of target.__fields){const next=source.__fields.get(key).get();if(cell.get()?.__fields&&next?.__fields)commitRecord(cell.get(),next);else if(cell.get() instanceof VBArray&&next instanceof VBArray){const array=cell.get();array.bounds=next.bounds;array.data=next.data;array.elementFactory=next.elementFactory;array.fixedLength=next.fixedLength;array.dynamic=next.dynamic;array.scalarData=next.scalarData;array.elementIdentity=next.elementIdentity;}else {cell._value=next;cell._scalar=source.__fields.get(key).getScalar();}}return target;}
+function commitRecord(target,source){for(const [key,cell]of target.__fields){const next=source.__fields.get(key).get();if(cell.get()?.__fields&&next?.__fields&&lower(cell.type)!=='variant')commitRecord(cell.get(),next);else if(cell.isArray&&cell.get() instanceof VBArray&&next instanceof VBArray){const array=cell.get();array.bounds=next.bounds;array.data=next.data;array.elementFactory=next.elementFactory;array.fixedLength=next.fixedLength;array.dynamic=next.dynamic;array.scalarData=next.scalarData;array.elementIdentity=next.elementIdentity;}else {cell._value=next;cell._scalar=source.__fields.get(key).getScalar();}}return target;}
 export function defaultValue(type='Variant') { switch(lower(type)){case 'string':return '';case 'boolean':case 'byte':case 'integer':case 'long':case 'single':case 'double':return 0;case 'currency':return new VBCurrency();case 'date':return new Date(1899,11,30);case 'object':return NOTHING;default:return undefined;} }
 export function coerce(value,type='Variant',fixedLength=null) {
   const original=value;value=unbox(value);type=lower(type);
@@ -375,7 +375,7 @@ export class Cell {
   constructor(type='Variant',value=defaultValue(type),constant=false,fixedLength=null){this.type=type;this.constant=constant;this.fixedLength=fixedLength;this._scalar=storageScalar(value,type,fixedLength);this._value=unbox(this._scalar);}
   get(){return this._value;}
   getScalar(){if(!scalarType(this._value))return this._value;return this._scalar instanceof VBScalar&&Object.is(this._scalar.value,this._value)?this._scalar:storageScalar(this._value,this.type,this.fixedLength);}
-  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);if(this._value instanceof VBArray)assertArrayUnlocked(this._value);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!arrayTypeMatches(next,this.elementType,this.elementIdentity||this._value?.elementIdentity))throw new VBError('Array type mismatch',13);next.dynamic=this._value instanceof VBArray?this._value.dynamic:true;}else if(next instanceof VBArray)next.dynamic=true;if(this._value?.__fields){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
+  set(value){if(this.constant)throw new VBError('Assignment to constant not permitted',500);if(this._value instanceof VBArray)assertArrayUnlocked(this._value);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.isArray){if(!arrayTypeMatches(next,this.elementType,this.elementIdentity||this._value?.elementIdentity))throw new VBError('Array type mismatch',13);next.dynamic=this._value instanceof VBArray?this._value.dynamic:true;}else if(next instanceof VBArray)next.dynamic=true;if(this._value?.__fields&&lower(this.type)!=='variant'){if(!next?.__fields||!matchingRecord(this._value,next))throw new VBError('User-defined type mismatch',13);return commitRecord(this._value,next);}this._value=next;this._scalar=tagged;return this._value;}
 }
 /** Lazily creates As New variables; assigning Nothing resets the factory. */
 export class LazyCell extends Cell {
@@ -395,7 +395,20 @@ export class VBArray {
   get(...indices){return this.elementValue(this.data[this.offset(indices)]);}
   getScalar(...indices){return this.scalarAt(this.offset(indices));}
   scalarAt(i){const tag=this.scalarData?.[i];if(!scalarType(this.data[i]))return this.elementValue(this.data[i]);return tag instanceof VBScalar&&Object.is(tag.value,this.data[i])?tag:storageScalar(this.data[i],this.type,this.fixedLength);}
-  set(indices,value){const offset=this.offset(indices);if(this.data[offset] instanceof VBArray)assertArrayUnlocked(this.data[offset]);const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);if(this.data[offset]?.__fields&&next?.__fields){if(!matchingRecord(this.data[offset],next))throw new VBError('User-defined type mismatch',13);commitRecord(this.data[offset],next);}else {this.data[offset]=next;(this.scalarData||=[])[offset]=tagged;}return unbox(value);}
+  set(indices,value){
+    const offset=this.offset(indices),previous=this.data[offset];
+    if(previous instanceof VBArray)assertArrayUnlocked(previous);
+    // The declared element type, not the last stored value, controls assignment.
+    // Typed records cannot become scalars; Variant elements may change subtype.
+    const typedRecord=(this.elementIdentity||previous?.__fields)&&lower(this.type)!=='variant';
+    if(typedRecord&&!recordTypeMatches(unbox(value),this.type,this.elementIdentity||recordIdentity(previous)))throw new VBError('User-defined type mismatch',13);
+    const tagged=storageScalar(value,this.type,this.fixedLength),next=unbox(tagged);
+    if(typedRecord&&previous?.__fields){
+      if(!matchingRecord(previous,next))throw new VBError('User-defined type mismatch',13);
+      commitRecord(previous,next);
+    }else {this.data[offset]=next;(this.scalarData||=[])[offset]=tagged;}
+    return unbox(value);
+  }
   redim(bounds,preserve=false){
     assertArrayUnlocked(this);
     const normalized=bounds.map(([l,u])=>[bankersRound(numeric(l)),bankersRound(numeric(u))]),old=this.bounds;

@@ -26,6 +26,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 ## Language, runtime and project files
 
 - [Language frontend](LANGUAGE-FRONTEND.md): scanning, declarations and diagnostics.
+- [Circular record dependencies](LANGUAGE-RECORD-RECURSION.md): declaration-cycle diagnostics,
+  iterative graph analysis and cached provider edits.
 - [Array storage, source properties and Like](LANGUAGE-ARRAYS-LIKE.md): binding, ownership,
   matcher bounds, runtime semantics and explicit export limitations.
 - [VB.NET / .NET 10 migration](VBNET-MIGRATION.md): source conversion, ZIP export,
