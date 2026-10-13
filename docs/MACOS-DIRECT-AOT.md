@@ -92,7 +92,7 @@ This completes a direct executable-export path, not universal VB6/Win32/COM comp
 
 `tests/macos-arm64.test.mjs`, `macos-aot.test.mjs` and `macos-aot-package.test.mjs` cover encoding, native compiler output, signatures, tampering, determinism, offline SDK loading, CLI output and cancellation/overwrite boundaries. Structural fixtures are explicitly nonexecutable and are not used as native runtime evidence.
 
-`tools/test-macos-aot.mjs` runs the helper-call oracle with AddressSanitizer/UndefinedBehaviorSanitizer, builds the native SDK on Apple Silicon, then exports and executes conformance, RichText and a real program exceeding both former 2 MiB limits at all four optimization levels. It verifies the generated app signature without re-signing or compiling the project's source. The portable oracle is diagnostic only, not a replacement for ARM64 execution.
+`tools/test-macos-aot.mjs` runs the helper-call oracle with AddressSanitizer/UndefinedBehaviorSanitizer, builds the native SDK on Apple Silicon, then exports and executes conformance, RichText, normal-root cleanup, abrupt End, default-form lifecycle and a real program exceeding both former 2 MiB limits at all four optimization levels. It verifies the generated app signature without re-signing or compiling the project's source. The portable oracle is diagnostic only, not a replacement for ARM64 execution.
 
 `tools/browser-macos-aot-tests.py` uses genuine Web Crypto in Chromium, Firefox and WebKit. Each browser downloads the real application at O0–O3 from HTTP and file origins while offline, compares bytes to Node, and checks manual-save, cancellation and stale-project behavior. `tools/test-macos-browser-artifacts.mjs` runs those exact 24 downloaded archives on Apple Silicon after strict native signature verification. The workflow qualifies native execution on macOS 14, 15 and 26; this matrix does not prove behavior on macOS 11–13. `tools/test-macos-distribution.mjs` exercises actual ad-hoc Hardened Runtime signing, final-archive extraction and native execution without claiming Developer ID or notary-service access. Existing Win32, macOS source/bridge, repository and artifact-fingerprint validation remain separate gates.
 
@@ -105,5 +105,7 @@ node tools/build.mjs --update-ide-manifest
 ```
 
 The embedding tool requires successful native execution and signature verification for the exact runtime bytes plus matching current source hashes and, for growable SDKs, successful large-project execution at every optimization level and native scope-ownership acceptance; a source kit or portable-only report is insufficient. Commit the generated payload and fingerprints, review the diff, and run all exact-head checks.
+
+SDK refresh retains an exact tracked-source archive, executable modes, commit/tree identifiers and checksum before native compilation so interrupted runs are recoverable.
 
 The **Refresh verified macOS runtime** workflow runs on explicit dispatch or pushes to a `maint/macos-runtime-*` branch only. Its read-only native job builds and validates; the publication job can commit only the generated payload with a branch-head lease. It never writes `main`, changes project source, or runs from a pull-request trigger. An automated token commit still needs a reviewed follow-up commit or explicit validation run before merge.
