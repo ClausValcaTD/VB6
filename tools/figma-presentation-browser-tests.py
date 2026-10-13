@@ -49,7 +49,59 @@ class FigmaPresentation(base.FigmaWorkspace):
         }''',probes)
         (REPORT/(label+'.json')).write_text(json.dumps({'expected':expected,'actual':actual,'points':probes,'renderer':stats,'evidence':evidence},indent=2))
         self.assertEqual(stats['active'],backend,'The visual guard must retain the qualified backend')
+        if actual!=expected:
+            self.capture_failed_webgl_frame(probes,label)
         self.assertEqual(actual,expected,'Native DOM and retained paint must publish the same workspace scheme')
+    def capture_failed_webgl_frame(self,probes,label):
+        """Post-failure diagnostics only. The original pixels/verdict are retained.
+        Readback and diagnostic redraws must never qualify a failing screenshot.
+        Compare staged CPU/GPU instances, immediate drawing-buffer pixels and an
+        independent painter before investigating compositor layer invalidation.
+        """
+        try:
+            result=self.page.evaluate(r'''points=>{
+              const r=vb6Studio.rendering,p=r.driver,gl=p?.gl;
+              if(!gl)return {unavailable:'The failed frame is not WebGL2'};
+              const scene=r.retained.scene,glState={attributes:gl.getContextAttributes(),
+                bufferSize:gl.getBufferParameter(gl.ARRAY_BUFFER,gl.BUFFER_SIZE),
+                currentCanvas:p.canvas===r.canvas,version:gl.getParameter(gl.VERSION),
+                viewport:[...gl.getParameter(gl.VIEWPORT)],scissor:gl.isEnabled(gl.SCISSOR_TEST),
+                scissorBox:[...gl.getParameter(gl.SCISSOR_BOX)],colorMask:[...gl.getParameter(gl.COLOR_WRITEMASK)],
+                framebuffer:gl.getParameter(gl.FRAMEBUFFER_BINDING)===null?'default':'custom',
+                error:gl.getError()};
+              const count=scene.commands.length*24,gpu=new Float32Array(count),binding=gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+              gl.bindBuffer(gl.ARRAY_BUFFER,p.buffer);gl.getBufferSubData(gl.ARRAY_BUFFER,0,gpu);gl.bindBuffer(gl.ARRAY_BUFFER,binding);
+              const mismatches=[];let mismatchedFloats=0;
+              for(let i=0;i<count;i++)if(!Object.is(gpu[i],p.data[i])){mismatchedFloats++;if(mismatches.length<32)mismatches.push({index:i,cpu:p.data[i],gpu:gpu[i]});}
+              const read=painter=>{const g=painter.gl,c=painter.canvas;return Object.fromEntries(Object.entries(points).map(([name,point])=>{
+                const pixel=new Uint8Array(4),x=Math.floor(point.x*c.width/scene.width),y=c.height-1-Math.floor(point.y*c.height/scene.height);
+                g.readPixels(x,y,1,1,g.RGBA,g.UNSIGNED_BYTE,pixel);return [name,[...pixel]];
+              }));};
+              const result={glState,instances:{count,mismatchedFloats,mismatches},beforeRedraw:read(p)};
+              r.renderNow({force:true});result.immediatePixels=read(p);result.afterRedrawError=gl.getError();
+              const copy=document.createElement('canvas');copy.width=p.canvas.width;copy.height=p.canvas.height;
+              const ctx=copy.getContext('2d');ctx.drawImage(p.canvas,0,0);
+              result.canvasCopy=Object.fromEntries(Object.entries(points).map(([name,point])=>[name,[...ctx.getImageData(Math.floor(point.x),Math.floor(point.y),1,1).data]]));
+              const canvas=document.createElement('canvas');let separate;
+              try {separate=new p.constructor(canvas);separate.render(scene);result.independentPainter=read(separate);result.independentError=separate.gl.getError();}
+              catch(error){result.independentFailure=String(error);}finally{separate?.dispose();}
+              return result;
+            }''',probes)
+            (REPORT/(label+'-gpu-diagnostic.json')).write_text(json.dumps(result,indent=2))
+            if 'unavailable' in result:return
+            for stage,script in [
+                ('after-readback',None),
+                ('without-containment','vb6Studio.rendering.canvas.style.contain="none"'),
+                ('promoted-layer','vb6Studio.rendering.canvas.style.transform="translateZ(0)"')]:
+                if script:self.page.evaluate(script)
+                self.page.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))')
+                png=self.page.screenshot(path=str(REPORT/(label+'-diagnostic-'+stage+'.png')),caret='hide',timeout=10000)
+                image=Image.open(io.BytesIO(png)).convert('RGB')
+                result[stage]={name:image.getpixel((int(point['x']),int(point['y']))) for name,point in probes.items()}
+                (REPORT/(label+'-gpu-diagnostic.json')).write_text(json.dumps(result,indent=2))
+        except Exception as error:
+            (REPORT/(label+'-gpu-diagnostic-error.txt')).write_text(str(error))
+
     def test_presentation_default_backend_theme_pixels(self):
         # Qualify the actual shipped policy rather than assuming the project's
         # legacy renderer preference selects the IDE-global canvas backend.
