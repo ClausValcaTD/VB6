@@ -1,3 +1,4 @@
+import {assetEdgePan} from './edge-pan.js';
 import {createControl} from '../../project/model.js';
 import {el,clone} from '../../core/core.js';
 import {layoutEnabled,layoutEligible,layoutContainer} from '../../layout/contract.js';
@@ -92,16 +93,17 @@ export function createFigmaAssets(workspace){
   function tick(time){
     frame=0;if(!drag||!latest)return;if(!valid()){cancel();return;}
     const d=drag.designer,r=d.root.getBoundingClientRect(),p=latest,top=doc.elementFromPoint(p.clientX,p.clientY);
-    const elapsed=Math.min(32,Math.max(0,time-(drag.time??(time-16))));drag.time=time;
-    let dx=0,dy=0;
+    let edgeX=0,edgeY=0;
     if(drag.kind!=='keyboard'&&drag.moved&&top&&d.root.contains(top)){
       const speed=(at,min,max)=>at<min+32?Math.max(0,1-(at-min)/32):at>max-32?-Math.max(0,1-(max-at)/32):0;
-      dx=speed(p.clientX,r.left,r.right)*elapsed*.45;dy=speed(p.clientY,r.top,r.bottom)*elapsed*.45;
-      if(dx||dy){workspace.viewports.get(d)?.pan(dx,dy);drag.panX+=dx;drag.panY+=dy;}
+      edgeX=speed(p.clientX,r.left,r.right);edgeY=speed(p.clientY,r.top,r.bottom);
     }
+    drag.edgePan=assetEdgePan(drag.edgePan,edgeX,edgeY,time);
+    const {dx=0,dy=0}=drag.edgePan||{};
+    if(dx||dy){workspace.viewports.get(d)?.pan(dx,dy);drag.panX+=dx;drag.panY+=dy;}
     renderPreview(p);
     // Only an active pointer at the canvas edge needs consecutive frames.
-    if(drag&&(dx||dy))frame=view.requestAnimationFrame(tick);
+    if(drag?.edgePan)frame=view.requestAnimationFrame(tick);
   }
   function move(event){latest={clientX:event.clientX,clientY:event.clientY,altKey:!!event.altKey};if(!frame)frame=view.requestAnimationFrame(tick);}
   function cancel(announce=true){
