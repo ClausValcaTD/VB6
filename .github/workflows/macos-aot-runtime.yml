@@ -18,6 +18,20 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Archive exact SDK source before compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/macos-runtime-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/macos-runtime-source/source.tar.gz" HEAD
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/macos-runtime-source/revision.txt"
+          (cd "$RUNNER_TEMP/macos-runtime-source" && shasum -a 256 source.tar.gz > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-runtime-source-${{ github.sha }}
+          path: ${{ runner.temp }}/macos-runtime-source
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/setup-node@v4
         with:
           node-version: 22
