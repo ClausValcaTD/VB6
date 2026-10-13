@@ -10,6 +10,7 @@ import {figmaIcon} from './figma/icons.js';
 import {installFigmaViewport} from './figma/viewport.js';
 import {createFigmaLayers} from './figma/layers.js';
 import {createFigmaInspector} from './figma/inspector.js';
+import {createFigmaCodePanel} from './figma/code-panel.js';
 import {installFigmaOptions} from './figma/options.js';
 
 export function installFigmaMode(ide){
@@ -19,7 +20,9 @@ export function installFigmaMode(ide){
   let profiles={};try{const text=storage?.getItem(profileKey);if(text&&text.length<200000){const value=JSON.parse(text);if(value&&typeof value==='object'&&!Array.isArray(value))profiles={classic:value.classic,figma:value.figma};}}catch{}
   const workspace={ide,settings:loadFigmaSettings(storage),enabled:false,switching:false,viewports:new Map(),ui:null,frame:0,presentationReady:Promise.resolve()};ide.figmaMode=workspace;
   workspace.publishPresentation=(documents=uiDocuments())=>(workspace.presentationReady=commitWorkspacePresentation(documents,rendererForDocument));
-  workspace.currentDesigner=()=>ide.activeModule?.form&&ide.activeDoc?.view==='form'&&ide.documents.mdi.active===ide.activeDoc.key&&ide.designer?.module===ide.activeModule?ide.designer:null;
+  workspace.contextDesigner=()=>ide.activeModule?.form&&ide.activeDoc&&ide.documents.mdi.active===ide.activeDoc.key&&ide.designer?.module===ide.activeModule?ide.designer:null;
+  workspace.currentDesigner=()=>ide.activeDoc?.view==='form'?workspace.contextDesigner():null;
+  workspace.currentCodeEditor=()=>ide.activeDoc?.view==='code'&&ide.documents.mdi.active===ide.activeDoc.key&&ide.editor?.module===ide.activeModule?ide.editor:null;
   workspace.writable=()=>!!workspace.currentDesigner()&&ide.runState==='design'&&!ide.designer.locked;
   workspace.report=error=>{ide.status('Figma workspace: '+(error.message||error));};
   workspace.safe=fn=>{try{const value=fn();if(value?.catch)value.catch(error=>{workspace.report(error);alertDialog(error.message||String(error),'Figma workspace');});workspace.scheduleSync();return value;}catch(error){workspace.report(error);alertDialog(error.message||String(error),'Figma workspace');workspace.scheduleSync();}};
@@ -73,7 +76,8 @@ export function installFigmaMode(ide){
     const inspector=createFigmaInspector(workspace),search=el('input',{class:'figma-assets-search',type:'search',placeholder:'Search VB6 controls…','aria-label':'Search VB6 controls'});
     ide.toolboxFilter.before(search);search.addEventListener('input',()=>decorateToolbox());search.addEventListener('keydown',e=>e.stopPropagation());
     ide.root.prepend(header);ide.center.append(toolbar);
-    return {header,title,file,design,code,run,stop,undo,redo,toolbar,zoom,buttons,layers,inspector,search,addLayout,left,right};
+    const codePanel=createFigmaCodePanel(workspace);
+    return {header,title,file,design,code,run,stop,undo,redo,toolbar,zoom,buttons,layers,inspector,codePanel,search,addLayout,left,right};
   }
   function decorateToolbox(){
     if(!workspace.enabled||!workspace.ui)return;const query=workspace.ui.search.value.trim().toLocaleLowerCase();
@@ -92,7 +96,10 @@ export function installFigmaMode(ide){
     ui.run.disabled=ide.runState==='running';ui.stop.disabled=ide.runState==='design';ui.undo.disabled=ide.runState!=='design'||!ide.history.undoStack.length;ui.redo.disabled=ide.runState!=='design'||!ide.history.redoStack.length;
     ui.toolbar.hidden=!d;ui.addLayout.disabled=!workspace.writable();ui.left.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='layers':['figma-layers','toolbox','project'].some(id=>!ide.docking.model.windows.get(id)?.hidden)));ui.right.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='design':!ide.docking.model.windows.get('properties')?.hidden));ui.zoom.textContent=Math.round((d?.zoom||1)*100)+'%';
     for(const [type,button]of ui.buttons){button.disabled=!d||(type!=='Hand'&&!workspace.writable());button.setAttribute('aria-pressed',String(type==='Hand'?!!workspace.viewports.get(d)?.hand:d?.tool===type&&!workspace.viewports.get(d)?.hand));}
-    ui.layers.sync();ui.inspector.sync();decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance(false);
+    ui.layers.sync();ui.inspector.sync();ui.codePanel.sync();
+    const propertiesPanel=ide.docking.panels.get('properties'),panelTitle=workspace.currentCodeEditor()?'Code':'Design';
+    if(propertiesPanel&&propertiesPanel.title!==panelTitle){propertiesPanel.title=panelTitle;ide.docking.render();}
+    decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance(false);
     // Publish after all inspector, layer and viewport DOM edits, not before the
     // MutationObserver callback. This also keeps native holes aligned in WebKit.
     return workspace.publishPresentation();
@@ -112,7 +119,7 @@ export function installFigmaMode(ide){
         }else{
           saveProfiles();workspace.enabled=false;delete ide.root.dataset.figmaSidebar;delete ide.root.dataset.figmaWindowMode;
           for(const viewport of [...workspace.viewports.values()])viewport.dispose();workspace.classicViewportStates=null;
-          workspace.ui.inspector.dispose();workspace.ui.layers.dispose();ide.docking.unregister('figma-layers');
+          workspace.ui.codePanel.dispose();workspace.ui.inspector.dispose();workspace.ui.layers.dispose();ide.docking.unregister('figma-layers');
           for(const node of [workspace.ui.header,workspace.ui.toolbar,workspace.ui.search])node.remove();workspace.ui=null;
           for(const [id,title]of workspace.titles||[])if(ide.docking.panels.has(id))ide.docking.panels.get(id).title=title;
           if(profiles.classic)ide.docking.restore(profiles.classic);
@@ -143,6 +150,6 @@ export function installFigmaMode(ide){
   const uninstallOptions=installFigmaOptions(workspace);
   media?.addEventListener?.('change',workspace.appearance);
   ide.root.addEventListener('keydown',event=>{if(workspace.enabled&&event.key==='Escape'&&ide.root.dataset.figmaSidebar){delete ide.root.dataset.figmaSidebar;workspace.ui?.left.focus({preventScroll:true});workspace.scheduleSync();event.preventDefault();event.stopPropagation();}},{capture:true});
-  view.addEventListener('pagehide',event=>{saveProfiles();if(!event.persisted){view.cancelAnimationFrame(workspace.frame);uninstallOptions();media?.removeEventListener?.('change',workspace.appearance);for(const v of [...workspace.viewports.values()])v.dispose({restore:false});workspace.ui?.layers.dispose();}});
+  view.addEventListener('pagehide',event=>{saveProfiles();if(!event.persisted){view.cancelAnimationFrame(workspace.frame);uninstallOptions();media?.removeEventListener?.('change',workspace.appearance);for(const v of [...workspace.viewports.values()])v.dispose({restore:false});workspace.ui?.codePanel.dispose();workspace.ui?.layers.dispose();}});
   workspace.configure(workspace.settings,{persist:false});return workspace;
 }

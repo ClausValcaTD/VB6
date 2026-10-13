@@ -31,7 +31,7 @@ export class PropertyInspector {
     this.grid.addEventListener('keydown',e=>this.keydown(e));this.grid.addEventListener('focus',()=>{this.setActive(this.activeKey);});
   }
   render(){
-    const module=this.ide.activeModule;if(!module){this.grid.replaceChildren();this.object.replaceChildren();return;}
+    const module=this.ide.activeModule;if(!module){this.targets=[];this.rows=new Map();this.fields=new Map();this.grid.replaceChildren();this.object.replaceChildren();return;}
     const form=module.form,selected=form?(this.ide.designer?.selected()||[]):[];this.targets=form?(selected.length?selected:[form]):[module];
     this.object.replaceChildren(el('option',{value:'form'},module.name+' '+(form?form.type:module.kind)),...(form?.controls||[]).map(c=>el('option',{value:c.id},c.name+' '+c.type+(c.properties.Index!==undefined?' ('+c.properties.Index+')':''))));
     if(selected.length>1)this.object.prepend(el('option',{value:'multiple'},'(Multiple Controls)'));this.object.value=selected.length>1?'multiple':selected.length===1?selected[0].id:'form';
@@ -46,16 +46,17 @@ export class PropertyInspector {
     const fontKeys=keys.filter(k=>FONTS.includes(k));keys=keys.filter(k=>!FONTS.includes(k));if(fontKeys.length){keys.push('Font');props.Font='(Font)';}
     keys.sort((a,b)=>a==='Name'?-1:b==='Name'?1:a.localeCompare(b));if(this.mode==='categorized')keys.sort((a,b)=>groupFor(a).localeCompare(groupFor(b))||a.localeCompare(b));
     const scroll=this.grid.scrollTop;this.grid.replaceChildren();this.fields=new Map();this.rows=new Map();let group='';
-    for(const key of keys){
+    if(this.presentation)this.presentation.render({keys,fontKeys,props,target});
+    else for(const key of keys){
       if(this.mode==='categorized'&&groupFor(key)!==group){group=groupFor(key);const g=group;const button=el('button',{class:'property-group',role:'row','aria-expanded':!this.collapsed.has(g),onclick:()=>{this.collapsed.has(g)?this.collapsed.delete(g):this.collapsed.add(g);this.render();}},el('span',{class:'tree-toggle'},themedIndicator(this.collapsed.has(g)?'arrow-right':'arrow-down',this.collapsed.has(g)?'+':'−',8)),group);this.grid.append(button);}
       if(this.mode==='categorized'&&this.collapsed.has(group))continue;
       this.grid.append(this.row(key,props[key],target));
       if(key==='Font'&&this.fontExpanded)for(const fontKey of fontKeys)this.grid.append(this.row(fontKey,props[fontKey],target,true));
     }
-    this.grid.scrollTop=scroll;this.grid.setAttribute('aria-rowcount',String(this.rows.size));if(!this.rows.has(this.activeKey))this.activeKey=this.rows.keys().next().value;this.setActive(this.activeKey);if(this.ide.controlRegistry?.canEditSelection?.(this.targets))this.grid.append(el('button',{class:'property-pages-button',onclick:()=>this.ide.showControlPropertyPages().catch(e=>alertDialog(e.message,'Component Properties'))},'Property Pages…'));this.setReadOnly(this.ide.runState!=='design');
+    this.grid.scrollTop=scroll;this.grid.setAttribute('aria-rowcount',String(this.rows.size));if(!this.rows.has(this.activeKey))this.activeKey=this.rows.keys().next().value;this.setActive(this.activeKey);if(this.ide.controlRegistry?.canEditSelection?.(this.targets))this.grid.append(el('button',{class:'property-pages-button',onclick:()=>this.ide.showControlPropertyPages().catch(e=>alertDialog(e.message,'Component Properties'))},'Property Pages…'));this.setReadOnly(this.ide.runState!=='design'||!!(form&&this.ide.designer?.locked));
   }
   setActive(key){
-    this.activeKey=key;for(const [name,row] of this.rows||[]){const yes=name===key;row.classList.toggle('active',yes);row.setAttribute('aria-selected',String(yes));const field=this.fields.get(name);if(field)field.tabIndex=yes?0:-1;row.querySelectorAll('button').forEach(b=>b.tabIndex=yes?0:-1);}
+    this.activeKey=key;for(const [name,row] of this.rows||[]){const yes=name===key;row.classList.toggle('active',yes);row.setAttribute('aria-selected',String(yes));const field=this.fields.get(name);if(field)field.tabIndex=this.presentation?.tabThrough||yes?0:-1;row.querySelectorAll('button').forEach(b=>b.tabIndex=this.presentation?.tabThrough||yes?0:-1);}
     const row=this.rows?.get(key);if(row)this.grid.setAttribute('aria-activedescendant',row.id);const label=key==='Name'?'(Name)':key||'';this.description.replaceChildren(el('strong',{},label),this.ide.controlRegistry?.property?.(this.targets?.[0]?.type,key)?.description||DESCRIPTIONS[key]||'Returns or sets the '+label+' property of the selected object.');
   }
   row(key,value,target,child=false){
@@ -67,23 +68,29 @@ export class PropertyInspector {
     else field=el('input',{'aria-label':label,value:format(),readonly:propertyReadOnly||isObject||key==='Kind'||key==='Font',spellcheck:false});
     field.dataset.property=key;if(mixed)field.setAttribute('aria-description','Multiple different values');
     if(isColor)wrap.append(el('span',{class:'color-swatch',...(mixed?{}:{'data-application-color':value}),style:{background:mixed?'transparent':colorValue(value,'#c0c0c0',this.applicationTheme())}}));
-    const editFont=async()=>{const values=await fontDialog(target.properties||{});if(values)this.apply(values);};
-    const editText=async()=>{const input=el('textarea',{'aria-label':'Property text',class:'property-text-dialog',value:Array.isArray(value)?value.join('\n'):String(value??'')});const accepted=await modal(label+' - '+target.name,{content:el('div',{},el('p',{},Array.isArray(value)?'Enter one item per line.':'Edit the property value.'),input)});if(accepted)this.ide.setProperty(key,Array.isArray(value)?input.value.split('\n'):input.value);};
-    const palette=()=>showColorPalette(wrap,value,n=>this.ide.setProperty(key,n),()=>this.applicationTheme()||'classic');
-    const editAnchor=async()=>{const result=await anchorDialog(value,'Anchor - '+(this.targets.length>1?'Multiple Controls':target.name));if(result!==null)this.ide.setProperty('Anchor',result);};
+    const project=this.ide.project,module=this.ide.activeModule,targets=[...this.targets];
+    const editable=()=>row.isConnected&&!this.readOnly&&!propertyReadOnly&&
+      this.ide.runState==='design'&&this.ide.project===project&&this.ide.activeModule===module&&
+      !(module?.form&&this.ide.designer?.locked)&&targets.length===this.targets.length&&
+      targets.every((value,index)=>value===this.targets[index]);
+    const commit=value=>{if(editable())this.ide.setProperty(key,value);};
+    const editFont=async()=>{if(!editable())return;const values=await fontDialog(target.properties||{});if(values&&editable())this.apply(values);};
+    const editText=async()=>{if(!editable())return;const input=el('textarea',{'aria-label':'Property text',class:'property-text-dialog',value:Array.isArray(value)?value.join('\n'):String(value??'')});const accepted=await modal(label+' - '+target.name,{content:el('div',{},el('p',{},Array.isArray(value)?'Enter one item per line.':'Edit the property value.'),input)});if(accepted)commit(Array.isArray(value)?input.value.split('\n'):input.value);};
+    const palette=()=>editable()&&showColorPalette(wrap,value,commit,()=>this.applicationTheme()||'classic');
+    const editAnchor=async()=>{if(!editable())return;const result=await anchorDialog(value,'Anchor - '+(this.targets.length>1?'Multiple Controls':target.name));if(result!==null)commit(result);};
     const editor=propertyReadOnly?null:key==='Anchor'?editAnchor:key==='Font'?editFont:isColor?palette:Array.isArray(value)||['Text','Caption','Tag','ToolTipText'].includes(key)?editText:null;
     if(editor){const button=el('button',{class:'property-edit-button',title:'Edit '+label,'aria-label':'Edit '+label,onclick:editor},isColor?icon('arrow-down',12):'…');wrap.append(field,button);field.addEventListener('keydown',e=>{if(e.altKey&&e.key==='ArrowDown'){e.preventDefault();e.stopPropagation();editor();}});}else wrap.append(field);
     field.addEventListener('focus',()=>this.setActive(key));
     row.addEventListener('pointerdown',e=>{this.setActive(key);if(e.target===name){e.preventDefault();this.grid.focus({preventScroll:true});}});
-    name.addEventListener('dblclick',()=>{if(this.readOnly||propertyReadOnly)return;if(choices){const i=choices.findIndex(c=>c.value===Number(value));this.ide.setProperty(key,choices[(i+1)%choices.length].value);}else if(editor)editor();else{field.focus();field.select?.();}});
+    name.addEventListener('dblclick',()=>{if(!editable())return;if(choices){const i=choices.findIndex(c=>c.value===Number(value));commit(choices[(i+1)%choices.length].value);}else if(editor)editor();else{field.focus();field.select?.();}});
     field.addEventListener('keydown',e=>{
       if(e.key==='Enter'){e.preventDefault();e.stopPropagation();field.blur();this.grid.focus({preventScroll:true});}
       if(e.key==='Escape'){e.preventDefault();e.stopPropagation();field.dataset.cancel='1';field.value=choices?String(BOOLS.has(key)?Number(value)?-1:0:value):format();field.blur();delete field.dataset.cancel;this.grid.focus({preventScroll:true});}
     });
     field.addEventListener('change',()=>{
       if(field.dataset.cancel){delete field.dataset.cancel;return;}
-      if(this.readOnly||propertyReadOnly||field.readOnly||mixed&&field.value==='')return;
-      try{let result=key==='Anchor'?parseAnchor(field.value):choices?parsePropertyNumber(field.value):key==='Index'&&!field.value.trim()?undefined:typeof value==='number'||key==='Index'||isColor?parsePropertyNumber(field.value):field.value;if(!mixed&&Object.is(result,value))return;this.ide.setProperty(key,result);}
+      if(!editable()||field.readOnly||mixed&&field.value==='')return;
+      try{let result=key==='Anchor'?parseAnchor(field.value):choices?parsePropertyNumber(field.value):key==='Index'&&!field.value.trim()?undefined:typeof value==='number'||key==='Index'||isColor?parsePropertyNumber(field.value):field.value;if(!mixed&&Object.is(result,value))return;commit(result);}
       catch(error){field.value=choices?String(BOOLS.has(key)?Number(value)?-1:0:value):format();alertDialog(error.message,'Invalid property value');}
     });
     row.append(name,wrap);this.rows.set(key,row);this.fields.set(key,field);return row;
@@ -92,7 +99,7 @@ export class PropertyInspector {
   refreshApplicationColors(){const theme=this.applicationTheme();for(const swatch of this.grid.querySelectorAll('[data-application-color]'))swatch.style.background=colorValue(swatch.dataset.applicationColor,'#c0c0c0',theme);}
   apply(values){if(this.ide.setProperties)this.ide.setProperties(values);else for(const [k,v] of Object.entries(values))this.ide.setProperty(k,v);}
   keydown(e){
-    if(e.defaultPrevented)return;const typing=e.target.matches('input,select,textarea'),keys=[...this.rows.keys()];let index=Math.max(0,keys.indexOf(this.activeKey));
+    if(e.defaultPrevented||this.presentation&&e.target.closest('summary,button'))return;const typing=e.target.matches('input,select,textarea'),keys=[...this.rows.keys()].filter(key=>!this.presentation||this.rows.get(key).getClientRects().length);let index=Math.max(0,keys.indexOf(this.activeKey));
     if(e.ctrlKey&&e.shiftKey&&e.key.length===1){const candidates=keys.map((k,i)=>({k,i})).filter(v=>v.k.toLowerCase().startsWith(e.key.toLowerCase()));index=(candidates.find(v=>v.i>index)||candidates[0])?.i??index;}
     else if(!typing){if(['ArrowDown','ArrowRight'].includes(e.key))index++;else if(['ArrowUp','ArrowLeft'].includes(e.key))index--;else if(e.key==='Home')index=0;else if(e.key==='End')index=keys.length-1;else if(e.key==='PageDown')index+=Math.max(1,Math.floor(this.grid.clientHeight/17)-1);else if(e.key==='PageUp')index-=Math.max(1,Math.floor(this.grid.clientHeight/17)-1);else if(e.key==='Enter'||e.key==='F2'){e.preventDefault();this.fields.get(this.activeKey)?.focus();this.fields.get(this.activeKey)?.select?.();return;}else if(e.key.length===1&&!e.ctrlKey&&!e.altKey){const field=this.fields.get(this.activeKey);if(field&&!field.readOnly&&!field.disabled&&field.tagName==='INPUT'){field.focus();field.select();}return;}else return;}
     else return;
