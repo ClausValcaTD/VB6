@@ -52,6 +52,7 @@
     "snapshot:native": "node tools/native-snapshot.mjs",
     "test:classic-html": "python tools/browser-classic-html.py",
     "test:figma:browser": "python tools/figma-browser-tests.py",
+    "test:figma:editor": "python tools/figma-editor-browser-tests.py",
     "test:layout": "node --test --test-concurrency=4 tests/layout-*.test.mjs",
     "test:layout:browser": "python tools/browser-layout-tests.py",
     "bench:layout": "node tools/bench-layout.mjs && node tools/bench-auto-layout.mjs",
