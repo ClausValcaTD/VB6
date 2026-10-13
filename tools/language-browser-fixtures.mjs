@@ -3,6 +3,38 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Grouped records cannot bypass private declaration identity',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim value As Item
+value.Value = 7
+On Error Resume Next
+Other.Change (value)
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'other',name:'Other',kind:'module',code:`Private Type Item
+Value As Long
+End Type
+Public Sub Change(ByRef value As Item)
+Debug.Print "wrong procedure entered"
+value.Value = 99
+End Sub`}),expected:['13 7'],error:13},
+ {name:'Source event validates record type even without subscribers',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim source As New Emitter, value As Item
+value.Value = 7
+On Error Resume Next
+source.Work value
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'emitter',name:'Emitter',kind:'class',code:`Private Type Item
+Value As Long
+End Type
+Public Event Changed(ByRef value As Item)
+Public Sub Work(ByRef value As Variant)
+RaiseEvent Changed(value)
+End Sub`}),expected:['13 7'],error:13},
  {name:'Qualified record names and ByRef identity',project:withClass(`Sub Main()
 Dim a As Types.Item, b As Item
 a.Value = 7

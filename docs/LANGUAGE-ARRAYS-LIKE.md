@@ -225,3 +225,20 @@ work; no licensed Microsoft VB6 differential certification is claimed.
 Primary references: [MS-VBAL User Defined Type Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a5fe374b-eddf-4808-9e73-477914940dba),
 [Member Access Expressions: type binding](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a),
 and [Entities and Declared Types](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/aaee9b48-168f-4cfe-95d1-14c5cc427b69).
+
+## Record arguments and source-event dispatch
+
+Source calls validate a record rvalue against the formal's declaration identity
+before constructing a ByRef temporary. Parentheses and function results may
+create independent storage, but cannot reinterpret a same-named private record
+from another module. Scalars, Empty, Nothing and object instances cannot become
+record temporaries. Matching qualified/unqualified record values are copied with
+their identity intact and evaluated once.
+
+Source events validate record aliases and temporaries before any source sink,
+source-control enablement hook, host callback or observer is notified, even with
+no subscribers. Mismatches raise Error 13. Array-element argument leases still
+release on rejection, and matching ByRef aliases still propagate field writes.
+The ordinary Cell coercion API and native/COM wire formats are unchanged.
+`tests/language-record-arguments.test.mjs` and shipped-runtime/actual-IDE fixtures
+cover these paths. This is source-runtime conformance, not a licensed VB6 oracle.

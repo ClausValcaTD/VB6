@@ -8,7 +8,7 @@ import {VBWin32Bridge} from './win32.js';
 import {isAutomationObject,automationDefaultName,automationMember,automationReference,automationInvoke,automationEnumerate,automationSubscribe} from './automation.js';
 import {propertyReference} from './property-reference.js';
 import {executeRedim} from './redim.js';
-import {createArrayCell,procedureResult} from './procedure-storage.js';
+import {createArrayCell,createRecordCell,procedureResult} from './procedure-storage.js';
 import {DataContext} from '../data/context.js';
 import {errorDescription} from './error-messages.js';
 import {DebugEvaluationSession} from './debug-evaluation.js';
@@ -163,18 +163,19 @@ export class VirtualMachine extends Signal {
     if(nodes.length!==event.params.length)throw new VBError('Wrong number of arguments to event '+name,450);
     const args=[];
     for(let i=0;i<nodes.length;i++){
-      const param=event.params[i],type=param.storageType||param.type;
+      const param=event.params[i],type=param.storageType||param.type,record=this.recordDefinition(type,instance.module);
       const actual=param.byRef?await this.sourceArgument(nodes[i],frame,leases):await this.evaluateScalar(nodes[i],frame);
       if(Array.isArray(param.bounds)){
         // Arrays are declared element storage, not a scalar of the element type.
         // Keep the original reference so ReDim and element edits copy back to VB.
         const value=actual?.ref?await actual.ref.get():unbox(actual);
-        if(!param.byRef||!actual?.ref||!arrayTypeMatches(value,type,this.recordDefinition(type,frame.module)?.identity))throw new VBError('ByRef array type mismatch',13);
+        if(!param.byRef||!actual?.ref||!arrayTypeMatches(value,type,record?.identity))throw new VBError('ByRef array type mismatch',13);
         args.push(actual);
       }else if(param.byRef&&actual?.ref){
+        if(record&&!recordTypeMatches(await actual.ref.get(),type,record.identity))throw new VBError('ByRef user-defined type mismatch',13);
         if(Object.hasOwn(SCALAR_TYPES,lower(type))&&lower(actual.ref.type)!==lower(type))throw new VBError('ByRef argument type mismatch',13);
         args.push(actual);
-      }else if(param.byRef)args.push({ref:new Cell(type,actual)});
+      }else if(param.byRef)args.push({ref:record?createRecordCell(type,actual,record.identity):new Cell(type,actual)});
       else args.push(storageScalar(actual,type));
     }
     if(this.host.sourceEventEnabled?.(instance,name)===false)return;
@@ -560,7 +561,10 @@ export class VirtualMachine extends Signal {
           // Only storage-backed references may participate in automatic watches.
           if(ref instanceof Cell||typeof ref.debugGetScalar==='function'){cell.debugGetScalar=()=>storageScalar(ref instanceof Cell?ref.getScalar():ref.debugGetScalar(),'Variant');cell.debugGet=()=>unbox(cell.debugGetScalar());}
         }else cell=objectSupports(value,param.type)&&lower(ref.type)!==lower(param.type)?new Ref(async()=>coerce(await ref.get(),param.type),v=>ref.set(v),param.type):ref;
-      }else cell=param.bounds!==null?createArrayCell(declared,actual?.ref?await readScalar(actual.ref):actual,this.recordDefinition(param.type,frame.module)?.identity):new Cell(declared,actual?.ref?await readScalar(actual.ref):actual);
+      }else {
+        const value=actual?.ref?await readScalar(actual.ref):actual,record=this.recordDefinition(param.type,frame.module);
+        cell=param.bounds!==null?createArrayCell(declared,value,record?.identity):record?createRecordCell(declared,value,record.identity):new Cell(declared,value);
+      }
       frame.locals.set(lower(param.name),cell);
     }
     for(const decl of proc.redimDeclarations||[])await this.declare(decl,frame,frame.locals,decl.static||proc.static);
