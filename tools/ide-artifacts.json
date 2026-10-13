@@ -2,12 +2,12 @@
   "version": 2,
   "files": {
     "dist/studio.js": {
-      "bytes": 10196449,
-      "sha256": "4c01042a2b93a31e3b7d33ecc4fa3569b53139d17c00e07f1b70e677a28a0c73"
+      "bytes": 10215410,
+      "sha256": "39ce0cc231beded8fa98dd2ab5903a1583d440bb96274ecf290f2c7c723754b6"
     },
     "dist/VB6-Studio-Web.html": {
-      "bytes": 10570313,
-      "sha256": "9726713f3dc2f69f3c16155f5335f0b731a184c216eacccabb2cc50d47d0226a"
+      "bytes": 10594868,
+      "sha256": "bb07d0a325866af9accd6e8c4ee3e0e16dd2f7a2c3554bb46177dc1296fddcd6"
     },
     "dist/intelligent-ui-sandbox.html": {
       "bytes": 36292,
@@ -82,8 +82,8 @@
       "sha256": "0c316105e0a349a53e43a106b9a32690e3e0b94f4096a91c2d2cb3660f4bde98"
     },
     "dist/studio.css": {
-      "bytes": 373399,
-      "sha256": "3462ebfb4c17f8363b31ba6b14e9ecc876b5a0331b6f4ae6e8be0327823ca819"
+      "bytes": 378993,
+      "sha256": "17210fdf11d312a89b3111c0664ed05d7c7426bf15d01c0e4d0db2c55664edc1"
     },
     "dist/vb6-controls.css": {
       "bytes": 159748,

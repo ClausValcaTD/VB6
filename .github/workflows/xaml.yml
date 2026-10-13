@@ -119,12 +119,16 @@ jobs:
         env:
           VB6_BROWSER: ${{ matrix.browser }}
           VB6_TEST_TRANSPORT: http
-        run: python tools/browser-advanced-editor-tests.py
+        run: |
+          python tools/browser-advanced-editor-tests.py
+          python tools/figma-advanced-editor-browser-tests.py
       - name: Offline HTML with embedded assets and workers
         env:
           VB6_BROWSER: ${{ matrix.browser }}
           VB6_TEST_TRANSPORT: file
-        run: python tools/browser-advanced-editor-tests.py
+        run: |
+          python tools/browser-advanced-editor-tests.py
+          python tools/figma-advanced-editor-browser-tests.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -22,25 +22,25 @@
   grid-template-columns:var(--dock-left,256px) min(1px,var(--dock-gap-left,1px)) minmax(0,1fr) min(1px,var(--dock-gap-right,1px)) var(--dock-right,304px)!important;
   padding:0!important;gap:0!important;background:var(--fg-line)!important;
 }
-:root[data-ide-workspace="figma"] .ide-shell button:not(.designer-scroll *, .runtime-window *),
+:root[data-ide-workspace="figma"] .ide-shell button:not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *),
 :root[data-ide-workspace="figma"] .ide-dialog button,
 :root[data-ide-workspace="figma"] .property-color-popup button {
   font-family:var(--fg-font)!important;color:var(--fg-text);background:var(--fg-panel);border:1px solid transparent;border-radius:5px;box-shadow:none!important;text-shadow:none!important;
 }
-:root[data-ide-workspace="figma"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *, .code-input, .advanced-source-textarea),
+:root[data-ide-workspace="figma"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *, .code-input, .advanced-source-textarea),
 :root[data-ide-workspace="figma"] .ide-dialog :is(input,select,textarea) {
   font:12px/1.4 var(--fg-font);color:var(--fg-text);background:var(--fg-input);border:1px solid transparent;border-radius:5px;box-shadow:none!important;min-height:28px;padding:4px 7px;accent-color:var(--fg-blue);color-scheme:light;
 }
-:root[data-ide-workspace="figma"][data-figma-scheme="dark"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *),
+:root[data-ide-workspace="figma"][data-figma-scheme="dark"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *),
 :root[data-ide-workspace="figma"][data-figma-scheme="dark"] .ide-dialog :is(input,select,textarea) {color-scheme:dark;}
 :root[data-ide-workspace="figma"] .ide-shell :is(input[type="checkbox"],input[type="radio"]):not(.designer-scroll *),
 :root[data-ide-workspace="figma"] .ide-dialog :is(input[type="checkbox"],input[type="radio"]) {min-height:14px;width:14px;height:14px;padding:0;}
-:root[data-ide-workspace="figma"] .ide-shell button:not(:disabled,.designer-scroll *, .runtime-window *):hover,
+:root[data-ide-workspace="figma"] .ide-shell button:not(:disabled,.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *):hover,
 :root[data-ide-workspace="figma"] .ide-dialog button:not(:disabled):hover {background:var(--fg-hover);}
-:root[data-ide-workspace="figma"] .ide-shell :is(button,input,select,textarea):not(.designer-scroll *, .runtime-window *):focus-visible,
+:root[data-ide-workspace="figma"] .ide-shell :is(button,input,select,textarea):not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *):focus-visible,
 :root[data-ide-workspace="figma"] .ide-dialog :is(button,input,select,textarea):focus-visible {outline:2px solid var(--fg-blue)!important;outline-offset:-2px;}
-:root[data-ide-workspace="figma"] .ide-shell button:disabled:not(.designer-scroll *, .runtime-window *) {opacity:.42;cursor:default;}
-:root[data-ide-workspace="figma"] .ide-shell button[aria-pressed="true"]:not(.designer-scroll *, .runtime-window *) {background:var(--fg-selected);color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .ide-shell button:disabled:not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *) {opacity:.42;cursor:default;}
+:root[data-ide-workspace="figma"] .ide-shell button[aria-pressed="true"]:not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *) {background:var(--fg-selected);color:var(--fg-blue);}
 :root[data-ide-workspace="figma"] .ide-shell button[hidden],
 :root[data-ide-workspace="figma"] :is(.figma-canvas-toolbar,.figma-constraint-section,.figma-inspector-section,.figma-property)[hidden] {display:none!important;}
 :root[data-ide-workspace="figma"] .figma-header {grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--fg-panel);border-bottom:1px solid var(--fg-line);min-width:0;z-index:3;}
@@ -66,7 +66,7 @@
 :root[data-ide-workspace="figma"] .dock-tabbar>button {padding:6px 3px 10px!important;border:0!important;border-bottom:2px solid transparent!important;border-radius:0!important;font-size:12px!important;min-height:34px!important;background:transparent!important;color:var(--fg-muted)!important;}
 :root[data-ide-workspace="figma"] .dock-tabbar>button[aria-selected="true"] {border-bottom-color:var(--fg-blue)!important;color:var(--fg-text)!important;font-weight:600;}
 :root[data-ide-workspace="figma"] :is(.dock-zone-left,.dock-zone-right) .managed-panel>.tool-caption {display:none!important;}
-:root[data-ide-workspace="figma"] .tool-caption:not(.designer-scroll *, .runtime-window *) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;font:600 12px var(--fg-font)!important;height:32px!important;min-height:32px!important;padding:6px 10px!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] .tool-caption:not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;font:600 12px var(--fg-font)!important;height:32px!important;min-height:32px!important;padding:6px 10px!important;box-shadow:none!important;}
 :root[data-ide-workspace="figma"] .document-tabs {order:-1;display:flex!important;min-height:34px!important;height:34px!important;gap:0!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;background:var(--fg-panel)!important;padding:0!important;}
 :root[data-ide-workspace="figma"] .document-tab {height:34px!important;min-height:34px!important;border:0!important;border-right:1px solid var(--fg-line)!important;border-radius:0!important;padding:6px 12px!important;color:var(--fg-muted)!important;white-space:nowrap;}
 :root[data-ide-workspace="figma"] .document-tab.active {background:var(--fg-canvas)!important;color:var(--fg-text)!important;box-shadow:inset 0 -2px var(--fg-blue)!important;}
@@ -241,7 +241,7 @@
   :root[data-ide-workspace="figma"] .menubar>button {padding:3px 5px!important;}
 }
 @media(prefers-reduced-motion:reduce) {
-  :root[data-ide-workspace="figma"] .ide-shell *:not(.designer-scroll *, .runtime-window *) {scroll-behavior:auto!important;animation:none!important;transition:none!important;}
+  :root[data-ide-workspace="figma"] .ide-shell *:not(.designer-scroll *, .runtime-window *, .source-input, .xaml-input, .advanced-editor-surface *) {scroll-behavior:auto!important;animation:none!important;transition:none!important;}
 }
 @media(forced-colors:active) {
   :root[data-ide-workspace="figma"] {--fg-panel:Canvas;--fg-canvas:Canvas;--fg-input:Field;--fg-text:CanvasText;--fg-muted:CanvasText;--fg-line:ButtonBorder;--fg-blue:Highlight;--fg-selected:Highlight;--fg-on-blue:HighlightText;}
@@ -258,3 +258,56 @@
 
 /* All canonical menu commands remain in the workspace menu; no classic menu strip. */
 :root[data-ide-workspace="figma"] .ide-shell>.menubar {display:none!important;}
+
+/* SourceEditor uses a transparent native input over syntax text. Its font,
+   padding, selection and caret metrics belong to the editor, not form fields.
+   Optional Monaco/IME surfaces are excluded from generic chrome rules above. */
+:root[data-ide-workspace="figma"] .source-editor {
+  --vb-window:var(--fg-panel);--vb-window-text:var(--fg-text);
+  --vb-face:var(--fg-input);--vb-shadow:var(--fg-line);
+  --vb-keyword:#1750ad;--vb-comment:#39713b;
+}
+:root[data-ide-workspace="figma"][data-figma-scheme="dark"] .source-editor {
+  --vb-keyword:#91b7ff;--vb-comment:#9cc99d;
+}
+:root[data-ide-workspace="figma"] .code-selectors {
+  gap:8px;padding:6px 8px;background:var(--fg-panel);border-bottom:1px solid var(--fg-line);
+}
+:root[data-ide-workspace="figma"] .code-selectors select {min-width:0;flex:1;border:1px solid var(--fg-line);height:28px;}
+:root[data-ide-workspace="figma"] .code-gutter {background:var(--fg-input);color:var(--fg-muted);border-right:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .code-view-buttons {background:var(--fg-panel);border-top:1px solid var(--fg-line);height:28px;min-height:28px;}
+:root[data-ide-workspace="figma"] .code-view-buttons button {height:24px;min-height:24px;padding:3px 7px;}
+:root[data-ide-workspace="figma"] .editor-find {background:var(--fg-panel);border-bottom:1px solid var(--fg-line);padding:6px;gap:5px;}
+:root[data-ide-workspace="figma"] :is(.figma-design-inspector,.figma-code-inspector)[hidden] {display:none!important;}
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-object,
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-tabs {display:none;}
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-grid-wrapper {overflow:visible;}
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-grid {height:auto;max-height:none;}
+:root[data-ide-workspace="figma"] .figma-property-search {padding:10px 0;border-top:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-property-search>input {width:100%;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-property-search-actions {display:flex;align-items:center;gap:4px;padding-top:5px;}
+:root[data-ide-workspace="figma"] .figma-property-search-actions>span {flex:1;}
+:root[data-ide-workspace="figma"] .figma-property-search-actions button {width:26px;height:26px;min-height:26px;padding:2px;}
+:root[data-ide-workspace="figma"] .figma-property-section>summary {font-size:12px;padding:11px 0;}
+:root[data-ide-workspace="figma"] .figma-property-section>summary>span {float:right;}
+:root[data-ide-workspace="figma"] .figma-property-section .property-row {border:0!important;grid-template-columns:minmax(0,42%) minmax(0,58%);gap:5px;margin:4px 0;}
+:root[data-ide-workspace="figma"] .figma-property-section .property-name {overflow:hidden;text-overflow:ellipsis;}
+:root[data-ide-workspace="figma"] .figma-property-section .property-value-editor {background:var(--fg-input);border-radius:5px;overflow:hidden;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-property-section .property-edit-button {flex:none;min-width:24px;width:24px;min-height:26px;}
+:root[data-ide-workspace="figma"] .figma-property-section .color-swatch {flex:none;margin-left:4px;width:16px;height:16px;border:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-code-inspector {display:flex;flex-direction:column;gap:8px;padding:0 14px 16px;min-height:0;}
+:root[data-ide-workspace="figma"] .figma-code-inspector>input {width:100%;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-code-inspector>.figma-section-title {padding-bottom:0;}
+:root[data-ide-workspace="figma"] .figma-code-inspector>.figma-help {margin:0 0 4px;}
+:root[data-ide-workspace="figma"] .figma-code-inspector button {padding:6px;border:1px solid var(--fg-line);min-height:28px;}
+:root[data-ide-workspace="figma"] .figma-code-actions {display:flex;flex-wrap:wrap;gap:5px;}
+:root[data-ide-workspace="figma"] .figma-code-options {display:flex;flex-direction:column;gap:8px;}
+:root[data-ide-workspace="figma"] .figma-code-goto {display:flex;gap:5px;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-code-goto>input {flex:1;min-width:0;width:60px;}
+:root[data-ide-workspace="figma"] .figma-code-outline {position:relative;height:45vh;min-height:160px;max-height:600px;overflow:auto;scrollbar-width:thin;outline-offset:-2px;}
+:root[data-ide-workspace="figma"] .figma-code-outline-content {position:relative;}
+:root[data-ide-workspace="figma"] .figma-code-outline .figma-code-symbol {position:absolute;left:0;right:0;width:100%;height:32px;display:flex;gap:8px;align-items:center;border:0;border-radius:3px;text-align:left;}
+:root[data-ide-workspace="figma"] .figma-code-symbol[aria-selected="true"] {background:var(--fg-selected);color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-code-symbol-name {flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;}
+
+:root[data-ide-workspace="figma"] .figma-property-section .property-edit-button {visibility:visible!important;}
