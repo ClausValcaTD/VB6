@@ -167,7 +167,7 @@ test('authored CreateObject function retains its ordinary native implementation 
 });
 test('the native ADO fixture compiles deterministically with the existing size budget',async()=>{
  const {nativeControlFixtures}=await import('../tools/win32-control-fixtures.mjs');const f=nativeControlFixtures().find(f=>f.project.name==='AotControlAutomation');const original=JSON.stringify(f.project);
- assert.equal(f.checks.length,12);for(const optimization of [0,1,2]){const r=compileWin32(f.project,{optimization});assert.ok(r.bytes.length<100*1024);assert.deepEqual(r.bytes,compileWin32(f.project,{optimization}).bytes);}
+ assert.equal(f.checks.length,13);for(const optimization of [0,1,2]){const r=compileWin32(f.project,{optimization});assert.ok(r.bytes.length<100*1024);assert.deepEqual(r.bytes,compileWin32(f.project,{optimization}).bytes);}
  assert.equal(JSON.stringify(f.project),original);
 });
 test('COM Object promotion preserves the separate borrowed common-control event ABI',()=>{
