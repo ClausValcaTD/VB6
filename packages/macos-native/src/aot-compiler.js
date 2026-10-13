@@ -46,7 +46,7 @@ class DirectLowering extends MacOSLowering {
       case 'literal':case 'currency':case 'date':return this.literal(literalScalar(node));
       case 'empty':return this.literal(undefined);case 'nothing':return this.literal(NOTHING);case 'missing':return this.literal(MISSING);
       case 'group':case 'byval':return e(node.expr);
-      case 'id':return f.call('get',this.n(node.name));case 'with':return f.call('with');case 'new':return f.call('create',this.n(node.name));
+      case 'id':return f.call('get',this.n(node.name));case 'with':return f.call('with',this.n(this.instruction?.withId||''));case 'new':return f.call('create',this.n(node.name));
       case 'member':return f.call('member',e(node.object),this.n(node.name));
       case 'call':{const c=node.callee;if(c.kind==='id')return f.call('call',this.n(c.name),this.arguments(node.args));
         if(c.kind==='member'){const receiver=e(c.object),args=this.arguments(node.args);return f.call('call_member',receiver,this.n(c.name),args);}
@@ -69,14 +69,14 @@ class DirectLowering extends MacOSLowering {
     if(node.kind==='member')return f.call('member_ref',this.expression(node.object),this.n(node.name));
     if(node.kind==='call'){
       if(node.args.length===0&&node.callee.kind==='id'&&this.canReference(node))return this.reference(node.callee);
-      if(node.callee.kind==='member'){const receiver=this.expression(node.callee.object),args=this.arguments(node.args);return f.call('object_ref',receiver,this.n(node.callee.name),args);}
-      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name))return f.call('index_ref',f.call('get',this.n(node.callee.name)),this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));
+      if(node.callee.kind==='member'){const receiver=this.expression(node.callee.object),hold=f.call('retain',receiver),args=this.arguments(node.args),out=f.call('object_ref',receiver,this.n(node.callee.name),args);f.call('release',hold);return out;}
+      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name)){const receiver=f.call('get',this.n(node.callee.name)),hold=f.call('retain',receiver),out=f.call('index_ref',receiver,this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));f.call('release',hold);return out;}
       if(node.callee.kind==='id'&&['get','let','set'].some(a=>this.module.procedures.has(lower(node.callee.name)+':'+a)))return f.call('property_ref',this.n(node.callee.name),this.arguments(node.args));
-      return f.call('index_ref',this.expression(node.callee),this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));
+      const receiver=this.expression(node.callee),hold=f.call('retain',receiver),out=f.call('index_ref',receiver,this.values(node.args.map(a=>a.kind==='named'?a.expr:a),false));f.call('release',hold);return out;
     }
     this.fail('AOT assignment target is not a variable, member or indexed reference','MACA101');
   }
-  arguments(nodes){const args=this.f.call('args');for(let node of nodes){let name='';if(node.kind==='named'){name=node.name;node=node.expr;}const reference=this.canReference(node),value=reference?this.reference(node):this.expression(node);this.f.call(reference?'arg_ref':'arg_value',args,value,this.n(name));}return args;}
+  arguments(nodes){const args=this.f.call('args');for(let node of nodes){let name='';if(node.kind==='named'){name=node.name;node=node.expr;}const reference=this.canReference(node),value=reference?this.reference(node):this.expression(node);this.f.call(reference?'arg_ref':'arg_value',args,value,this.n(name),reference&&node.kind==='call'&&node.callee.kind!=='id'?1:0);}return args;}
   values(nodes,scalar=true){const out=this.f.call('values');for(const node of nodes)this.f.call('value_push',out,this.expression(node),scalar?1:0);return out;}
   references(nodes){const out=this.f.call('refs');for(const node of nodes)this.f.call('ref_push',out,this.reference(node));return out;}
   bounds(decl){const out=this.f.call('bounds');for(const pair of decl.bounds||[])this.f.call('bound_push',out,this.f.call('coerce',pair[0]?this.expression(pair[0]):this.literal(this.module.optionBase),this.n('long')),this.f.call('coerce',this.expression(pair[1]),this.n('long')));return out;}
@@ -111,13 +111,13 @@ class DirectLowering extends MacOSLowering {
       }
       case 'forInit':f.branch(f.call('for_start',n(ins.id),r(parseExpression(ins.name)),s(ins.start),s(ins.end),s(ins.step)),go(ins.target),true);break;
       case 'forNext':f.branch(f.call('for_next',n(ins.id)),go(ins.target));break;
-      case 'eachInit':f.branch(f.call('each_start',n(ins.id),r(parseExpression(ins.name)),e(ins.expr)),go(ins.target),true);break;
+      case 'eachInit':{f.call('each_close',n(ins.id));const iterable=e(ins.expr),hold=f.call('retain',iterable,1),variable=r(ins.variable||parseExpression(ins.name)),out=f.call('each_start',n(ins.id),variable,iterable,ins.target);f.call('release',hold);f.branch(out,go(ins.target),true);break;}
       case 'eachNext':f.branch(f.call('each_next',n(ins.id)),go(ins.target));break;
       case 'redim':for(const d of ins.decls)f.call('redim',f.call('ref',n(d.name)),this.bounds(d),ins.preserve?1:0,n(d.explicitType?d.storageType||d.type:''));break;
       case 'erase':for(const node of ins.exprs)f.call('erase',e(node));break;
-      case 'withPush':f.call('with_push',e(ins.expr));break;
-      case 'withPop':f.call('with_pop',1);break;
-      case 'withUnwind':f.call('with_pop',ins.count);break;
+      case 'withPush':{f.call('with_pop',n(ins.id),0);const ref=this.canReference(ins.expr),source=ref?r(ins.expr):e(ins.expr);f.call('with_push',n(ins.id),source,ins.target,ref?1:0);break;}
+      case 'withPop':f.call('with_pop',n(ins.id),0);break;
+      case 'withUnwind':f.call('with_pop',0,ins.count);break;
       case 'onError':f.call('on_error',n(ins.mode),(ins.target??-1)>>>0);break;
       case 'resume':f.dispatch(f.call('resume',n(ins.mode),(ins.target??-1)>>>0));break;
       case 'gosub':f.call('gosub',index+1);f.jump(go(ins.target));break;

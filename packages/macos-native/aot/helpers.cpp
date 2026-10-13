@@ -1,4 +1,5 @@
 #include "helpers.hpp"
+#include "array-ownership.hpp"
 #include <algorithm>
 using namespace vb6;
 using namespace vb6::aot;
@@ -17,7 +18,7 @@ AOT(literal, return s->put(s->program->literals.at(size_t(a)));)
 AOT(get, return s->put(f.get(s->name(a)));)
 AOT(ref, return s->put(f.ref(s->name(a)));)
 AOT(self, return s->put(Value::object(f.self));)
-AOT(with, return s->put(f.with());)
+AOT(with, return s->put(f.with(s->name(a)));)
 AOT(create, return s->put(f.create(s->name(a)));)
 AOT(member, return s->put(getMember(f.runtime,s->value(a),s->name(b)));)
 AOT(member_ref, return s->put(memberRef(f.runtime,s->value(a),s->name(b)));)
@@ -26,7 +27,7 @@ AOT(object_ref, return s->put(objectReference(f.runtime,s->value(a),s->name(b),s
 AOT(index_ref, return s->put(indexedRef(f.runtime,s->value(a),s->get<std::vector<Value>>(b)));)
 AOT(args, return s->put(Args{});)
 AOT(arg_value, s->get<Args>(a).emplace_back(std::move(s->get<Value>(b)),s->name(c));return a;)
-AOT(arg_ref, s->get<Args>(a).emplace_back(std::move(s->get<Ref>(b)),s->name(c));return a;)
+AOT(arg_ref, s->get<Args>(a).emplace_back(std::move(s->get<Ref>(b)),s->name(c),d!=0);return a;)
 AOT(values, return s->put(std::vector<Value>{});)
 AOT(value_push, s->get<std::vector<Value>>(a).push_back(c?s->scalarValue(b):s->value(b));return a;)
 AOT(refs, return s->put(std::vector<Ref>{});)
@@ -56,12 +57,12 @@ AOT(temp_set, f.temps[s->name(a)]=s->scalarValue(b);return 0;)
 AOT(temp_get, return s->put(f.temps.at(s->name(a)));)
 AOT(for_start, return f.forStart(s->name(a),s->get<Ref>(b),s->scalarValue(c),s->scalarValue(d),s->scalarValue(e))?1:0;)
 AOT(for_next, return f.forNext(s->name(a))?1:0;)
-AOT(each_start, return f.eachStart(s->name(a),s->get<Ref>(b),s->value(c))?1:0;)
+AOT(each_start, return f.eachStart(s->name(a),std::move(s->get<Ref>(b)),s->value(c),int(d))?1:0;)
 AOT(each_next, return f.eachNext(s->name(a))?1:0;)
 AOT(redim, f.redim(s->get<Ref>(a),s->get<Bounds>(b),c!=0,s->name(d));return 0;)
 AOT(erase, s->value(a).asArray()->erase();return 0;)
-AOT(with_push, f.withValues.push_back(s->value(a));return 0;)
-AOT(with_pop, if(f.withValues.size()<a)fail(91);f.withValues.resize(f.withValues.size()-size_t(a));return 0;)
+AOT(with_push, if(d){auto ref=std::move(s->get<Ref>(b));auto value=ref.get();f.pushWith(s->name(a),value,int(c),std::move(ref));}else f.pushWith(s->name(a),s->value(b),int(c));return 0;)
+AOT(with_pop, if(b)f.unwindWith(size_t(b));else f.closeWith(s->name(a));return 0;)
 AOT(on_error, f.onError(s->name(a),int32_t(b));return 0;)
 AOT(resume, f.resume(s->name(a),int32_t(b));return Word(f.pc);)
 AOT(gosub, if(f.gosubs.size()>=f.runtime.maxCallDepth)fail(28);f.gosubs.push_back(int(a));return 0;)
@@ -86,5 +87,8 @@ AOT(string_mid, auto target=s->get<Ref>(a);auto text=s->value(b).string();auto s
 AOT(api, auto v=f.runtime.host->api(f.runtime,s->name(a),f.arguments);s->result=b?coerce(v,s->name(b)):Value{};return 0;)
 AOT(record, auto r=std::make_shared<Record>();r->name=s->name(a);return s->put(Value::record(r));)
 AOT(record_field, auto record=s->value(a).asRecord();auto type=s->name(c);auto prototype=f.runtime.defaultValue(type,&f);auto bounds=s->get<Bounds>(d);auto init=bounds.empty()?prototype:Value::array(std::make_shared<Array>(type,bounds,false,f.runtime.maxArrayElements,size_t(e),[prototype]{return prototype.copy();}));record->order.push_back(lower(s->name(b)));record->fields[lower(s->name(b))]=std::make_shared<Cell>(init,type,size_t(e),false,!bounds.empty());return 0;)
+AOT(retain, return s->put(borrowArrayValue(s->value(a),b!=0));)
+AOT(release, s->get<std::shared_ptr<ArrayBorrow>>(a).reset();return 0;)
+AOT(each_close, f.closeEach(s->name(a));return 0;)
 #undef AOT
 extern "C" Word vb6_aot_exception(Scope*s,Word,Word,Word,Word,Word,Word,Word) noexcept {return s->error?failed:s->redirect;}

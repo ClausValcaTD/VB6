@@ -77,5 +77,8 @@ AOT_DECLARE(string_mid)
 AOT_DECLARE(api)
 AOT_DECLARE(record)
 AOT_DECLARE(record_field)
+AOT_DECLARE(retain)
+AOT_DECLARE(release)
+AOT_DECLARE(each_close)
 AOT_DECLARE(exception)
 #undef AOT_DECLARE
