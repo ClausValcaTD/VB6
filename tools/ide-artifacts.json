@@ -6,8 +6,8 @@
       "sha256": "d64fcebfb2eac67a28b59b1b1c6065825d34b39394e73986a712b7fddd39329c"
     },
     "dist/VB6-Studio-Web.html": {
-      "bytes": 10636820,
-      "sha256": "71d85e48b89e6465c11098e700587b49cc05274b299b6f89469cc42af62e30ca"
+      "bytes": 10637084,
+      "sha256": "39db3e37365ab9eea96590eb7b6e345c5595ed88d78aa137f4c2c103d68e7fb3"
     },
     "dist/intelligent-ui-sandbox.html": {
       "bytes": 36292,
@@ -82,8 +82,8 @@
       "sha256": "0c316105e0a349a53e43a106b9a32690e3e0b94f4096a91c2d2cb3660f4bde98"
     },
     "dist/studio.css": {
-      "bytes": 385289,
-      "sha256": "580c1f1f419e934a61a13e2507a64d8178b8d3145d8d01b5f852207d21d65ccb"
+      "bytes": 385553,
+      "sha256": "30e34e5320910f345830b7c42abdacdac2c19ecd7d1a04dceefd79db31049177"
     },
     "dist/vb6-controls.css": {
       "bytes": 159748,

@@ -54,6 +54,28 @@ class ServiceState(base.ServicesAssets):
         self.assertEqual(self.snapshot(),before);self.done()
 
 
+
+    def test_short_docks_keep_agent_composer_and_mcp_catalog_reachable(self):
+        self.enable();self.page.set_viewport_size({'width':1400,'height':800})
+        self.page.get_by_role('button',name='Code',exact=True).click()
+        self.page.get_by_role('button',name='Agent',exact=True).click()
+        self.page.get_by_role('button',name='MCP',exact=True).click()
+        self.page.get_by_role('tab',name='Capabilities',exact=True).click()
+        for selector in ['.figma-host-content .agent-task','.figma-host-content .mcp-catalog-page']:
+            pane=self.page.locator(selector);rect=pane.bounding_box()
+            self.assertGreater(pane.evaluate('n=>n.scrollHeight-n.clientHeight'),0)
+            self.page.mouse.move(rect['x']+12,rect['y']+12)
+            self.page.mouse.wheel(0,1600)
+            self.page.wait_for_function('selector=>document.querySelector(selector).scrollTop>0',arg=selector)
+        prompt=self.page.get_by_label('Agent task',exact=True)
+        prompt.fill('Draft in a short tool dock')
+        self.assertEqual(prompt.input_value(),'Draft in a short tool dock')
+        self.assertFalse(self.page.evaluate('vb6Studio.mcp.adapter.enabled||vb6Studio.codingAgents.agent.busy'))
+        self.page.screenshot(path=str(base.base.REPORT/'short-tool-docks.png'))
+        self.done()
+
+
+
 def load_tests(loader,standard,pattern):
     return unittest.TestSuite(ServiceState(name) for name in sorted(ServiceState.__dict__) if name.startswith('test_'))
 if __name__=='__main__':unittest.main(verbosity=2)

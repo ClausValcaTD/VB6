@@ -52,3 +52,7 @@
 .figma-asset-announcement {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
 
 :root[data-ide-workspace="figma"] .figma-asset-footprint {border:1px dashed var(--fg-blue);background:color-mix(in srgb,var(--fg-blue) 12%,transparent);}
+
+/* Dock height is independent of viewport width. Keep minimum-sized task and
+   catalog content reachable when a bottom dock shortens the adjacent Agent. */
+:root[data-ide-workspace="figma"] .figma-host-content :is(.agent-task,.mcp-catalog-page) {overflow:auto;}
