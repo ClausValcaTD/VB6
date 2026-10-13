@@ -23,9 +23,9 @@ void main(){
  vec4 c=mode>.5?texture(image,uv)*tint:tint; outputColor=vec4(c.rgb*c.a,c.a);
 }`;
 export class WebGLPainter {
-  constructor(canvas, {onLost = () => {}} = {}) {
+  constructor(canvas, {onLost = () => {}, preserveDrawingBuffer = false} = {}) {
     this.canvas = canvas; this.name = 'webgl2'; this.textures = new Map(); this.stats = {frames: 0, drawCalls: 0, uploadedBytes: 0, bufferAllocations: 0, geometryPacks: 0, instanceUploads: 0};
-    const context = acquireWebGLContext(canvas), gl = this.gl = context.gl;
+    const context = acquireWebGLContext(canvas, {preserveDrawingBuffer}), gl = this.gl = context.gl;
     this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     this.lost = event => { event.preventDefault(); if (!this.disposed) onLost('WebGL2 context lost'); }; canvas.addEventListener('webglcontextlost', this.lost);
     const shader = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); gl.deleteShader(s); throw new Error(log); } return s; };

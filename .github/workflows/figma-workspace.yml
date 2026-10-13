@@ -46,6 +46,7 @@ jobs:
           mkdir -p "reports/figma-workspace/${VB6_BROWSER}/http"
           python tools/figma-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/http/acceptance.log"
           python tools/figma-presentation-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/http/presentation.log"
+          python tools/figma-retained-webgl-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/http/retained-webgl.log"
           python tools/figma-navigation-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/http/navigation.log"
       - name: Standalone file workspace and persistence
         env:
@@ -56,6 +57,7 @@ jobs:
           mkdir -p "reports/figma-workspace/${VB6_BROWSER}/file"
           python tools/figma-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/file/acceptance.log"
           python tools/figma-presentation-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/file/presentation.log"
+          python tools/figma-retained-webgl-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/file/retained-webgl.log"
           python tools/figma-navigation-browser-tests.py 2>&1 | tee "reports/figma-workspace/${VB6_BROWSER}/file/navigation.log"
       - name: Classic designer auto-layout regression
         env:
