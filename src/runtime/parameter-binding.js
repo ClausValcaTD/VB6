@@ -1,4 +1,4 @@
-import {Cell,Ref,VBArray,SCALAR_TYPES,NOTHING,unbox,coerce,scalarType,storageScalar,readScalar,arrayTypeMatches,recordTypeMatches} from './values.js';
+import {Cell,LazyCell,Ref,VBArray,SCALAR_TYPES,NOTHING,unbox,coerce,scalarType,storageScalar,readScalar,arrayTypeMatches,recordTypeMatches} from './values.js';
 import {inheritReferenceOwners} from './array-lifetime.js';
 import {VBError} from '../language/errors.js';
 const lower=value=>String(value).toLowerCase();
@@ -29,23 +29,32 @@ export function variantParameterReference(ref) {
 export async function bindReferenceParameter(vm,param,ref,module) {
   const type=param.storageType||param.type,key=lower(type);
   if(key==='variant'&&!Array.isArray(param.bounds))return {cell:variantParameterReference(ref)};
-  const value=await ref.get(),record=vm.recordDefinition(type,module);
+  // Scalar aliases are defined by their declared type, not their current
+  // value. Do not execute a getter or resolve project records to bind them.
+  if(!Array.isArray(param.bounds)&&Object.hasOwn(SCALAR_TYPES,key)){
+    if(lower(ref.type)!==key)throw new VBError('ByRef argument type mismatch',13);
+    return {cell:ref};
+  }
+  const record=vm.recordDefinition(type,module);
   if(Array.isArray(param.bounds)){
+    const value=await ref.get();
     if(!arrayTypeMatches(value,type,record?.identity))throw new VBError('ByRef array type mismatch',13);
     return {cell:ref};
   }
   if(record){
-    if(lower(ref.type)==='variant'||!recordTypeMatches(value,type,record.identity))throw new VBError('ByRef user-defined type mismatch',13);
-    return {cell:ref};
-  }
-  if(Object.hasOwn(SCALAR_TYPES,key)){
-    if(lower(ref.type)!==key)throw new VBError('ByRef argument type mismatch',13);
+    if(lower(ref.type)==='variant'||!recordTypeMatches(await ref.get(),type,record.identity))throw new VBError('ByRef user-defined type mismatch',13);
     return {cell:ref};
   }
   // Remaining named types are object types owned by their source/host adapter.
   // Check both the argument's declared category and its value, including Nothing.
   const sourceType=lower(ref.type);
-  if(sourceType==='variant'||Object.hasOwn(SCALAR_TYPES,sourceType)||ref.isArray||value instanceof VBArray||value?.__fields)throw new VBError('ByRef object type mismatch',13);
+  if(sourceType==='variant'||Object.hasOwn(SCALAR_TYPES,sourceType)||ref.isArray)throw new VBError('ByRef object type mismatch',13);
+  // A typed As New cell is a variable, not a value expression. Same-type
+  // binding must not run Class_Initialize before the callee first reads it.
+  // Other adapters still undergo value validation below.
+  if(sourceType===key&&ref instanceof LazyCell)return {cell:ref};
+  const value=await ref.get();
+  if(value instanceof VBArray||value?.__fields)throw new VBError('ByRef object type mismatch',13);
   if(value!==NOTHING)coerce(value,'Object');
   const checked=coerce(value,type);
   if(sourceType===key)return {cell:ref};
