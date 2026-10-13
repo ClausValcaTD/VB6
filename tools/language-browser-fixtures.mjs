@@ -3,6 +3,158 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Grouped records cannot bypass private declaration identity',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim value As Item
+value.Value = 7
+On Error Resume Next
+Other.Change (value)
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'other',name:'Other',kind:'module',code:`Private Type Item
+Value As Long
+End Type
+Public Sub Change(ByRef value As Item)
+Debug.Print "wrong procedure entered"
+value.Value = 99
+End Sub`}),expected:['13 7'],error:13},
+ {name:'Source event validates record type even without subscribers',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim source As New Emitter, value As Item
+value.Value = 7
+On Error Resume Next
+source.Work value
+Debug.Print Err.Number, value.Value
+End Sub`,{id:'emitter',name:'Emitter',kind:'class',code:`Private Type Item
+Value As Long
+End Type
+Public Event Changed(ByRef value As Item)
+Public Sub Work(ByRef value As Variant)
+RaiseEvent Changed(value)
+End Sub`}),expected:['13 7'],error:13},
+ {name:'Qualified record names and ByRef identity',project:withClass(`Sub Main()
+Dim a As Types.Item, b As Item
+a.Value = 7
+b = a
+Change b
+Debug.Print a.Value, b.Value, TypeName(b)
+End Sub
+Sub Change(ByRef a As Types.Item)
+a.Value = 9
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['7 9 Item'],error:null},
+ {name:'Private records are rejected before Run',project:withClass(`Sub Main()
+Dim a As Types.Item
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Private Type Item\nValue As Long\nEnd Type'}),diagnostics:[{source:'M',line:2,number:1002,message:'not accessible'}]},
+ {name:'Record As New is rejected before Run',project:withClass(`Sub Main()
+Dim a As New Types.Item
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),diagnostics:[{source:'M',line:2,number:1002,message:'requires a class'}]},
+ {name:'Distinct private record values cannot overwrite matching-shaped storage',project:withClass(`Private Type Item
+Value As Long
+End Type
+Sub Main()
+Dim a As Item
+a.Value = 5
+On Error Resume Next
+a = Types.MakeItem()
+Debug.Print Err.Number, a.Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Private Type Item
+Value As Long
+End Type
+Public Function MakeItem() As Variant
+Dim a As Item
+a.Value = 9
+MakeItem = a
+End Function`}),expected:['13 5'],error:13},
+ {name:'Nested record type resolves in the provider module',project:withClass(`Private Type Detail
+Wrong As String
+End Type
+Sub Main()
+Dim a As Envelope
+a.Data(0).Value = 17
+Debug.Print a.Data(0).Value, a.Data(1).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Private Type Detail
+Value As Long
+End Type
+Public Type Envelope
+Data(1) As Detail
+End Type`}),expected:['17 0'],error:null},
+ {name:'Qualified record arrays retain identity through file IO and Preserve',project:withClass(`Sub Main()
+Dim a() As Types.Item, b() As Item
+ReDim a(1 To 2)
+a(2).Value = 29
+Open "items.dat" For Random As #1 Len = 18
+Put #1, 1, a
+Get #1, 1, b
+Close
+ReDim Preserve b(1 To 3) As Types.Item
+Debug.Print b(2).Value, b(3).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['29 0'],error:null},
+ {name:'Typed record array results retain qualified element metadata',project:withClass(`Function MakeItems() As Types.Item()
+Dim a(1) As Item
+a(0).Value = 31
+MakeItems = a
+End Function
+Sub Main()
+Dim a() As Item
+a = MakeItems()
+ReDim Preserve a(3)
+Debug.Print a(0).Value, a(3).Value
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Public Type Item\nValue As Long\nEnd Type'}),expected:['31 0'],error:null},
+ {name:'Compile rejection: variable-sized fixed array',project:project(`Sub Main()
+Dim size As Long
+Dim a(size) As Long
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:3,number:1002,message:'Constant expression required'}]},
+ {name:'Compile rejection: reversed fixed bounds',project:project(`Sub Main()
+Dim a(3 To 1) As Long
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:2,number:1002,message:'lower bound'}]},
+ {name:'Compile rejection: undeclared record field bound',project:withClass(`Sub Main()
+Debug.Print "must not run"
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Type R\nValues(UnknownSize) As Long\nEnd Type'}),diagnostics:[{source:'Types',line:2,number:1002,message:'not defined'}]},
+ {name:'Fixed dimensions use Long rounding and forward local constants',project:project(`Option Base 1
+Sub Main()
+Dim a(-2.5 To Upper) As Long
+Const Upper = Later + 1
+Const Later = 3
+Debug.Print LBound(a), UBound(a)
+End Sub`),expected:['-2 4'],error:null},
+ {name:'Imported record bounds use the declaration module not the caller',project:withClass(`Option Base 0
+Private Const Size = 20
+Sub Main()
+Const Size = 30
+Dim r As RecordType
+Debug.Print LBound(r.Values), UBound(r.Values)
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Option Base 1
+Private Const Size = 4
+Public Type RecordType
+Values(Size) As Long
+End Type`}),expected:['1 4'],error:null},
+ {name:'Fixed arrays retain per-call and Static storage ownership',project:project(`Sub Main()
+Work
+Work
+End Sub
+Sub Work()
+Const Size = 2
+Dim a(Size) As Long
+Static b(Size) As Long
+a(0) = a(0) + 1
+b(0) = b(0) + 1
+Debug.Print a(0), b(0), UBound(a)
+End Sub`),expected:['1 1 2','1 2 2'],error:null},
+ {name:'ReDim keeps runtime bound side effects',project:project(`Dim calls As Long
+Function Size() As Long
+calls = calls + 1
+Size = 3
+End Function
+Sub Main()
+Dim a() As Long
+ReDim a(1 To Size())
+Debug.Print LBound(a), UBound(a), calls
+End Sub`),expected:['1 3 1'],error:null},
  {name:'With record storage and Exit Do cleanup',project:project(`Private Type Item
 Value As Long
 End Type

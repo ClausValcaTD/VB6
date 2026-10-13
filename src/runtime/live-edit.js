@@ -4,7 +4,7 @@ import {VBError} from '../language/lexer.js';
 const json=value=>JSON.stringify(value,(_,v)=>v instanceof Map?[...v]:v);
 const executionSettings=settings=>{const {errorTrapping,...rest}=settings||{};return rest;};
 const signature=p=>({name:p.name,kind:p.kind,scope:p.scope,accessor:p.accessor,static:p.static,params:p.params,returnType:p.returnType,returnArray:!!p.returnArray});
-const moduleShape=m=>({kind:m.kind,interfaces:m.interfaces,defaultTypes:m.defaultTypes,defaultMember:m.defaultMember,declarations:m.declarations,types:m.types,events:m.events,enums:m.enums,form:m.form,optionExplicit:m.optionExplicit,optionBase:m.optionBase,optionCompare:m.optionCompare});
+const moduleShape=m=>({kind:m.kind,interfaces:m.interfaces,defaultTypes:m.defaultTypes,defaultMember:m.defaultMember,declarations:m.declarations,types:m.types,typeScopes:m.typeScopes,events:m.events,enums:m.enums,form:m.form,optionExplicit:m.optionExplicit,optionBase:m.optionBase,optionCompare:m.optionCompare});
 function instructionShape(ins){
   const {line,column,endColumn,source,procedure,sequencePoint,...rest}=ins;
   if(['assign','expr','print','assert','graphics','filePrint','fileInput','fileRecord','fileSeek','fileCopy','fileRename'].includes(ins.op))return {op:ins.op};

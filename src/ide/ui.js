@@ -1,3 +1,4 @@
+import {applyModalContributions} from './modal-contributions.js';
 import {uiDocument,uiDocuments} from '../core/window-context.js';
 import { el } from '../core/core.js';
 
@@ -13,6 +14,8 @@ export function showMenu(items,...args){
 
 let dialogSequence=0;
 export function modal(title,{width=480,content,buttons=[{label:'OK',value:true,primary:true},{label:'Cancel',value:false}],onReady,nativeModal=false}={}) {
+  buttons=buttons.map(button=>({...button}));
+  applyModalContributions(title,{content,buttons});
   return new Promise(resolve=>{
     closeMenu(false);
     const document=uiDocument();
@@ -84,6 +87,6 @@ export function resizeHandle(node,axis,callback,{label='Resize pane',value,min=0
 export function tabbedPages(pages,{label='Options',selected=pages[0]?.id,onSelect}={}){
   const root=el('div',{class:'classic-tabs'}),bar=el('div',{class:'dialog-tabs',role:'tablist','aria-label':label}),panels=el('div',{class:'classic-tab-pages'}),buttons=[];
   const select=id=>{pages.forEach((p,i)=>{const yes=p.id===id;buttons[i].setAttribute('aria-selected',String(yes));buttons[i].tabIndex=yes?0:-1;buttons[i].classList.toggle('active',yes);p.node.hidden=!yes;});onSelect?.(id);};
-  pages.forEach((p,i)=>{const id='tab-'+(++dialogSequence),button=el('button',{type:'button',role:'tab',id,'aria-controls':id+'-panel',onclick:()=>select(p.id)},p.label);p.node.id=id+'-panel';p.node.setAttribute('role','tabpanel');p.node.setAttribute('aria-labelledby',id);bar.append(button);buttons.push(button);panels.append(p.node);button.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const index=e.key==='Home'?0:e.key==='End'?pages.length-1:(i+(e.key==='ArrowLeft'?-1:1)+pages.length)%pages.length;select(pages[index].id);buttons[index].focus();}});});
+  pages.forEach((p,i)=>{const id='tab-'+(++dialogSequence),button=el('button',{type:'button',role:'tab',id,'aria-controls':id+'-panel',onclick:()=>select(p.id)},p.label);p.node.id=id+'-panel';p.node.dataset.tabPage=p.id;p.node.setAttribute('role','tabpanel');p.node.setAttribute('aria-labelledby',id);bar.append(button);buttons.push(button);panels.append(p.node);button.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)){e.preventDefault();const index=e.key==='Home'?0:e.key==='End'?pages.length-1:(i+(e.key==='ArrowLeft'?-1:1)+pages.length)%pages.length;select(pages[index].id);buttons[index].focus();}});});
   root.append(bar,panels);select(selected);root.select=select;return root;
 }

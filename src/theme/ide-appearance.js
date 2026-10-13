@@ -6,7 +6,7 @@ export const OPTIONAL_IDE_THEMES = PLATFORM_THEMES;
 const freeze = Object.freeze;
 export const IDE_THEMES = freeze({...THEMES,...OPTIONAL_IDE_THEMES});
 export const IDE_THEME_ATTRIBUTES = freeze(['data-vb-theme','data-ide-theme','data-ide-theme-family',
-  'data-ide-theme-scheme','data-ide-reduce-transparency','data-ide-reduce-motion']);
+  'data-ide-theme-scheme','data-ide-reduce-transparency','data-ide-reduce-motion','data-ide-workspace','data-figma-scheme']);
 export function ideThemeId(value) {
   return themeId(value);
 }

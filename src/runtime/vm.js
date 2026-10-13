@@ -1,12 +1,14 @@
+import {RecordTypeIndex} from '../language/record-resolution.js';
+import {createRuntimeArray,createRuntimeRecord} from './record-storage.js';
 import {pushWithScope,popWithScope,unwindWithScopes,closeWithScopes,reconcileWithScopes,withValue} from './with-lifetime.js';
 import {ArrayLeaseScope,inheritArrayOwners,inheritReferenceOwners,closeArrayEnumeration,closeArrayEnumerations,reconcileArrayEnumerations} from './array-lifetime.js';
-import {VBScalar,SCALAR_TYPES,recordField,printScalar,unbox,tagScalar,scalarType,storageScalar,readScalar,literalScalar,signedLiteralScalar} from './values.js';
+import {VBScalar,SCALAR_TYPES,recordField,recordTypeMatches,arrayTypeMatches,printScalar,unbox,tagScalar,scalarType,storageScalar,readScalar,literalScalar,signedLiteralScalar} from './values.js';
 import {RuntimeDebugger,StopExecution,isSequencePoint,statementIndex,immediateStatements} from './debug-control.js';
 import {VBWin32Bridge} from './win32.js';
 import {isAutomationObject,automationDefaultName,automationMember,automationReference,automationInvoke,automationEnumerate,automationSubscribe} from './automation.js';
 import {propertyReference} from './property-reference.js';
 import {executeRedim} from './redim.js';
-import {createArrayCell,procedureResult} from './procedure-storage.js';
+import {createArrayCell,createRecordCell,procedureResult} from './procedure-storage.js';
 import {DataContext} from '../data/context.js';
 import {errorDescription} from './error-messages.js';
 import {DebugEvaluationSession} from './debug-evaluation.js';
@@ -15,12 +17,12 @@ import {defaultIdentifierType} from '../language/default-types.js';
 import {DebugInspector} from './debug-inspector.js';
 import {planLiveEdit,nextStatementIndex} from './live-edit.js';
 import {planVersionedEdit} from './versioned-edit.js';
-import {encodeVariable,decodeVariable,makeRecord} from './binary-codec.js';
+import {encodeVariable,decodeVariable} from './binary-codec.js';
 import { Signal, lower, VERSION } from '../core/core.js';
 import { VBError, splitTop, tokenize } from '../language/lexer.js';
 import { parseExpression, parseCall } from '../language/expression.js';
 import { compileProject } from '../language/compiler.js';
-import { NOTHING, MISSING, objectIdentity, objectSupports, VBErrorValue, LazyCell, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency, VBDecimal, cloneValue, coerce, defaultValue, numeric, truth, vbString, unary, binary, describe } from './values.js';
+import { NOTHING, MISSING, objectIdentity, objectSupports, VBErrorValue, LazyCell, Cell, Ref, VBArray, VBCollection, VBDictionary, VBCurrency, VBDecimal, coerce, defaultValue, numeric, truth, vbString, unary, binary, describe } from './values.js';
 import { VirtualFileSystem } from './filesystem.js';
 import { createLibrary, MemoryRecordset } from './library.js';
 
@@ -30,7 +32,7 @@ export class VBInstance {
 }
 export class VirtualMachine extends Signal {
   constructor(program,host={},options={}) {
-    super();this.program=program.modules instanceof Map?program:compileProject(program);this.host=host;this.options={instructionLimit:5000000,sliceMilliseconds:8,maxCallDepth:256,debuggerEnabled:false,errorTrapping:'unhandled',...options};
+    super();this.program=program.modules instanceof Map?program:compileProject(program);this.recordTypes=new RecordTypeIndex(this.program.modules);this.host=host;this.options={instructionLimit:5000000,sliceMilliseconds:8,maxCallDepth:256,debuggerEnabled:false,errorTrapping:'unhandled',...options};
     this.fs=host.fs||new VirtualFileSystem();this.settings=host.settings||{};this.instances=new Map();this.formInstances=new Set();this.stack=[];this.library=createLibrary(this);this.state='ready';this.instructionCount=0;this.lastYield=0;this.breakpoints=new Map();this.stepMode=null;this.pauseRequested=false;this.pauseResolver=null;this.currentFrame=null;this.eventQueue=[];this.processing=false;this.staticCells=new Map();this.eventSinks=new WeakMap();this.lastError=null;
     const vm=this;this.lastErrorErl=0;
     this.err={Number:0,Description:'',Source:'',HelpFile:'',HelpContext:0,LastDLLError:0,
@@ -118,15 +120,16 @@ export class VirtualMachine extends Signal {
     const staticKey=lower(frame.proc.name)+':'+(frame.proc.accessor||'')+'.'+key,staticCells=frame.instance.staticCells;
     if(staticFlag&&staticCells.has(staticKey)){target.set(key,staticCells.get(staticKey));return target.get(key);}
     const type=decl.storageType||decl.constantType||decl.type;let value;
-    if(decl.bounds!==null&&decl.bounds!==undefined){const bounds=await this.evalBounds(decl.bounds,frame);value=await this.createArray(bounds,type,frame,decl.fixedLength);value.dynamic=!bounds.length;}
+    if(decl.bounds!==null&&decl.bounds!==undefined){const bounds=decl.boundValues||await this.evalBounds(decl.bounds,frame);value=await this.createArray(bounds,type,frame,decl.fixedLength);value.dynamic=!bounds.length;}
     else if(decl.autoNew){const cell=new LazyCell(decl.type,()=>this.createObject(decl.type,frame));cell.scope=decl.scope;target.set(key,cell);if(staticFlag)staticCells.set(staticKey,cell);return cell;}
     else if(this.recordSchema(type,frame.module))value=await this.createRecord(type,frame);
     else value=decl.constant?(frame.proc.constantScalars?.has(key)?frame.proc.constantScalars.get(key):frame.module.constantScalars?.get(key)??frame.module.constantBindings.get(key)):decl.initial?await this.evaluateScalar(decl.initial,frame):this.program.modules.has(lower(decl.type))||this.data.isObjectType(decl.type)?NOTHING:defaultValue(type);
-    const cell=new Cell(decl.bounds!==null&&decl.bounds!==undefined?'Variant':type,value,decl.constant,decl.fixedLength);cell.scope=decl.scope;cell.isArray=decl.bounds!==null&&decl.bounds!==undefined;cell.elementType=type;target.set(key,cell);if(decl.withEvents)this.bindEventCell(cell,frame.instance,decl.name);if(staticFlag)staticCells.set(staticKey,cell);return cell;
+    const cell=new Cell(decl.bounds!==null&&decl.bounds!==undefined?'Variant':type,value,decl.constant,decl.fixedLength);cell.scope=decl.scope;cell.isArray=decl.bounds!==null&&decl.bounds!==undefined;cell.elementType=type;cell.elementIdentity=value?.elementIdentity;target.set(key,cell);if(decl.withEvents)this.bindEventCell(cell,frame.instance,decl.name);if(staticFlag)staticCells.set(staticKey,cell);return cell;
   }
-  recordSchema(name,module){const local=Object.entries(module.types).find(([key])=>lower(key)===lower(name));if(local)return local[1];for(const candidate of this.program.modules.values()){const match=Object.entries(candidate.types).find(([key])=>lower(key)===lower(name));if(match)return match[1];}return null;}
-  async createArray(bounds,type,frame,fixedLength=null,depth=0){const record=this.recordSchema(type,frame.module)?await this.createRecord(type,frame,depth+1):null;const object=this.program.modules.get(lower(type))?.kind==='class'||this.program.modules.get(lower(type))?.form||this.data.isObjectType(type)||['collection','dictionary','scripting.dictionary'].includes(lower(type));return new VBArray(bounds,type,record?()=>cloneValue(record):object?()=>NOTHING:null,fixedLength);}
-  async createRecord(name,frame,depth=0){if(depth>32)throw new VBError('Recursive user-defined type',1002);const fields=new Map();for(const member of this.recordSchema(name,frame.module)||[]){const type=member.storageType||member.type;let value;if(member.bounds!==null){value=await this.createArray(await this.evalBounds(member.bounds,frame),type,frame,member.fixedLength,depth+1);value.dynamic=!member.bounds.length;}else if(this.recordSchema(type,frame.module))value=await this.createRecord(type,frame,depth+1);else value=member.initial?await this.evaluateScalar(member.initial,frame):defaultValue(type);const cell=new Cell(member.bounds!==null?'Variant':type,value,false,member.fixedLength);cell.isArray=member.bounds!==null;cell.elementType=type;fields.set(member.name,cell);}return makeRecord(name,fields);}
+  recordDefinition(name,module){return this.recordTypes.resolve(name,module);}
+  recordSchema(name,module){return this.recordDefinition(name,module)?.fields||null;}
+  createArray(bounds,type,frame,fixedLength=null,depth=0){return createRuntimeArray(this,bounds,type,frame,fixedLength,depth);}
+  createRecord(name,frame,depth=0){return createRuntimeRecord(this,name,frame,depth);}
   // Event connections follow assignment order; replacing a reference detaches the old source.
   bindEventCell(cell,owner,prefix){
     const sink={owner,prefix},set=cell.set.bind(cell);let source=null,unsubscribe=null;
@@ -160,18 +163,19 @@ export class VirtualMachine extends Signal {
     if(nodes.length!==event.params.length)throw new VBError('Wrong number of arguments to event '+name,450);
     const args=[];
     for(let i=0;i<nodes.length;i++){
-      const param=event.params[i],type=param.storageType||param.type;
+      const param=event.params[i],type=param.storageType||param.type,record=this.recordDefinition(type,instance.module);
       const actual=param.byRef?await this.sourceArgument(nodes[i],frame,leases):await this.evaluateScalar(nodes[i],frame);
       if(Array.isArray(param.bounds)){
         // Arrays are declared element storage, not a scalar of the element type.
         // Keep the original reference so ReDim and element edits copy back to VB.
         const value=actual?.ref?await actual.ref.get():unbox(actual);
-        if(!param.byRef||!actual?.ref||!(value instanceof VBArray)||lower(value.type)!==lower(type))throw new VBError('ByRef array type mismatch',13);
+        if(!param.byRef||!actual?.ref||!arrayTypeMatches(value,type,record?.identity))throw new VBError('ByRef array type mismatch',13);
         args.push(actual);
       }else if(param.byRef&&actual?.ref){
+        if(record&&!recordTypeMatches(await actual.ref.get(),type,record.identity))throw new VBError('ByRef user-defined type mismatch',13);
         if(Object.hasOwn(SCALAR_TYPES,lower(type))&&lower(actual.ref.type)!==lower(type))throw new VBError('ByRef argument type mismatch',13);
         args.push(actual);
-      }else if(param.byRef)args.push({ref:new Cell(type,actual)});
+      }else if(param.byRef)args.push({ref:record?createRecordCell(type,actual,record.identity):new Cell(type,actual)});
       else args.push(storageScalar(actual,type));
     }
     if(this.host.sourceEventEnabled?.(instance,name)===false)return;
@@ -540,7 +544,7 @@ export class VirtualMachine extends Signal {
     for(let i=0;i<proc.params.length;i++)if(proc.params[i].byRef&&!proc.params[i].paramArray&&args[i]?.ref)leases.reference(args[i].ref);
     if(proc.external){const value=await this.debugAwait(this.win32.invoke(proc,args.map(a=>a?.ref?a:a?.__win32ByVal?{...a,value:unbox(a.value)}:unbox(a))));return scalarReturn?storageScalar(value,proc.storageReturnType||proc.returnType||'Variant'):value;}
     if(this.stack.length>=this.options.maxCallDepth)throw new VBError('Out of stack space',28);
-    const frame=this.makeFrame(instance,proc);frame.caller=caller;if(proc.returnArray)frame.result=createArrayCell(proc.storageReturnType||proc.returnType,await this.createArray([],proc.storageReturnType||proc.returnType,frame));else if(this.recordSchema(proc.returnType,frame.module))frame.result=new Cell(proc.returnType,await this.createRecord(proc.returnType,frame));
+    const frame=this.makeFrame(instance,proc);frame.caller=caller;if(proc.returnArray)frame.result=createArrayCell(proc.storageReturnType||proc.returnType,await this.createArray([],proc.storageReturnType||proc.returnType,frame),this.recordDefinition(proc.returnType,frame.module)?.identity);else if(this.recordSchema(proc.returnType,frame.module))frame.result=new Cell(proc.returnType,await this.createRecord(proc.returnType,frame));
     if(args.length>proc.params.length&&!proc.params.at(-1)?.paramArray)throw new VBError(`Wrong number of arguments to ${proc.name}`,450);
     for(let i=0;i<proc.params.length;i++){
       const param=proc.params[i];let actual=i<args.length?args[i]:MISSING,cell;
@@ -549,15 +553,18 @@ export class VirtualMachine extends Signal {
       const declared=param.storageType||param.type;
       if(param.byRef&&actual?.ref){
         const ref=actual.ref,value=await ref.get();
-        if(param.bounds!==null){if(!(value instanceof VBArray)||lower(value.type)!==lower(declared))throw new VBError('ByRef array type mismatch',13);cell=ref;}
-        else if(this.recordSchema(param.type,frame.module)){if(!value?.__fields||lower(value.__type)!==lower(param.type))throw new VBError('ByRef user-defined type mismatch',13);cell=ref;}
+        if(param.bounds!==null){if(!arrayTypeMatches(value,declared,this.recordDefinition(declared,frame.module)?.identity))throw new VBError('ByRef array type mismatch',13);cell=ref;}
+        else if(this.recordSchema(param.type,frame.module)){if(!recordTypeMatches(value,param.type,this.recordDefinition(param.type,frame.module)?.identity))throw new VBError('ByRef user-defined type mismatch',13);cell=ref;}
         else if(Object.hasOwn(SCALAR_TYPES,lower(declared))&&lower(ref.type)!==lower(declared))throw new VBError('ByRef argument type mismatch',13);
         else if(lower(declared)==='variant'&&scalarType(value)){
           cell=inheritReferenceOwners(ref,new Ref(()=>ref.get(),v=>ref.set(v),'Variant',ref.fixedLength,async()=>storageScalar(await readScalar(ref),'Variant')));
           // Only storage-backed references may participate in automatic watches.
           if(ref instanceof Cell||typeof ref.debugGetScalar==='function'){cell.debugGetScalar=()=>storageScalar(ref instanceof Cell?ref.getScalar():ref.debugGetScalar(),'Variant');cell.debugGet=()=>unbox(cell.debugGetScalar());}
         }else cell=objectSupports(value,param.type)&&lower(ref.type)!==lower(param.type)?new Ref(async()=>coerce(await ref.get(),param.type),v=>ref.set(v),param.type):ref;
-      }else cell=param.bounds!==null?createArrayCell(declared,actual?.ref?await readScalar(actual.ref):actual):new Cell(declared,actual?.ref?await readScalar(actual.ref):actual);
+      }else {
+        const value=actual?.ref?await readScalar(actual.ref):actual,record=this.recordDefinition(param.type,frame.module);
+        cell=param.bounds!==null?createArrayCell(declared,value,record?.identity):record?createRecordCell(declared,value,record.identity):new Cell(declared,value);
+      }
       frame.locals.set(lower(param.name),cell);
     }
     for(const decl of proc.redimDeclarations||[])await this.declare(decl,frame,frame.locals,decl.static||proc.static);

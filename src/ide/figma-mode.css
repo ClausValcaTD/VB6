@@ -1,0 +1,260 @@
+/* Optional IDE chrome only. Authored controls and exported runtime styles are
+   deliberately outside every generic selector below. No remote fonts/assets. */
+:root[data-ide-workspace="figma"] {
+  --fg-panel:#fff;--fg-canvas:#f5f5f5;--fg-input:#f5f5f5;--fg-text:#262626;--fg-muted:#737373;
+  --fg-line:#e5e5e5;--fg-hover:#efefef;--fg-blue:#0d99ff;--fg-selected:#e5f4ff;--fg-on-blue:#fff;
+  --fg-shadow:0 4px 20px #00000014,0 1px 5px #0000000d;--fg-font:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+:root[data-ide-workspace="figma"][data-figma-scheme="dark"] {
+  --fg-panel:#2c2c2c;--fg-canvas:#1e1e1e;--fg-input:#383838;--fg-text:#f2f2f2;--fg-muted:#b3b3b3;
+  --fg-line:#444;--fg-hover:#3c3c3c;--fg-selected:#174966;--fg-shadow:0 4px 20px #0005,0 1px 5px #0004;
+}
+:root[data-ide-workspace="figma"] .ide-shell {font:12px/1.4 var(--fg-font)!important;color:var(--fg-text)!important;background:var(--fg-panel)!important;}
+:root[data-ide-workspace="figma"] .ide-shell.command-bar-shell {grid-template-rows:48px 0 0 minmax(0,1fr) 0 22px!important;gap:0!important;padding:0!important;border:0!important;}
+:root[data-ide-workspace="figma"] .ide-shell>.app-title,
+:root[data-ide-workspace="figma"] .command-bars-top,
+:root[data-ide-workspace="figma"] .command-bars-bottom,
+:root[data-ide-workspace="figma"] .command-bars-left,
+:root[data-ide-workspace="figma"] .command-bars-right {display:none!important;}
+:root[data-ide-workspace="figma"] .command-workarea {grid-template-columns:minmax(0,1fr)!important;background:var(--fg-canvas)!important;}
+:root[data-ide-workspace="figma"] .command-workarea>.workspace {grid-column:1!important;}
+:root[data-ide-workspace="figma"] .workspace.dock-workspace {
+  grid-template-columns:var(--dock-left,256px) min(1px,var(--dock-gap-left,1px)) minmax(0,1fr) min(1px,var(--dock-gap-right,1px)) var(--dock-right,304px)!important;
+  padding:0!important;gap:0!important;background:var(--fg-line)!important;
+}
+:root[data-ide-workspace="figma"] .ide-shell button:not(.designer-scroll *, .runtime-window *),
+:root[data-ide-workspace="figma"] .ide-dialog button,
+:root[data-ide-workspace="figma"] .property-color-popup button {
+  font-family:var(--fg-font)!important;color:var(--fg-text);background:var(--fg-panel);border:1px solid transparent;border-radius:5px;box-shadow:none!important;text-shadow:none!important;
+}
+:root[data-ide-workspace="figma"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *, .code-input, .advanced-source-textarea),
+:root[data-ide-workspace="figma"] .ide-dialog :is(input,select,textarea) {
+  font:12px/1.4 var(--fg-font);color:var(--fg-text);background:var(--fg-input);border:1px solid transparent;border-radius:5px;box-shadow:none!important;min-height:28px;padding:4px 7px;accent-color:var(--fg-blue);color-scheme:light;
+}
+:root[data-ide-workspace="figma"][data-figma-scheme="dark"] .ide-shell :is(input,select,textarea):not(.designer-scroll *, .runtime-window *),
+:root[data-ide-workspace="figma"][data-figma-scheme="dark"] .ide-dialog :is(input,select,textarea) {color-scheme:dark;}
+:root[data-ide-workspace="figma"] .ide-shell :is(input[type="checkbox"],input[type="radio"]):not(.designer-scroll *),
+:root[data-ide-workspace="figma"] .ide-dialog :is(input[type="checkbox"],input[type="radio"]) {min-height:14px;width:14px;height:14px;padding:0;}
+:root[data-ide-workspace="figma"] .ide-shell button:not(:disabled,.designer-scroll *, .runtime-window *):hover,
+:root[data-ide-workspace="figma"] .ide-dialog button:not(:disabled):hover {background:var(--fg-hover);}
+:root[data-ide-workspace="figma"] .ide-shell :is(button,input,select,textarea):not(.designer-scroll *, .runtime-window *):focus-visible,
+:root[data-ide-workspace="figma"] .ide-dialog :is(button,input,select,textarea):focus-visible {outline:2px solid var(--fg-blue)!important;outline-offset:-2px;}
+:root[data-ide-workspace="figma"] .ide-shell button:disabled:not(.designer-scroll *, .runtime-window *) {opacity:.42;cursor:default;}
+:root[data-ide-workspace="figma"] .ide-shell button[aria-pressed="true"]:not(.designer-scroll *, .runtime-window *) {background:var(--fg-selected);color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .ide-shell button[hidden],
+:root[data-ide-workspace="figma"] :is(.figma-canvas-toolbar,.figma-constraint-section,.figma-inspector-section,.figma-property)[hidden] {display:none!important;}
+:root[data-ide-workspace="figma"] .figma-header {grid-column:1/-1;grid-row:1;display:flex;align-items:center;gap:10px;padding:0 12px;background:var(--fg-panel);border-bottom:1px solid var(--fg-line);min-width:0;z-index:3;}
+:root[data-ide-workspace="figma"] .figma-icon {display:block;flex:none;}
+:root[data-ide-workspace="figma"] .figma-action {height:32px;min-height:32px;min-width:32px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:5px 8px;white-space:nowrap;}
+:root[data-ide-workspace="figma"] .figma-vb-badge {font-size:10px;font-weight:800;letter-spacing:.3px;border:1px solid var(--fg-line);border-radius:5px;padding:5px 4px;}
+:root[data-ide-workspace="figma"] .figma-project-name {font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;}
+:root[data-ide-workspace="figma"] .figma-document-name {color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;}
+:root[data-ide-workspace="figma"] .figma-breadcrumb-separator {color:var(--fg-muted);}
+:root[data-ide-workspace="figma"] .figma-document-mode {display:flex;gap:2px;background:var(--fg-input);padding:2px;border-radius:7px;margin-left:16px;}
+:root[data-ide-workspace="figma"] .figma-document-mode .figma-action {height:28px;min-height:28px;background:transparent;padding:4px 10px;}
+:root[data-ide-workspace="figma"] .figma-header-actions {display:flex;align-items:center;gap:3px;margin-left:auto;}
+:root[data-ide-workspace="figma"] .figma-header .figma-run {background:var(--fg-blue)!important;color:var(--fg-on-blue)!important;padding:6px 13px;margin-left:5px;}
+:root[data-ide-workspace="figma"] .menubar {background:var(--fg-panel)!important;color:var(--fg-text)!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;padding:0 10px!important;gap:2px;height:28px!important;box-shadow:none!important;align-items:center;}
+:root[data-ide-workspace="figma"] .menubar>button {height:24px!important;min-height:24px!important;padding:3px 8px!important;font-size:11px;background:transparent;}
+:root[data-ide-workspace="figma"] :is(.dock-zone,.dock-group,.dock-group-body,.dock-panel,.managed-panel,.center-dock,.document-area) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border-color:var(--fg-line)!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] .dock-group {border:0!important;border-radius:0!important;overflow:hidden;}
+:root[data-ide-workspace="figma"] .dock-floating {border:1px solid var(--fg-line)!important;border-radius:8px!important;box-shadow:var(--fg-shadow)!important;}
+:root[data-ide-workspace="figma"] .dock-center {position:relative;min-width:0;padding:0!important;}
+:root[data-ide-workspace="figma"] :is(.dock-edge-splitter,.dock-group-splitter) {background:var(--fg-line)!important;border:0!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] :is(.dock-edge-splitter,.dock-group-splitter):hover {background:var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .dock-tabbar {order:-1;flex-shrink:0;display:flex!important;min-height:42px;padding:6px 10px 0!important;gap:12px;border:0!important;border-bottom:1px solid var(--fg-line)!important;background:var(--fg-panel)!important;}
+:root[data-ide-workspace="figma"] .dock-tabbar>button {padding:6px 3px 10px!important;border:0!important;border-bottom:2px solid transparent!important;border-radius:0!important;font-size:12px!important;min-height:34px!important;background:transparent!important;color:var(--fg-muted)!important;}
+:root[data-ide-workspace="figma"] .dock-tabbar>button[aria-selected="true"] {border-bottom-color:var(--fg-blue)!important;color:var(--fg-text)!important;font-weight:600;}
+:root[data-ide-workspace="figma"] :is(.dock-zone-left,.dock-zone-right) .managed-panel>.tool-caption {display:none!important;}
+:root[data-ide-workspace="figma"] .tool-caption:not(.designer-scroll *, .runtime-window *) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;font:600 12px var(--fg-font)!important;height:32px!important;min-height:32px!important;padding:6px 10px!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] .document-tabs {order:-1;display:flex!important;min-height:34px!important;height:34px!important;gap:0!important;border:0!important;border-bottom:1px solid var(--fg-line)!important;background:var(--fg-panel)!important;padding:0!important;}
+:root[data-ide-workspace="figma"] .document-tab {height:34px!important;min-height:34px!important;border:0!important;border-right:1px solid var(--fg-line)!important;border-radius:0!important;padding:6px 12px!important;color:var(--fg-muted)!important;white-space:nowrap;}
+:root[data-ide-workspace="figma"] .document-tab.active {background:var(--fg-canvas)!important;color:var(--fg-text)!important;box-shadow:inset 0 -2px var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .mdi-desktop {background:var(--fg-canvas)!important;}
+:root[data-ide-workspace="figma"] .ide-shell:not([data-figma-window-mode="windows"]) .mdi-window {left:0!important;top:0!important;width:100%!important;height:100%!important;padding:0!important;border:0!important;box-shadow:none!important;border-radius:0!important;background:var(--fg-canvas)!important;}
+:root[data-ide-workspace="figma"] .ide-shell:not([data-figma-window-mode="windows"]) .mdi-window:not(.mdi-active),
+:root[data-ide-workspace="figma"] .ide-shell:not([data-figma-window-mode="windows"]) .mdi-window>.document-title,
+:root[data-ide-workspace="figma"] .ide-shell:not([data-figma-window-mode="windows"]) .mdi-resize {display:none!important;}
+:root[data-ide-workspace="figma"] .mdi-window.mdi-active {display:flex!important;}
+:root[data-ide-workspace="figma"] .mdi-client {padding:0!important;border:0!important;}
+:root[data-ide-workspace="figma"] .designer-scroll[data-figma-viewport="true"] {overflow:hidden!important;background:var(--fg-canvas)!important;touch-action:none;}
+:root[data-ide-workspace="figma"] .designer-plane {background:transparent!important;will-change:transform;}
+:root[data-ide-workspace="figma"] .designer-scroll[data-figma-hand="true"],
+:root[data-ide-workspace="figma"] .designer-scroll[data-figma-hand="true"] .vb-control {cursor:grab!important;}
+:root[data-ide-workspace="figma"] .designer-scroll[data-figma-panning="true"],
+:root[data-ide-workspace="figma"] .designer-scroll[data-figma-panning="true"] * {cursor:grabbing!important;}
+:root[data-ide-workspace="figma"] .designer-form {box-shadow:0 2px 12px #0000001a!important;}
+:root[data-ide-workspace="figma"] .selection-outline {border:1px solid var(--fg-blue)!important;outline:0!important;}
+:root[data-ide-workspace="figma"] :is(.selection-handle,.designer-form-selection .designer-form-handle) {background:#fff!important;border:1px solid var(--fg-blue)!important;border-radius:0!important;}
+:root[data-ide-workspace="figma"] .designer-form-selection .designer-form-handle.disabled {opacity:.4;}
+:root[data-ide-workspace="figma"] :is(.auto-selection-size,.auto-guide-value) {background:var(--fg-blue)!important;color:var(--fg-on-blue)!important;border:0!important;border-radius:3px;font:10px var(--fg-font)!important;padding:3px 5px!important;}
+:root[data-ide-workspace="figma"] .figma-canvas-toolbar {position:absolute;z-index:30;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:3px;padding:7px;background:var(--fg-panel);border:1px solid var(--fg-line);border-radius:13px;box-shadow:var(--fg-shadow);max-width:calc(100% - 20px);}
+:root[data-ide-workspace="figma"] .figma-canvas-toolbar .figma-action {min-width:34px;height:34px;padding:7px;border-radius:6px;}
+:root[data-ide-workspace="figma"] .figma-canvas-toolbar button[aria-pressed="true"] {color:var(--fg-on-blue)!important;background:var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .figma-toolbar-divider {height:24px;border-left:1px solid var(--fg-line);margin:0 4px;}
+:root[data-ide-workspace="figma"] .figma-zoom {height:32px;min-width:58px;padding:5px 7px;font-size:11px;font-variant-numeric:tabular-nums;}
+:root[data-ide-workspace="figma"] .figma-layers-panel {display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;}
+:root[data-ide-workspace="figma"] .figma-search {display:flex;align-items:center;gap:6px;padding:12px 12px 6px;color:var(--fg-muted);}
+:root[data-ide-workspace="figma"] .figma-search input {width:100%;min-width:0;background:transparent!important;}
+:root[data-ide-workspace="figma"] .figma-section-title {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:12px 0 9px;font-size:12px;font-weight:600;}
+:root[data-ide-workspace="figma"] .figma-layers-panel>.figma-section-title {padding:12px 14px;}
+:root[data-ide-workspace="figma"] .figma-muted {color:var(--fg-muted);font-size:11px;font-weight:400;}
+:root[data-ide-workspace="figma"] .figma-layer-tree {flex:1;overflow:auto;min-height:40px;position:relative;outline:none;scrollbar-width:thin;}
+:root[data-ide-workspace="figma"] .figma-layer-content {position:relative;min-width:100%;}
+:root[data-ide-workspace="figma"] .figma-layer-row {position:absolute;left:0;right:0;height:32px;display:flex;align-items:center;gap:7px;box-sizing:border-box;border:1px solid transparent;padding-right:8px;user-select:none;outline:none;}
+:root[data-ide-workspace="figma"] .figma-layer-row:hover {background:var(--fg-hover);}
+:root[data-ide-workspace="figma"] .figma-layer-row[aria-selected="true"] {background:var(--fg-selected);}
+:root[data-ide-workspace="figma"] .figma-layer-row:focus-visible {border-color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-layer-row>.figma-icon {width:14px;height:14px;color:var(--fg-muted);}
+:root[data-ide-workspace="figma"] .figma-layer-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;}
+:root[data-ide-workspace="figma"] .figma-layer-row .figma-layer-fold {padding:0;min-width:12px;width:12px;min-height:18px;height:18px;background:transparent!important;border:0!important;}
+:root[data-ide-workspace="figma"] .figma-layer-fold svg {width:10px;height:10px;}
+:root[data-ide-workspace="figma"] .figma-layer-fold.expanded svg {transform:rotate(90deg);}
+:root[data-ide-workspace="figma"] .figma-layer-fold:disabled {visibility:hidden;}
+:root[data-ide-workspace="figma"] .figma-layer-visibility {margin-left:auto;min-height:24px;height:24px;padding:3px!important;background:transparent!important;opacity:0;}
+:root[data-ide-workspace="figma"] .figma-layer-visibility svg {width:14px;height:14px;}
+:root[data-ide-workspace="figma"] .figma-layer-row:hover .figma-layer-visibility,
+:root[data-ide-workspace="figma"] .figma-layer-row:focus-within .figma-layer-visibility,
+:root[data-ide-workspace="figma"] .figma-layer-invisible .figma-layer-visibility {opacity:1;}
+:root[data-ide-workspace="figma"] .figma-layer-invisible .figma-layer-name {opacity:.5;text-decoration:line-through;}
+:root[data-ide-workspace="figma"] .figma-layer-row[data-drop="inside"] {border-color:var(--fg-blue);background:var(--fg-selected);}
+:root[data-ide-workspace="figma"] .figma-layer-row[data-drop="before"] {border-top:2px solid var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-layer-row[data-drop="after"] {border-bottom:2px solid var(--fg-blue);}
+:root[data-ide-workspace="figma"] .toolbox {min-width:0!important;width:100%!important;padding:0!important;}
+:root[data-ide-workspace="figma"] .figma-assets-search {margin:12px 12px 5px;width:calc(100% - 24px);}
+:root[data-ide-workspace="figma"] .toolbox-filter {margin:5px 12px 10px;width:calc(100% - 24px)!important;}
+:root[data-ide-workspace="figma"] .toolbox-grid {display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;padding:4px 12px 16px!important;overflow:auto!important;align-content:start;}
+:root[data-ide-workspace="figma"] .toolbox-grid>button {display:flex;flex-direction:column;justify-content:center;align-items:center;gap:7px;width:100%!important;height:76px!important;min-height:76px!important;border:1px solid var(--fg-line)!important;border-radius:6px!important;padding:8px 3px!important;}
+:root[data-ide-workspace="figma"] .toolbox-grid>button.active {border-color:var(--fg-blue)!important;background:var(--fg-selected)!important;}
+:root[data-ide-workspace="figma"] .figma-control-label {font-size:10px;line-height:14px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+:root[data-ide-workspace="figma"] .properties-panel {overflow:auto!important;scrollbar-width:thin;padding:0!important;}
+:root[data-ide-workspace="figma"] .figma-design-inspector {padding:0 14px 18px;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-selection-title {padding:14px 0 4px;}
+:root[data-ide-workspace="figma"] .figma-selection-title .figma-layer-title {width:100%;font-size:13px;font-weight:600;background:transparent!important;padding:4px 0!important;}
+:root[data-ide-workspace="figma"] .figma-alignment {display:flex;gap:3px;padding:7px 0 12px;border-bottom:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-alignment button {display:flex;align-items:center;justify-content:center;min-height:28px;height:28px;flex:1;padding:4px;}
+:root[data-ide-workspace="figma"] .figma-properties-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding-bottom:15px;}
+:root[data-ide-workspace="figma"] .figma-property {display:flex;align-items:center;background:var(--fg-input);border:1px solid transparent;border-radius:5px;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-property:focus-within {border-color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-property>span {color:var(--fg-muted);min-width:28px;text-align:center;font-size:11px;}
+:root[data-ide-workspace="figma"] .figma-property input {width:100%;min-width:0;border:0!important;border-radius:0!important;background:transparent!important;padding-left:0!important;outline:none!important;font-variant-numeric:tabular-nums;}
+:root[data-ide-workspace="figma"] .figma-constraint-section {border-top:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-constraints {display:flex;align-items:center;gap:14px;}
+:root[data-ide-workspace="figma"] .figma-constraint-pad {width:76px;height:76px;background:var(--fg-input);border:1px solid var(--fg-line);border-radius:6px;position:relative;flex:none;}
+:root[data-ide-workspace="figma"] .figma-anchor-box {position:absolute;left:27px;top:27px;width:20px;height:20px;border:1px solid var(--fg-muted);border-radius:1px;pointer-events:none;}
+/* 24px hit targets around slim visual anchor strokes. */
+:root[data-ide-workspace="figma"] .figma-constraint-pad>button {position:absolute!important;padding:0!important;min-width:24px!important;min-height:24px!important;width:24px!important;height:24px!important;background:transparent!important;border:0;border-radius:3px;}
+:root[data-ide-workspace="figma"] .figma-constraint-pad>button::after {content:"";position:absolute;background:var(--fg-line);border-radius:2px;}
+:root[data-ide-workspace="figma"] :is(.figma-anchor-top,.figma-anchor-bottom) {left:25px;}
+:root[data-ide-workspace="figma"] :is(.figma-anchor-top,.figma-anchor-bottom)::after {width:3px;height:18px;left:11px;top:3px;}
+:root[data-ide-workspace="figma"] .figma-anchor-top {top:2px;}
+:root[data-ide-workspace="figma"] .figma-anchor-bottom {bottom:2px;}
+:root[data-ide-workspace="figma"] :is(.figma-anchor-left,.figma-anchor-right) {top:25px;}
+:root[data-ide-workspace="figma"] :is(.figma-anchor-left,.figma-anchor-right)::after {width:18px;height:3px;left:3px;top:11px;}
+:root[data-ide-workspace="figma"] .figma-anchor-left {left:2px;}
+:root[data-ide-workspace="figma"] .figma-anchor-right {right:2px;}
+:root[data-ide-workspace="figma"] .figma-constraint-pad button[aria-pressed="true"]::after {background:var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .figma-constraint-pad button[aria-pressed="mixed"]::after {background:repeating-linear-gradient(45deg,var(--fg-blue) 0 2px,var(--fg-input) 2px 4px)!important;}
+:root[data-ide-workspace="figma"] .figma-constraint-fields {display:flex;flex:1;flex-direction:column;gap:7px;min-width:0;}
+:root[data-ide-workspace="figma"] .figma-constraint-fields label {display:flex;flex-direction:column;gap:3px;}
+:root[data-ide-workspace="figma"] .figma-help {color:var(--fg-muted);font-size:10px;line-height:1.5;margin:10px 0 12px;}
+:root[data-ide-workspace="figma"] .figma-enable-layout {width:100%;padding:8px!important;border:1px solid var(--fg-line)!important;color:var(--fg-blue)!important;margin:4px 0 12px;}
+:root[data-ide-workspace="figma"] .figma-inspector-section {border-top:1px solid var(--fg-line);padding:0;margin:0;}
+:root[data-ide-workspace="figma"] .figma-inspector-section>summary {padding:14px 0;font-weight:600;font-size:12px;cursor:pointer;}
+:root[data-ide-workspace="figma"] .figma-layout-content .auto-layout-body {padding:0;overflow:visible;}
+:root[data-ide-workspace="figma"] .figma-layout-content .auto-layout-target {display:none;}
+:root[data-ide-workspace="figma"] .figma-layout-content .auto-layout-note {color:var(--fg-muted);font-size:10px;}
+:root[data-ide-workspace="figma"] .auto-layout-toolbar {gap:5px;margin-bottom:10px;}
+:root[data-ide-workspace="figma"] .auto-layout-toolbar button {padding:4px 7px!important;min-height:28px;background:var(--fg-input)!important;border:1px solid transparent!important;}
+:root[data-ide-workspace="figma"] .auto-alignment {margin:8px 0 12px;gap:2px;grid-template-columns:repeat(3,24px);width:76px;background:var(--fg-input);padding:4px;border-radius:6px;}
+:root[data-ide-workspace="figma"] .auto-alignment button {min-height:24px;height:24px;background:transparent!important;}
+:root[data-ide-workspace="figma"] .auto-alignment button[aria-pressed="true"] {background:var(--fg-blue)!important;color:#fff!important;outline:0!important;}
+:root[data-ide-workspace="figma"] .auto-layout-section {border:0!important;border-top:1px solid var(--fg-line)!important;margin-top:7px;}
+:root[data-ide-workspace="figma"] .auto-layout-section summary {font-size:11px;padding:10px 0;cursor:pointer;}
+:root[data-ide-workspace="figma"] .auto-layout-fields {padding:0 0 5px;}
+:root[data-ide-workspace="figma"] .auto-layout-field {font-size:11px;gap:8px;margin:7px 0;grid-template-columns:minmax(80px,1fr) minmax(85px,1.15fr);}
+:root[data-ide-workspace="figma"] .auto-layout-field input,
+:root[data-ide-workspace="figma"] .auto-layout-field select {height:28px;}
+:root[data-ide-workspace="figma"] .auto-layout-children {border:1px solid var(--fg-line)!important;border-radius:4px;max-height:160px;}
+:root[data-ide-workspace="figma"] .auto-layout-children button {min-height:28px;padding:5px 8px;}
+:root[data-ide-workspace="figma"] .auto-layout-children button[aria-selected="true"] {background:var(--fg-selected)!important;}
+:root[data-ide-workspace="figma"] :is(.auto-layout-help,.auto-layout-guide-toggle,.auto-layout-child-caption) {font:10px/1.5 var(--fg-font);color:var(--fg-muted);}
+:root[data-ide-workspace="figma"] .figma-all-properties-content {display:flex;flex-direction:column;padding-bottom:12px;}
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-grid-wrapper {flex:none;overflow:visible;}
+:root[data-ide-workspace="figma"] .figma-all-properties-content .property-grid {overflow:visible;border:0!important;margin:10px 0;background:var(--fg-panel)!important;color:var(--fg-text)!important;}
+:root[data-ide-workspace="figma"] .property-row {min-height:30px!important;border-bottom:1px solid var(--fg-line)!important;font-size:11px;}
+:root[data-ide-workspace="figma"] .property-name {padding:7px 4px!important;border-right:0!important;background:var(--fg-panel);color:var(--fg-text);}
+:root[data-ide-workspace="figma"] .property-row:focus-within .property-name {background:var(--fg-selected)!important;color:var(--fg-text)!important;}
+:root[data-ide-workspace="figma"] .property-value-editor {align-items:center;min-width:0;}
+:root[data-ide-workspace="figma"] .property-value-editor input,
+:root[data-ide-workspace="figma"] .property-value-editor select {height:26px!important;min-height:26px!important;padding:3px 5px!important;font-size:11px!important;}
+:root[data-ide-workspace="figma"] .property-group {display:block!important;width:100%;text-align:left;font-weight:600;padding:10px 3px!important;border:0!important;background:var(--fg-panel)!important;}
+:root[data-ide-workspace="figma"] .property-description {height:auto!important;min-height:48px!important;color:var(--fg-muted);border-color:var(--fg-line)!important;font:10px/1.5 var(--fg-font)!important;margin:8px 0 0!important;padding:8px 0!important;}
+:root[data-ide-workspace="figma"] .property-column-resizer {display:none;}
+:root[data-ide-workspace="figma"] .figma-events {width:100%;margin-top:10px;border:1px solid var(--fg-line)!important;padding:7px!important;}
+:root[data-ide-workspace="figma"] :is(.project-tree,.tree-row,.project-buttons,.statusbar,.debug-dock,.debug-content,.tool-list,.ide-tool) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border-color:var(--fg-line)!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] .tree-row {min-height:28px;align-items:center;font-size:11px;}
+:root[data-ide-workspace="figma"] .tree-row.selected {background:var(--fg-selected)!important;}
+:root[data-ide-workspace="figma"] .statusbar {border:0!important;border-top:1px solid var(--fg-line)!important;padding:0 10px!important;font:10px/1.4 var(--fg-font)!important;gap:8px!important;}
+:root[data-ide-workspace="figma"] .statusbar>* {border:0!important;box-shadow:none!important;padding:0 4px!important;}
+:root[data-ide-workspace="figma"] :is(.ide-dialog,.property-color-popup) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border:1px solid var(--fg-line)!important;border-radius:9px!important;box-shadow:var(--fg-shadow)!important;font:12px/1.5 var(--fg-font)!important;overflow:hidden;}
+:root[data-ide-workspace="figma"] .ide-dialog {max-width:calc(100vw - 24px);padding:0!important;}
+:root[data-ide-workspace="figma"] .ide-dialog-body {padding:16px!important;background:var(--fg-panel)!important;max-height:calc(100vh - 140px);overflow:auto;}
+:root[data-ide-workspace="figma"] .ide-dialog-footer {background:var(--fg-panel)!important;border-top:1px solid var(--fg-line);padding:12px 16px!important;gap:8px;}
+:root[data-ide-workspace="figma"] .ide-dialog-footer button {padding:6px 18px!important;border:1px solid var(--fg-line)!important;min-height:30px;}
+:root[data-ide-workspace="figma"] .ide-dialog-footer .default-button {background:var(--fg-blue)!important;color:var(--fg-on-blue)!important;}
+:root[data-ide-workspace="figma"] :is(.classic-tab-pages,.dialog-tabs,.options-group) {background:var(--fg-panel)!important;color:var(--fg-text)!important;border-color:var(--fg-line)!important;box-shadow:none!important;}
+:root[data-ide-workspace="figma"] .dialog-tabs {border:0!important;border-bottom:1px solid var(--fg-line)!important;gap:5px;}
+:root[data-ide-workspace="figma"] .dialog-tabs button {padding:6px 9px!important;background:transparent!important;border:0!important;border-radius:0!important;}
+:root[data-ide-workspace="figma"] .dialog-tabs button.active {box-shadow:inset 0 -2px var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .options-group {border:1px solid var(--fg-line)!important;border-radius:6px;padding:12px;margin:10px 0;}
+:root[data-ide-workspace="figma"] .option-field {gap:8px;margin:8px 0;}
+:root[data-ide-workspace="figma"] .option-note {font:11px/1.5 var(--fg-font)!important;color:var(--fg-muted);}
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup):not(.designer-scroll *,[data-vb-application]) {font:12px var(--fg-font)!important;background:var(--fg-panel)!important;color:var(--fg-text)!important;border:1px solid var(--fg-line)!important;border-radius:7px!important;box-shadow:var(--fg-shadow)!important;padding:5px!important;}
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup) :is(button,[role="menuitem"],[role="menuitemcheckbox"]):not(.designer-scroll *) {background:transparent;color:var(--fg-text);border:0!important;box-shadow:none!important;border-radius:3px;min-height:26px;}
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup) [role^="menuitem"]:hover {background:var(--fg-selected)!important;color:var(--fg-text)!important;}
+@media(max-width:1000px) {
+  :root[data-ide-workspace="figma"] .figma-document-name,
+  :root[data-ide-workspace="figma"] .figma-breadcrumb-separator {display:none;}
+  :root[data-ide-workspace="figma"] .figma-project-name {max-width:120px;}
+  :root[data-ide-workspace="figma"] .figma-document-mode {margin-left:0;}
+  :root[data-ide-workspace="figma"] .figma-canvas-toolbar {gap:1px;padding:5px;}
+  :root[data-ide-workspace="figma"] .figma-canvas-toolbar .figma-action {min-width:28px;width:28px;padding:5px;}
+}
+@media(max-width:850px) {
+  :root[data-ide-workspace="figma"] .workspace.dock-workspace {grid-template-columns:0 0 minmax(0,1fr) 0 0!important;}
+  :root[data-ide-workspace="figma"] :is(.dock-zone-left,.dock-zone-right) {display:none!important;position:absolute;top:0;bottom:0;width:min(304px,calc(100% - 48px));z-index:80;box-shadow:var(--fg-shadow)!important;}
+  :root[data-ide-workspace="figma"] .dock-zone-left {left:0;}
+  :root[data-ide-workspace="figma"] .dock-zone-right {right:0;}
+  :root[data-ide-workspace="figma"] :is(.dock-edge-splitter-left,.dock-edge-splitter-right) {display:none!important;}
+  :root[data-ide-workspace="figma"] .ide-shell[data-figma-sidebar="layers"] .dock-zone-left,
+  :root[data-ide-workspace="figma"] .ide-shell[data-figma-sidebar="design"] .dock-zone-right {display:flex!important;}
+}
+@media(max-width:580px) {
+  :root[data-ide-workspace="figma"] .figma-header {gap:4px;padding:0 6px;}
+  :root[data-ide-workspace="figma"] .figma-project-name {max-width:65px;font-size:10px;}
+  :root[data-ide-workspace="figma"] .figma-header-actions>.figma-action:nth-child(-n+2) {display:none;}
+  :root[data-ide-workspace="figma"] .figma-document-mode .figma-action {font-size:0;padding:4px;min-width:28px;}
+  :root[data-ide-workspace="figma"] .figma-header-actions {gap:0;}
+  :root[data-ide-workspace="figma"] .figma-header .figma-run {font-size:0;padding:6px;margin-left:0;}
+  :root[data-ide-workspace="figma"] .menubar {overflow-x:auto;scrollbar-width:none;}
+  :root[data-ide-workspace="figma"] .menubar>button {padding:3px 5px!important;}
+}
+@media(prefers-reduced-motion:reduce) {
+  :root[data-ide-workspace="figma"] .ide-shell *:not(.designer-scroll *, .runtime-window *) {scroll-behavior:auto!important;animation:none!important;transition:none!important;}
+}
+@media(forced-colors:active) {
+  :root[data-ide-workspace="figma"] {--fg-panel:Canvas;--fg-canvas:Canvas;--fg-input:Field;--fg-text:CanvasText;--fg-muted:CanvasText;--fg-line:ButtonBorder;--fg-blue:Highlight;--fg-selected:Highlight;--fg-on-blue:HighlightText;}
+  :root[data-ide-workspace="figma"] .figma-layer-row[aria-selected="true"] {color:HighlightText;}
+}
+
+:root[data-ide-workspace="figma"] .document-area {border:0!important;}
+
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup) .menu-selected {background:var(--fg-selected)!important;color:var(--fg-text)!important;}
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup) .menu-separator {border-top:1px solid var(--fg-line)!important;border-bottom:0!important;margin:5px!important;}
+:root[data-ide-workspace="figma"] .ide-popup-menu:not(.runtime-popup) .menu-shortcut {color:var(--fg-muted)!important;}
+:root[data-ide-workspace="figma"] .ide-shell[data-figma-window-mode="windows"] .mdi-window {border:1px solid var(--fg-line)!important;background:var(--fg-panel)!important;box-shadow:var(--fg-shadow)!important;}
+:root[data-ide-workspace="figma"] .ide-shell[data-figma-window-mode="windows"] .mdi-window>.document-title {background:var(--fg-panel)!important;color:var(--fg-text)!important;border-bottom:1px solid var(--fg-line)!important;}
+
+/* All canonical menu commands remain in the workspace menu; no classic menu strip. */
+:root[data-ide-workspace="figma"] .ide-shell>.menubar {display:none!important;}

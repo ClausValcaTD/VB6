@@ -1,4 +1,5 @@
 import {parseGraphicsStatement} from './graphics-statements.js';
+import {validateRecordDeclarations} from './record-resolution.js';
 import {parseRedimDeclarations} from './redim-semantics.js';
 import {splitPrintList} from './print-list.js';
 import {parseDeclarations,parseParameters,parseProcedureHeader,parseTypeFields} from './declarations.js';
@@ -145,7 +146,7 @@ class ProcedureCompiler {
 }
 
 export function compileModule(input) {
-  const module={name:input.name,kind:input.kind||'module',interfaces:[],defaultTypes:{},defaultMember:null,attributes:[...(input.attributes||[])],optionExplicit:false,optionBase:0,optionCompare:'binary',declarations:[],procedures:new Map(),enums:Object.create(null),types:Object.create(null),diagnostics:[],source:input.code||'',form:input.form||null,layoutBindings:input.layoutBindings||layoutBindingSnapshot(input)};
+  const module={name:input.name,kind:input.kind||'module',interfaces:[],defaultTypes:{},defaultMember:null,attributes:[...(input.attributes||[])],optionExplicit:false,optionBase:0,optionCompare:'binary',declarations:[],procedures:new Map(),enums:Object.create(null),types:Object.create(null),typeScopes:Object.create(null),diagnostics:[],source:input.code||'',form:input.form||null,layoutBindings:input.layoutBindings||layoutBindingSnapshot(input)};
   const allLines=logicalLines(preprocess(module.source,input.conditionalConstants||{},module.name),{preserveContinuations:true});
   const lines=allLines.filter(e=>{if(/^Attribute\s+/i.test(e.text)){module.attributes.push(e.text);return false;}return true;});let current=null,body=[],enumState=null,typeState=null;
   const typeNames=new Set();
@@ -187,7 +188,7 @@ export function compileModule(input) {
           if(definition.kind==='enum'){
             enumState={name:definition.name,scope:definition.scope,previous:null};
             module.enums[definition.name]={name:definition.name,scope:definition.scope,members:[]};
-          }else{typeState={name:definition.name,names:new Set()};module.types[definition.name]=[];}
+          }else{typeState={name:definition.name,names:new Set()};module.types[definition.name]=[];module.typeScopes[key]=definition.scope;}
         }else if(definition.kind==='event'){
           if(module.kind==='module')throw new VBError('Events can be declared only in class and form modules',1002);
           module.events ||= new Map();if(module.events.has(key))throw new VBError('Ambiguous event name: '+definition.name,1002);
@@ -225,8 +226,8 @@ export function compileProject(project,{retainSyntax=false}={}) {
 /** Cross-module constraints shared by execution and background diagnostics. */
 export function validateCompiledModules(modules,settings={}) {
   const diagnostics=[...bindConstants(modules,settings),...validateLayoutMembers(modules,settings)];
-  const recordNames=new Set([...modules.values()].flatMap(m=>Object.keys(m.types).map(lower)));
-  for(const module of modules.values())for(const proc of module.procedures.values())for(const param of proc.params)if(!param.byRef&&!param.paramArray&&(recordNames.has(lower(param.type))||param.bounds!==null))diagnostics.push({severity:'error',message:recordNames.has(lower(param.type))?'User-defined type may not be passed ByVal':'Array argument must be ByRef',number:1002,source:module.name,line:proc.line,column:1});
+  diagnostics.push(...validateRecordDeclarations(modules));
+  for(const module of modules.values())for(const proc of module.procedures.values())for(const param of proc.params)if(!param.byRef&&!param.paramArray&&param.bounds!==null)diagnostics.push({severity:'error',message:'Array argument must be ByRef',number:1002,source:module.name,line:proc.line,column:1});
   const parents=[...modules.values()].filter(m=>m.form?.type==='MDIForm');
   if(parents.length>1)diagnostics.push({severity:'error',message:'Only one MDI Form is permitted per project',number:360,source:parents[1].name,line:1,column:1});
   for(const module of modules.values())if(module.form){if(module.form.type==='MDIForm'&&Number(module.form.properties?.MDIChild))diagnostics.push({severity:'error',message:'An MDI Form cannot also be an MDI child',number:380,source:module.name,line:1,column:1});if(Number(module.form.properties?.MDIChild)&&!parents.length)diagnostics.push({severity:'error',message:'An MDI child requires an MDI Form in the project',number:366,source:module.name,line:1,column:1});}
