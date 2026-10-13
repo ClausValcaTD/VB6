@@ -242,3 +242,43 @@ release on rejection, and matching ByRef aliases still propagate field writes.
 The ordinary Cell coercion API and native/COM wire formats are unchanged.
 `tests/language-record-arguments.test.mjs` and shipped-runtime/actual-IDE fixtures
 cover these paths. This is source-runtime conformance, not a licensed VB6 oracle.
+
+## Typed record destinations versus Variant payloads
+
+Record-array element writes now validate the declared record identity before
+coercion, rejecting scalar, Empty, Null, Nothing, array and unrelated object
+values with Error 13 while retaining the old element, field aliases and bounds.
+Matching typed record writes still copy values into the existing field storage.
+This validation also covers unqualified low-level record factories that do not
+carry the project index's nominal metadata.
+
+A Variant cell or Variant-array element is not permanently typed by its previous
+record payload. It can receive another record type or a scalar, array, Empty,
+Null or object value through the applicable assignment operation. Copies remain
+independent and scalar subtype tags survive transitions. Typed records containing
+Variant fields follow the same rule when the whole record is assigned: the
+field's declared Variant type, not its previous payload, determines compatibility.
+Typed nested records continue to enforce their declared identity.
+
+`tests/language-record-assignment.test.mjs` and four additional runtime/actual-IDE
+browser fixtures test these distinctions. These are source-runtime storage
+contracts; external typelib restrictions, complete aggregate lock/lifetime
+semantics and native record/COM representation remain separate validation work.
+Primary reference: [MS-VBAL Let-coercion to and from a UDT](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/d5727cbc-068f-45f0-8119-7e7f13db9d54).
+
+`node tools/bench-record-assignment.mjs --root <checkout>` measures typed record,
+record-array, Variant-record and scalar-array assignment workloads independently.
+Compilation and VM construction are excluded; startup/execution, checked output,
+fixed instruction counts and every timing sample are retained. Timing is
+non-gating and does not establish a compiler-wide speedup.
+
+Direct `ByRef` record arguments must name typed record storage, not a Variant
+variable or Variant-array element that happens to hold a matching record. Such
+aliases raise Error 13 before entering the procedure or delivering a source
+event. Parenthesized Variant record values can still become independent, nominally
+checked typed temporaries. This closes the path where writes through a record
+formal could otherwise replace its Variant backing storage with a nonrecord.
+The source runtime enforces this guard; complete static call-site type checking
+and external/native parameter ABI equivalence are not claimed.
+
+Reference: [MS-VBAL Procedure Invocation Argument Processing](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/1fb9af32-fc48-4c4f-998a-ed8047048ca5).
