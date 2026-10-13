@@ -212,8 +212,8 @@ void MacHost::resize(const std::shared_ptr<MacForm>&f){
   f->surface->event("resize");
 }
 void MacHost::activate(const std::shared_ptr<MacForm>&f,bool active){if(f->closing)return;if(active&&f->menu)NSApp.mainMenu=f->menu;f->surface->event(active?"activate":"deactivate");}
-bool MacHost::closeForm(const std::shared_ptr<MacForm>&f){if(f->closing)return true;runtime->unload(f->owner);return !forms.count(f->owner.get());}
-bool MacHost::terminate(){std::vector<std::shared_ptr<MacForm>>copy;for(auto&entry:forms)copy.push_back(entry.second);for(auto&f:copy)if(!closeForm(f))return false;stopLoop();return true;}
+bool MacHost::closeForm(const std::shared_ptr<MacForm>&f){if(f->closing)return true;runtime->unload(f->owner,0);return !forms.count(f->owner.get());}
+bool MacHost::terminate(){std::vector<std::shared_ptr<MacForm>>copy;for(auto&entry:forms)copy.push_back(entry.second);for(auto&f:copy){runtime->unload(f->owner,1);if(forms.count(f->owner.get()))return false;}stopLoop();return true;}
 NSEvent*MacHost::routeEvent(NSEvent*input){
   std::shared_ptr<MacForm>f;for(auto&entry:forms)if(entry.second->window==input.window){f=entry.second;break;}if(!f)return input;if(!f->enabled)return nil;
   bool key=input.type==NSEventTypeKeyDown||input.type==NSEventTypeKeyUp;std::shared_ptr<MacControl>c;

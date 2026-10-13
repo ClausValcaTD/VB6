@@ -16,8 +16,8 @@ fixture = json.loads(subprocess.check_output(['node', '--input-type=module', '-e
 import {conformanceProject} from './packages/macos-native/tests/conformance.mjs';
 import {exportMacOSApplication} from './packages/macos-native/dist/index.js';
 const project=conformanceProject(),options={name:project.name,bundleIdentifier:'org.vb6studio.application',minimumVersion:'11.0',optimization:2};
-const result=await exportMacOSApplication(project,options);
-console.log(JSON.stringify({project,options,sha256:result.report.sha256}));
+const variants={};for(const optimization of [0,1,2,3]){const result=await exportMacOSApplication(project,{...options,optimization});variants[optimization]={sha256:result.report.sha256,codeBytes:result.report.codeBytes};}
+console.log(JSON.stringify({project,options,variants,sha256:variants[2].sha256}));
 '''], cwd=ROOT))
 checks, errors, archives, automatic = [], [], [], {}
 
@@ -27,16 +27,16 @@ def check(name, condition):
     checks.append(name)
     print('PASS', name, flush=True)
 
-def verify(path):
+def verify(path, optimization=2):
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
-    check(path.name + ': every byte equals Node export', digest == fixture['sha256'])
+    check(path.name + ': every byte equals Node export', digest == fixture['variants'][str(optimization)]['sha256'])
     subprocess.run(['node', '--input-type=module', '-e', '''
 import fs from 'node:fs/promises';
 import {verifyMacOSAOTArchive} from './packages/macos-native/dist/index.js';
 const report=await verifyMacOSAOTArchive(new Uint8Array(await fs.readFile(process.argv[1])),JSON.parse(process.argv[2]));
 if(!report.compiled||!report.signature.byteHashesVerified)throw new Error('Invalid browser archive');
-''', str(path), json.dumps(fixture['options'])], cwd=ROOT, check=True)
-    archives.append({'name':path.name, 'sha256':digest, 'options':fixture['options']})
+''', str(path), json.dumps({**fixture['options'], 'optimization':optimization})], cwd=ROOT, check=True)
+    archives.append({'name':path.name, 'sha256':digest, 'options':{**fixture['options'], 'optimization':optimization}})
 
 try:
     with sync_playwright() as pw:
@@ -142,6 +142,29 @@ try:
             check(origin+': native report verifies pages without claiming notarization', page.evaluate('vb6Studio.lastMacOSBuild.codegen==="arm64-aot" && vb6Studio.lastMacOSBuild.signature.byteHashesVerified && !vb6Studio.lastMacOSBuild.notarized'))
             check_dialog_pixels()
             page.screenshot(path=str(OUT/(ENGINE+'-'+origin+'.png')))
+            for level in [0,1,3]:
+                page.get_by_label('Native optimization',exact=True).select_option(str(level))
+                count = len(downloads)
+                page.get_by_role('button', name='Export .app ZIP', exact=True).click()
+                page.wait_for_function('(level)=>vb6Studio.lastMacOSBuild?.success===false || vb6Studio.lastMacOSBuild?.projectOptimization?.level===level',arg=level)
+                state = page.evaluate('vb6Studio.lastMacOSBuild')
+                check(origin+f': O{level} direct build succeeds with selected optimization', state.get('compiled') is True and state.get('projectOptimization',{}).get('level')==level)
+                page.get_by_role('dialog').get_by_role('status').filter(has_text='Direct native ARM64 .app ZIP ready').wait_for()
+                for _ in range(50):
+                    if len(downloads)>count:
+                        break
+                    page.wait_for_timeout(20)
+                if len(downloads)>count:
+                    variant=downloads[-1]
+                else:
+                    with page.expect_download() as item:
+                        page.get_by_role('link',name='Save ZIP: NativeConformance.app.zip').click()
+                    variant=item.value
+                variant_file=OUT/(ENGINE+'-'+origin+f'-O{level}.app.zip')
+                variant.save_as(variant_file)
+                verify(variant_file,level)
+                check(origin+f': O{level} native code size agrees with independent compiler', state['codeBytes']==fixture['variants'][str(level)]['codeBytes'])
+            page.get_by_label('Native optimization',exact=True).select_option('2')
             page.evaluate('''() => {
               const native=HTMLAnchorElement.prototype.click;
               globalThis.__restoreDownloadClick=()=>HTMLAnchorElement.prototype.click=native;

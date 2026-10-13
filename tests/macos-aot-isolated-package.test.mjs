@@ -13,6 +13,8 @@ test('independently extracted npm package exports a sealed native application of
   const project={schema:1,name:'Isolated',startup:'Sub Main',modules:[{name:'MainModule',kind:'module',code:'Public Sub Main()\nDebug.Print "ISOLATED_NATIVE"\nEnd Sub'}]};
   const original=globalThis.fetch;globalThis.fetch=()=>{throw new Error('No network in extracted SDK');};
   try {
+    assert.equal(typeof node.exportMacOSDistribution,'function');assert.equal(typeof node.distributeMacOSApplication,'function');
+    const distribution=await import(pathToFileURL(path.join(root,'package/src/distribution.mjs')).href);assert.equal(typeof distribution.distributeMacOSApplication,'function');
     const result=await api.exportMacOSApplication(project);assert.equal(result.report.compiled,true);assert.equal(result.report.codegen,'arm64-aot');
     const report=await node.exportMacOSProject(project,{out:path.join(root,'output')});assert.deepEqual(new Uint8Array(await fs.readFile(report.archive)),result.bytes);
     assert.equal((await api.verifyMacOSAOTArchive(result.bytes,result.options)).signature.byteHashesVerified,true);

@@ -43,7 +43,7 @@ export function installMacOSExport(ide, api) {
       el('details', {}, el('summary', {}, 'Advanced: optional Mac compiler bridge'), field('Bridge URL', endpoint), field('Session token', token),
         el('p', {}, 'On your Mac with Xcode Command Line Tools: node tools/serve-macos.mjs ' + (origin === 'null' ? '--allow-file-origin' : '--origin ' + (origin || 'http://127.0.0.1:8080'))),
         el('p', {}, 'Paste its token, then approve this build in the terminal. The token is discarded when the dialog closes. The exporter never runs the generated application.')),
-      el('p', {}, 'Export .app ZIP works directly here, including offline: no Mac, Clang, server or bridge is needed. It uses O2. The optional bridge supports other optimization levels; the separate source build kit is not an executable.'),
+      el('p', {}, 'Export .app ZIP works directly here, including offline: no Mac, Clang, server or bridge is needed. Project code supports O0–O3; the shared native SDK uses O2. The optional bridge recompiles with Apple Clang; the separate source build kit is not an executable.'),
       el('p', {}, 'This target is experimental, not complete VB6/Win32/COM parity. Default signing is ad-hoc, not notarization or Gatekeeper approval. Review diagnostics and test the native application before deployment.'));
     function offerArchive(filename, bytes) {
       clearDownload();
@@ -57,7 +57,7 @@ export function installMacOSExport(ide, api) {
     function preflight() {
       try {
         const result = compileMacOSAOT(ide.project, selected());
-        output.textContent = result.report.modules + ' modules, ' + result.report.procedures + ' native procedures. Target: arm64, minimum macOS ' + result.options.minimumVersion + '.\nDirect AOT emits native code with the bundled SDK. Test application behavior on your Mac.';
+        output.textContent = result.report.modules + ' modules, ' + result.report.procedures + ' native procedures. Project code: O' + result.options.optimization + ', ' + result.report.codeBytes + ' bytes. Target: arm64, minimum macOS ' + result.options.minimumVersion + '.\nDirect AOT emits native code with the bundled SDK. Test application behavior on your Mac.';
       } catch (error) {output.textContent = error.message;}
     }
     for (const input of [name, identifier, minimum, optimization]) input.addEventListener('change', () => {clearDownload(); preflight();});

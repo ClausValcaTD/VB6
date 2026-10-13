@@ -1,4 +1,5 @@
 #include "vb6.hpp"
+#include "array-ownership.hpp"
 #include "calendar.hpp"
 #include <cctype>
 #include <cwctype>
@@ -144,7 +145,7 @@ Value Value::record(std::shared_ptr<Record> r){Value out;out.type=Type::Record;o
 Value Value::null(){Value out;out.type=Type::Null;out.variant=true;return out;}
 Value Value::missing(){Value out;out.type=Type::Missing;out.variant=true;return out;}
 Value Value::boolean(bool b){return integer(b?-1:0,Type::Boolean);}
-Value Value::copy()const{Value out=*this;if(type==Type::Array)out.payload=asArray()->copy();if(type==Type::Record)out.payload=asRecord()->copy();return out;}
+Value Value::copy()const{Value out=*this;out.arrayOwners.reset();if(type==Type::Array)out.payload=asArray()->copy();if(type==Type::Record)out.payload=asRecord()->copy();return out;}
 long double Value::number()const{
   switch(type){case Type::Empty:return 0;case Type::Null:fail(94);case Type::Missing:fail(449);case Type::Currency:return static_cast<long double>(std::get<int64_t>(payload))/10000;case Type::Decimal:return std::get<Decimal>(payload).number();case Type::Byte:case Type::Integer:case Type::Long:case Type::Boolean:return std::get<int64_t>(payload);case Type::Single:case Type::Double:case Type::Date:return std::get<double>(payload);case Type::String:{const auto text=trimmed(string());if(text.empty())fail(13);std::string s=toUTF8(text);if(s.size()>2&&s[0]=='&'&&(s[1]=='h'||s[1]=='H'||s[1]=='o'||s[1]=='O')){size_t pos=0;try{auto n=std::stoull(s.substr(2),&pos,s[1]=='h'||s[1]=='H'?16:8);if(pos!=s.size()-2||n>UINT32_MAX)fail(13);return n>INT32_MAX?static_cast<int64_t>(n)-4294967296LL:static_cast<int64_t>(n);}catch(const std::exception&){fail(13);}}std::replace(s.begin(),s.end(),'D','E');std::replace(s.begin(),s.end(),'d','e');std::istringstream in(s);in.imbue(std::locale::classic());long double n;in>>std::noskipws>>n;if(!in||!in.eof())fail(13);if(!std::isfinite(n))fail(6);return n;}default:fail(13);}
 }
@@ -210,18 +211,33 @@ bool like(const Text& value,const Text& pattern,bool textCompare){
 Text printValue(const Value& v){if(v.type==Type::Null)return u"Null";if(v.type==Type::Empty)return u"";Text s=v.string();if(v.type==Type::Byte||v.type==Type::Integer||v.type==Type::Long||v.type==Type::Single||v.type==Type::Double||v.type==Type::Currency||v.type==Type::Decimal){if(v.number()>=0)s.insert(0,1,u' ');s+=u' ';}return s;}
 Value Ref::get()const{if(!read)fail(13,"Value is not assignable");return read();}
 void Ref::set(Value v,bool objectSet)const{if(!write)fail(451);write(std::move(v),objectSet);}
-Cell::Cell(Value v,std::string t,size_t length,bool c):value(std::move(v)),type(lower(std::move(t))),fixedLength(length),constant(c){if(type=="string"&&fixedLength)value=coerce(value,type,fixedLength);}
+Cell::Cell(Value v,std::string t,size_t length,bool c,bool array):value(std::move(v)),type(lower(std::move(t))),fixedLength(length),constant(c),arrayStorage(array||(value.type==Type::Array&&type!="variant")){if(!arrayStorage&&type=="string"&&fixedLength)value=coerce(value,type,fixedLength);}
 Value Cell::get(){if(lazy&&value.type==Type::Object&&!std::get<ObjectPtr>(value.payload))value=lazy();return value;}
-void Cell::set(Value v,bool){if(constant)fail(5,"Cannot assign to a constant");if(value.type==Type::Array&&type!="variant"){if(v.type!=Type::Array||lower(v.asArray()->elementType)!=type)fail(13);value=v.copy();return;}value=coerce(std::move(v),type,fixedLength);if(changed)changed(value);}
-Ref cellRef(CellPtr cell){return {[cell]{return cell->get();},[cell](Value v,bool set){cell->set(std::move(v),set);},cell->type,cell->value.type==Type::Array,true,cell->fixedLength};}
+void Cell::set(Value v,bool){
+  if(constant)fail(5,"Cannot assign to a constant");
+  if(arrayStorage){
+    if(v.type!=Type::Array||lower(v.asArray()->elementType)!=type)fail(13,"Array element type mismatch");
+    if(value.type==Type::Array&&(!value.asArray()->dynamic||value.asArray()->borrowedElements))fail(10,"This array is fixed or temporarily locked");
+    // A value copy must not import the source array's fixed-storage policy.
+    // Validate and allocate before replacing the old value (failure atomicity).
+    auto copy=v.asArray()->copy();copy->dynamic=true;value=Value::array(std::move(copy));
+  }else {if(value.type==Type::Array&&value.asArray()->borrowedElements)fail(10,"This array is temporarily locked");storeNativeValue(value,coerce(std::move(v),type,fixedLength));}
+  if(changed)changed(value);
+}
+Ref cellRef(CellPtr cell){return {[cell]{return cell->get();},[cell](Value v,bool set){cell->set(std::move(v),set);},cell->type,cell->arrayStorage,true,cell->fixedLength};}
 Array::Array(std::string type,Bounds dimensions,bool dyn,size_t maxElements,size_t length,std::function<Value()> init):elementType(lower(std::move(type))),bounds(std::move(dimensions)),dynamic(dyn),allocated(!bounds.empty()),fixedLength(length),initializer(std::move(init)){
   if(bounds.size()>60)fail(9);size_t count=allocated?1:0;for(auto b:bounds){int64_t width=int64_t(b.second)-b.first+1;if(width<=0||static_cast<uint64_t>(width)>maxElements||count>maxElements/static_cast<size_t>(width))fail(width<=0?9:7);count*=static_cast<size_t>(width);}values.reserve(count);for(size_t i=0;i<count;i++)values.push_back(coerce(initializer?initializer():Value(),elementType,fixedLength));
 }
 size_t Array::offset(const std::vector<Value>& indices)const{if(!allocated||indices.size()!=bounds.size())fail(9);size_t index=0,stride=1;for(size_t i=0;i<bounds.size();i++){int64_t n=indices[i].integral();if(n<bounds[i].first||n>bounds[i].second)fail(9);index+=static_cast<size_t>(n-bounds[i].first)*stride;stride*=static_cast<size_t>(int64_t(bounds[i].second)-bounds[i].first+1);}if(index>=values.size())fail(9);return index;}
-Ref Array::at(const std::vector<Value>& indices){size_t index=offset(indices);auto self=shared_from_this();return {[self,index]{return self->values.at(index);},[self,index](Value v,bool){self->values.at(index)=coerce(std::move(v),self->elementType,self->fixedLength);},elementType,false,true,fixedLength};}
-std::shared_ptr<Array> Array::resized(Bounds dimensions,bool preserve,size_t maxElements)const{if(!dynamic)fail(10,"This array is fixed or temporarily locked");if(preserve&&allocated){if(dimensions.size()!=bounds.size())fail(9);for(size_t i=0;i<bounds.size();i++)if(dimensions[i].first!=bounds[i].first||(i+1<bounds.size()&&dimensions[i].second!=bounds[i].second))fail(9);}auto out=std::make_shared<Array>(elementType,std::move(dimensions),true,maxElements,fixedLength,initializer);if(preserve&&allocated)for(size_t i=0;i<std::min(values.size(),out->values.size());i++)out->values[i]=values[i].copy();return out;}
+Ref Array::at(const std::vector<Value>& indices){
+  const size_t index=offset(indices);auto self=shared_from_this();
+  auto borrow=borrowArrayValue(Value::array(self),true);
+  return {[self,borrow,index]{return addArrayOwner(self->values.at(index),self);},
+    [self,borrow,index](Value v,bool){storeNativeValue(self->values.at(index),coerce(std::move(v),self->elementType,self->fixedLength));},elementType,false,true,fixedLength};
+}
+std::shared_ptr<Array> Array::resized(Bounds dimensions,bool preserve,size_t maxElements)const{if(!dynamic||borrowedElements)fail(10,"This array is fixed or temporarily locked");if(preserve&&allocated){if(dimensions.size()!=bounds.size())fail(9);for(size_t i=0;i<bounds.size();i++)if(dimensions[i].first!=bounds[i].first||(i+1<bounds.size()&&dimensions[i].second!=bounds[i].second))fail(9);}auto out=std::make_shared<Array>(elementType,std::move(dimensions),true,maxElements,fixedLength,initializer);if(preserve&&allocated)for(size_t i=0;i<std::min(values.size(),out->values.size());i++)out->values[i]=values[i].copy();return out;}
 std::shared_ptr<Array> Array::copy()const{auto out=std::make_shared<Array>(elementType,Bounds{},dynamic,1,fixedLength,initializer);out->allocated=allocated;out->bounds=bounds;out->values.reserve(values.size());for(const auto& v:values)out->values.push_back(v.copy());return out;}
-void Array::erase(){if(dynamic){values.clear();bounds.clear();allocated=false;}else for(auto& v:values)v=coerce(initializer?initializer():Value(),elementType,fixedLength);}
-std::shared_ptr<Record> Record::copy()const{auto out=std::make_shared<Record>();out->name=name;out->order=order;for(auto& entry:fields){auto c=entry.second;out->fields[entry.first]=std::make_shared<Cell>(c->value.copy(),c->type,c->fixedLength,c->constant);}return out;}
+void Array::erase(){if(borrowedElements)fail(10,"This array is temporarily locked");if(dynamic){values.clear();bounds.clear();allocated=false;}else for(auto& v:values)v=coerce(initializer?initializer():Value(),elementType,fixedLength);}
+std::shared_ptr<Record> Record::copy()const{auto out=std::make_shared<Record>();out->name=name;out->order=order;for(auto& entry:fields){auto c=entry.second;out->fields[entry.first]=std::make_shared<Cell>(c->value.copy(),c->type,c->fixedLength,c->constant,c->arrayStorage);}return out;}
 Ref Record::member(const std::string& name)const{auto it=fields.find(lower(name));if(it==fields.end())fail(438,"Unknown record field: "+name);return cellRef(it->second);}
 } // namespace vb6

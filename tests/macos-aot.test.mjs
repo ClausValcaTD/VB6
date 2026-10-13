@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {compileMacOSAOT} from '../packages/macos-native/src/aot-compiler.js';
 import {linkMacOSAOT,exportMacOSAOT,verifyMacOSAOTArchive,writeMacOSAppZip} from '../packages/macos-native/src/aot-export.js';
 import {aotImageLayout,verifyAOTRuntime,createAOTRuntimeManifest} from '../packages/macos-native/src/aot-image.js';
-import {AOT_HELPERS} from '../packages/macos-native/src/aot-abi.js';
+import {AOT_ABI,AOT_HELPERS} from '../packages/macos-native/src/aot-abi.js';
 import {syntheticAOTRuntime} from '../packages/macos-native/tests/aot-fixture.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 const project={schema:1,name:'DirectTest',startup:'Sub Main',modules:[{name:'MainModule',kind:'module',code:'Public Sub Main()\nDebug.Assert 3 + 4 = 7\nDebug.Print "DIRECT_OK"\nEnd Sub'}]};
@@ -18,7 +18,7 @@ test('AOT emits actual aligned ARM64 procedures, not IR in project metadata',()=
  const result=compileMacOSAOT(conformanceProject());assert.ok(result.section.length>4096);assert.ok(result.metadata.entries.length>10);
  assert.ok(result.metadata.entries.every(n=>Number.isInteger(n)&&n%16===0));assert.equal(result.report.compiled,false);
  assert.ok(result.section.fixups.every(f=>f.kind.startsWith('arm64-')));assert.ok(!JSON.stringify(result.metadata).includes('"op":'));
- assert.throws(()=>compileMacOSAOT(project,{optimization:0}),/optimization/i);
+ for(const optimization of [0,1,2,3])assert.equal(compileMacOSAOT(project,{optimization}).report.optimization.level,optimization);
 });
 test('direct ZIP preserves executable permission, seals content and reports no notarization',async()=>{
  const result=await verifyMacOSAOTArchive(exported.bytes,exported.options);assert.equal(result.compiled,true);assert.equal(result.browserSignatureCryptographicallyVerified,true);
@@ -50,3 +50,14 @@ test('ARM64 linking refuses over-capacity code before modifying the runtime',asy
 test('app ZIP rejects Unicode-normalized/case-insensitive collisions',()=>{assert.throws(()=>writeMacOSAppZip({'A.app/a':new Uint8Array(),'A.app/A':new Uint8Array()},'A.app/a'),/collision/);});
 test('custom resources cannot replace seals, metadata, or escape Resources',async()=>{for(const name of ['Resources/../outside','Resources/vb6-build.json','Resources/a\\b','Resources/a:b'])await assert.rejects(()=>linkMacOSAOT(compiled,runtime,{resources:{[name]:'bad'}}),/resource path/);});
 test('invalid template bytes are rejected even with a recomputed hash',async()=>{const bytes=runtime.bytes.slice();new DataView(bytes.buffer).setUint32(4,0x1000007,true);await assert.rejects(()=>createAOTRuntimeManifest(bytes),/Apple Silicon/);});
+
+test('native loader and compiler agree on the array-aware helper ABI',async()=>{
+ const header=await readFile(new URL('../packages/macos-native/aot/runtime.hpp',import.meta.url),'utf8');
+ assert.match(header,new RegExp('AbiVersion = '+AOT_ABI+';'));
+ assert.equal(compileMacOSAOT(conformanceProject()).metadata.abi,AOT_ABI);
+ for(const abi of [1,2]){
+  const legacy={bytes:runtime.bytes,manifest:{...runtime.manifest,abi}};
+  await assert.rejects(exportMacOSAOT(conformanceProject(),legacy),/ABI mismatch/);
+ }
+ await verifyAOTRuntime(runtime.bytes,runtime.manifest);
+});
