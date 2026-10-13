@@ -9,6 +9,7 @@ import {runTool} from '../packages/macos-native/src/build-driver.mjs';
 import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-native/src/aot-compiler.js';
 import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
+import {programLifetimeProject,formLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
 import {largeAOTProject} from '../packages/macos-native/tests/aot-large.mjs';
 import {buildAOTTemplate} from './build-macos-aot-template.mjs';
@@ -33,6 +34,23 @@ try{
   await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
   assert.ok((await run(ownership,[])).includes('NATIVE_SCOPE_OWNERSHIP_OK'));
   report.scopeOwnershipVerified=true;
+  const programLife=path.join(work,'program-lifetime');
+  await run(compiler,[...flags,path.join(sdk,'tests/program-lifetime.cpp'),...objects,'-o',programLife]);
+  assert.match(await run(programLife,[]),/NATIVE_PROGRAM_LIFETIME_OK/);
+  const rootMarkers=output=>{
+    assert.ok(output.indexOf('NATIVE_PROGRAM_BODY_OK')>=0);
+    for(const label of ['global','array','static']){
+      const marker='NATIVE_ROOT_RELEASED:'+label;
+      assert.ok(output.indexOf(marker)>output.indexOf('NATIVE_PROGRAM_BODY_OK'),'Missing post-body finalizer '+label);
+      assert.equal(output.split(marker).length,2,'Finalizer must run once');
+    }
+  };
+  const rootSource=path.join(work,'root-oracle.cpp'),rootOracle=path.join(work,'root-oracle');
+  await fs.writeFile(rootSource,emitAOTPortableTestSource(compileMacOSAOT(programLifetimeProject())));
+  await run(compiler,[...flags,rootSource,...objects,'-o',rootOracle]);
+  rootMarkers(await run(rootOracle,[]));
+  assert.deepEqual((await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8')).trim().split(/\r?\n/).sort(),['array','global','static']);
+  report.programRootOracleVerified=true;
   const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
   await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
   // A faulty expected error must fail the native test, not be swallowed by
@@ -47,7 +65,7 @@ try{
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;
-    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))]]){
+    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))]]){
       const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
       const result=await exportMacOSAOT(p,runtime,options);
       if(label==='large'){assert.ok(result.report.codeBytes>2097152,'Native large program must exceed old code cap');assert.ok(result.report.metadataBytes>2097152,'Native large program must exceed old metadata cap');}
@@ -62,6 +80,7 @@ try{
       report[key]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes,metadataBytes:result.report.metadataBytes,optimization:result.report.projectOptimization};
       if(optimization===2)report[label]=report[key];
     }
+    report.programLifetimeVerified=true;
     report.largeCapacityVerified=true;report.optimizationLevelsVerified=[0,1,2,3];
     report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
   }

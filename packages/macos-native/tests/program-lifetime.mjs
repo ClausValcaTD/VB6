@@ -53,6 +53,7 @@ Sub Main()
   Debug.Assert Initialized = 1
   Debug.Assert Loaded = 0
   localForm.State = 41
+  Debug.Assert localForm.UserValue = 41
   Debug.Assert localForm.ReadState() = 41
   Debug.Assert Loaded = 0
   Load localForm
@@ -65,6 +66,7 @@ Sub Main()
   Unload localForm
   Debug.Assert Unloaded = 1
   Debug.Assert Terminated = 0
+  Debug.Assert localForm.UserValue = 41
   Debug.Assert localForm.ReadState() = 41
   Debug.Assert Loaded = 1
   Set localForm = Nothing
@@ -95,6 +97,9 @@ End Sub`},
     {name:'Form1',kind:'form',form:{name:'Form1',type:'Form',properties:{Caption:'Native form lifetime',ClientWidth:3000,ClientHeight:1800},controls:[]},
      code:`Option Explicit
 Public State As Long
+Public Property Get UserValue() As Long
+  UserValue = State
+End Property
 Public Function ReadState() As Long
   ReadState = State
 End Function

@@ -8,6 +8,7 @@ import {createHash} from 'node:crypto';
 import {buildMacOSPackage} from './build-macos-native.mjs';
 import {runTool,writeBuildKit,buildNativeKit} from '../packages/macos-native/src/build-driver.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
+import {programLifetimeProject,formLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
 const root=path.resolve(import.meta.dirname,'..');buildMacOSPackage(root);
 const {compileMacOS,createMacOSBuildKit,MacOSCompilerClient,verifyMacOSAppArchive}=await import('../packages/macos-native/dist/index.js');
@@ -42,6 +43,16 @@ try {
   const ownership=path.join(work,'scope-ownership');
   await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
   assert.match(await run(ownership,[]),/NATIVE_SCOPE_OWNERSHIP_OK/);report.checks.push('sanitized-nested-scope-ownership');
+  const programLife=path.join(work,'program-lifetime');
+  await run(compiler,[...flags,path.join(sdk,'tests/program-lifetime.cpp'),...objects,'-o',programLife]);
+  assert.match(await run(programLife,[]),/NATIVE_PROGRAM_LIFETIME_OK/);
+  const rootSource=path.join(work,'root-lifetime.cpp'),rootExecutable=path.join(work,'root-lifetime');
+  await fs.writeFile(rootSource,compileMacOS(programLifetimeProject()).files['main.cpp']);
+  await run(compiler,[...flags,rootSource,...objects,'-o',rootExecutable]);
+  const rootOutput=await run(rootExecutable,[]);
+  for(const label of ['global','array','static'])assert.ok(rootOutput.includes('NATIVE_ROOT_RELEASED:'+label));
+  assert.deepEqual((await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8')).trim().split(/\r?\n/).sort(),['array','global','static']);
+  report.checks.push('sanitized-program-root-lifecycle','generated-normal-root-cleanup');
   const project=conformanceProject(),compiled=compileMacOS(project),source=path.join(work,'main.cpp');
   await fs.writeFile(source,compiled.files['main.cpp']);
   const portable=path.join(work,'portable');
@@ -74,6 +85,13 @@ try {
     assert.equal(richBuilt.architecture,'arm64');assert.equal(richBuilt.signatureVerified,true);assert.equal(richBuilt.cacheHit,true);
     assert.match(await run(richBuilt.executable,[]),/NATIVE_RICH_FORM_OK/);
     report.checks.push('signed-generated-rich-form-execution');
+    const formKit=createMacOSBuildKit(formLifetimeProject()),formDir=path.join(work,'form-lifetime-kit');
+    await writeBuildKit(formDir,formKit.files);
+    const formBuilt=await buildNativeKit(formDir,{out:path.join(work,'form-lifetime-out'),cache,jobs:3,log});
+    assert.equal(formBuilt.signatureVerified,true);assert.equal(formBuilt.cacheHit,true);
+    assert.match(await run(formBuilt.executable,[]),/NATIVE_FORM_LIFETIME_OK/);
+    report.checks.push('signed-default-form-lifetime-execution');
+
     const reused=await buildNativeKit(kitDir,{out:path.join(work,'reused'),cache,jobs:3,log});assert.equal(reused.cacheHit,true);report.checks.push('native-cache-reuse');
     // Verify the exact signed bytes produced by ditto; do not repack the bundle.
     const archive=await verifyMacOSAppArchive(new Uint8Array(await fs.readFile(built.zip)),kit.options);
