@@ -54,3 +54,14 @@ test('failure-only MDI trace preserves every appended assertion and instruments 
  for(const line of assertions)assert.ok(traced.modules[0].code.includes(line),line);
  assert.ok(traced.modules[0].code.includes('NativeTrace "Public Sub NativeVerify()"'));
 });
+
+
+test('failure-only Automation trace reports source/clone sort and individual GetRows cells without changing assertions',()=>{
+ const {project,checks}=nativeControlFixtures().find(f=>f.project.name==='AotControlAutomation');
+ const before=JSON.stringify(project),traced=traceControlFixture(project);
+ assert.equal(JSON.stringify(project),before);
+ const assertions=project.modules[0].code.split('\n').filter(s=>s.includes('Then ExitProcess '));
+ assert.equal(assertions.length,checks.length);
+ for(const assertion of assertions)assert.ok(traced.modules[0].code.includes(assertion));
+ for(const text of ['ADO source Sort=[','Clone current: ID=','GetRows cells: (0,0)='])assert.ok(traced.modules[0].code.includes(text));
+});

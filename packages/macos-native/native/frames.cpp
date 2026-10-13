@@ -6,7 +6,7 @@ static CellPtr makeCell(Frame& frame,const std::string&type,Bounds bounds,int ar
   auto&rt=frame.runtime;Value initial;
   if(arrayKind){auto prototype=rt.defaultValue(type,&frame);auto init=[prototype]{return prototype.copy();};initial=Value::array(std::make_shared<Array>(type,bounds,arrayKind==1,rt.maxArrayElements,fixed,init));}
   else initial=rt.defaultValue(type,&frame);
-  auto cell=std::make_shared<Cell>(initial,arrayKind?"variant":type,fixed,constant);
+  auto cell=std::make_shared<Cell>(initial,type,fixed,constant,arrayKind!=0);
   if(autoNew)cell->lazy=[&rt,type]{return rt.create(type);};
   return cell;
 }
@@ -35,7 +35,7 @@ Frame::Frame(Runtime&rt,std::shared_ptr<Instance> object,Procedure*proc,Args arg
       Arg arg=bound[i]?*bound[i]:Arg();
       if(arg.value.type==Type::Missing){if(!p.optional)fail(449);if(p.initial)arg=Arg(p.initial(*this));else if(lower(p.type)!="variant")arg=Arg(rt.defaultValue(p.type,this));}
       if(proc->external){arg.nativeByRef=p.byRef;if(!(arg.value.type==Type::Object&&std::dynamic_pointer_cast<NativeCallback>(std::get<ObjectPtr>(arg.value.payload)))&&lower(p.type)!="any"&&arg.value.type!=Type::Record&&arg.value.type!=Type::Array)arg.value=coerce(arg.value,p.type);arguments.push_back(arg);continue;}
-      if(p.array && arg.value.type!=Type::Array)fail(13,"Array argument required");
+      if(p.array && (arg.value.type!=Type::Array||lower(arg.value.asArray()->elementType)!=lower(p.type)))fail(13,"Matching array argument required");
       if(p.byRef&&arg.reference&&arg.reference.direct){
         auto sourceType=lower(arg.reference.type),target=lower(p.type);
         if(!p.array&&target!="variant"&&target!=sourceType&&!(arg.value.type==Type::Object&&(!std::get<ObjectPtr>(arg.value.payload)||std::get<ObjectPtr>(arg.value.payload)->supports(target))))fail(13,"ByRef argument type mismatch: "+p.name);
@@ -50,10 +50,13 @@ Frame::Frame(Runtime&rt,std::shared_ptr<Instance> object,Procedure*proc,Args arg
       }else{
         Value value=arg.value;
         if(value.type!=Type::Missing&&!p.array)value=coerce((lower(p.type)=="variant"||typeCode(p.type)==Type::Object||typeCode(p.type)==Type::Record)?value:scalar(rt,value),p.type);
-        auto cell=std::make_shared<Cell>(value,p.array?"variant":p.type);locals[name]=cellRef(cell);
+        if(p.array){value=value.copy();value.asArray()->dynamic=true;}
+        auto cell=std::make_shared<Cell>(value,p.type,0,false,p.array);locals[name]=cellRef(cell);
       }
     }
-    if(proc->isFunction)declare(proc->name,proc->returnType);
+    // Function result storage is always per invocation, even in a Static
+    // procedure. Typed array results start as unallocated dynamic arrays.
+    if(proc->isFunction)locals[lower(proc->name)]=cellRef(makeCell(*this,proc->returnType,{},proc->returnArray?1:0,0,false,false));
   }catch(...){--runtime.depth;throw;}
 }
 Frame::~Frame(){--runtime.depth;}
@@ -89,6 +92,7 @@ Ref Frame::ref(const std::string&raw){
   if(module.kind=="form"){
     if(name=="caption"||name=="left"||name=="top"||name=="width"||name=="height"||name=="visible"||name=="enabled"||name=="backcolor"||name=="forecolor")return self->reference(runtime,name);
   }
+  if(auto found=runtime.modules.find(name);found!=runtime.modules.end()&&found->second.kind=="form")return runtime.defaultFormRef(name);
   if(module.optionExplicit)fail(5,"Variable not defined: "+raw);
   std::string type="variant";if(!raw.empty()){auto suffix=raw.back();type=suffix=='$'?"string":suffix=='%'?"integer":suffix=='&'?"long":suffix=='!'?"single":suffix=='#'?"double":suffix=='@'?"currency":module.defaultTypes.count(name.substr(0,1))?module.defaultTypes.at(name.substr(0,1)):"variant";}declare(raw,type);return locals.at(name);
 }
@@ -99,56 +103,69 @@ Value Frame::get(const std::string&raw){
   if(auto it=runtime.constants.find(name);it!=runtime.constants.end())return it->second;
   if(module.procedures.count(name+":get"))return runtime.invoke(self,name+":get",{},true);
   if(module.procedures.count(name))return runtime.invoke(self,name,{},true);
-  if(module.kind=="form"){runtime.load(self);if(auto it=self->controls.find(name);it!=self->controls.end())return Value::object(it->second);}
+  if(module.kind=="form"&&self->hasControl(name)){runtime.load(self);if(auto it=self->controls.find(name);it!=self->controls.end())return Value::object(it->second);}
   if(runtime.modules.count(name))return Value::object(runtime.instance(name));
   for(auto&entry:runtime.modules)if(entry.second.kind=="module"&&entry.second.publicFields.count(name))return ref(name).get();
   if(runtime.builtins.count(name))return call(name);
-  if(module.kind=="form"){try{return runtime.host->formGet(self,name);}catch(const Error&e){if(e.number!=438)throw;}}
+  if(module.kind=="form"){runtime.load(self);try{return runtime.host->formGet(self,name);}catch(const Error&e){if(e.number!=438)throw;}}
   return ref(raw).get();
 }
 Value Frame::call(const std::string&raw,Args args){
   auto name=lower(raw);
+  if(procedure&&procedure->returnArray&&name==lower(procedure->name)){
+    const auto value=locals.at(name).get();
+    return args.empty()?value:callValue(runtime,value,std::move(args));
+  }
   if(module.procedures.count(name))return runtime.invoke(self,name,std::move(args),true);
   if(module.procedures.count(name+":get"))return runtime.invoke(self,name+":get",std::move(args),true);
   if(auto it=locals.find(name);it!=locals.end())return callValue(runtime,it->second.get(),std::move(args));
   if(auto it=self->fields.find(name);it!=self->fields.end())return callValue(runtime,it->second->get(),std::move(args));
-  if(module.kind=="form"){runtime.load(self);if(self->controls.count(name))return callValue(runtime,Value::object(self->controls.at(name)),std::move(args));}
+  if(module.kind=="form"&&self->hasControl(name)){runtime.load(self);if(self->controls.count(name))return callValue(runtime,Value::object(self->controls.at(name)),std::move(args));}
   std::shared_ptr<Instance> owner;
   for(auto&entry:runtime.modules){auto&m=entry.second;if(m.kind=="module"&&m.procedures.count(name)&&m.procedures.at(name).scope!="private"){
     if(owner)fail(5,"Ambiguous procedure: "+raw);owner=runtime.instance(entry.first);
   }}
   if(owner)return runtime.invoke(owner,name,std::move(args));
   auto builtin=runtime.builtins.find(name);if(builtin!=runtime.builtins.end())return builtin->second(*this,std::move(args));
-  if(module.kind=="form")return runtime.host->formCall(self,name,std::move(args));
+  if(module.kind=="form"){runtime.load(self);return runtime.host->formCall(self,name,std::move(args));}
   fail(453,"Unknown procedure: "+raw);
 }
 Value Frame::create(const std::string&type){return runtime.create(type);}
 Value Frame::callback(const std::string&module,const std::string&procedure){auto instance=runtime.instance(module);if(instance->module->kind!="module")fail(5,"AddressOf requires a standard module");auto found=instance->module->procedures.find(lower(procedure));if(found==instance->module->procedures.end()||found->second.external)fail(453,"Invalid callback procedure");return Value::object(std::make_shared<NativeCallback>(instance,lower(procedure)));}
 Value NativeCallback::invoke(Runtime&rt,const std::string&,Args args){auto instance=owner.lock();if(!instance)fail(91,"Native callback owner has been released");return rt.invoke(instance,procedure,std::move(args),true);}
 Ref Frame::propertyRef(const std::string&raw,Args args){auto name=lower(raw);auto object=self;auto*rt=&runtime;return {[object,rt,name,args]{return rt->invoke(object,name+":get",args,true);},[object,rt,name,args](Value value,bool set){auto all=args;all.emplace_back(value);rt->invoke(object,name+(set?":set":":let"),all,true);},"variant",false,false};}
-Value Frame::result(){drainNativeFinalizers(runtime);if(handlerActive)runtime.error.clear();return procedure&&procedure->isFunction?locals.at(lower(procedure->name)).get():Value{};}
-Value Frame::with()const{if(withValues.empty())fail(91);return withValues.back();}
+Value Frame::result(){clearScopes();drainNativeFinalizers(runtime);if(handlerActive)runtime.error.clear();return procedure&&procedure->isFunction?locals.at(lower(procedure->name)).get():Value{};}
 bool Frame::forStart(const std::string&id,Ref variable,Value start,Value end,Value step){
   start=scalar(runtime,start);end=scalar(runtime,end);step=scalar(runtime,step);variable.set(start);fors[id]={variable,end,step};return binary(step.number()>=0?"<=":">=",variable.get(),end,module.textCompare).truth();
 }
 bool Frame::forNext(const std::string&id){auto&state=fors.at(id);state.variable.set(binary("+",state.variable.get(),state.step,module.textCompare));return binary(state.step.number()>=0?"<=":">=",state.variable.get(),state.end,module.textCompare).truth();}
-bool Frame::eachStart(const std::string&id,Ref variable,Value iterable){
-  std::vector<Value> values;if(iterable.type==Type::Array)values=iterable.asArray()->values;else values=iterable.asObject()->enumerate(runtime);
-  each[id]={variable,values,0};return eachNext(id);
-}
-bool Frame::eachNext(const std::string&id){auto&state=each.at(id);if(state.position==state.values.size())return false;auto v=state.values[state.position++];state.variable.set(v,v.type==Type::Object);return true;}
 void Frame::redim(Ref ref,Bounds bounds,bool preserve,const std::string&explicitType){
-  auto old=ref.get();if(old.type==Type::Array){if(!explicitType.empty()&&lower(explicitType)!=lower(old.asArray()->elementType))fail(13);ref.set(Value::array(old.asArray()->resized(bounds,preserve,runtime.maxArrayElements)));}
-  else{auto type=explicitType.empty()?"variant":explicitType;auto prototype=runtime.defaultValue(type,this);auto init=[prototype]{return prototype.copy();};ref.set(Value::array(std::make_shared<Array>(type,bounds,true,runtime.maxArrayElements,0,init)));}
+  auto old=ref.get();
+  const auto type=explicitType.empty()?(old.type==Type::Array?old.asArray()->elementType:ref.array?ref.type:"variant"):lower(explicitType);
+  if(ref.array&&lower(type)!=lower(ref.type))fail(13,"ReDim cannot change declared array element type");
+  if(old.type==Type::Array){
+    auto array=old.asArray();
+    if(lower(type)==lower(array->elementType)){
+      // Construct first; invalid bounds/allocation must leave every alias intact.
+      // Commit in place so an existing whole-array ByRef alias sees the resize,
+      // without a redundant deep copy through Cell::set.
+      auto next=array->resized(std::move(bounds),preserve,runtime.maxArrayElements);
+      array->bounds.swap(next->bounds);array->values.swap(next->values);array->allocated=next->allocated;
+      return;
+    }
+    if(ref.array||preserve)fail(13,"ReDim cannot change array element type with Preserve");
+  }else if(old.type!=Type::Empty||lower(ref.type)!="variant")fail(13,"ReDim requires an array or an Empty Variant");
+  auto prototype=runtime.defaultValue(type,this);auto init=[prototype]{return prototype.copy();};
+  ref.set(Value::array(std::make_shared<Array>(type,std::move(bounds),true,runtime.maxArrayElements,0,init)));
 }
-void Frame::mark(int current,int nextInstruction,int sourceLine){drainNativeFinalizers(runtime);site=current;next=nextInstruction;line=sourceLine;}
+void Frame::mark(int current,int nextInstruction,int sourceLine){site=current;next=nextInstruction;line=sourceLine;reconcileScopes(current);drainNativeFinalizers(runtime);}
 bool Frame::handle(const Error& e){
   if(handlerActive||(!errorResumeNext&&errorHandler<0))return false;
   runtime.error.number=e.number;runtime.error.description=e.description;runtime.error.source=fromUTF8(e.source.empty()?module.name:e.source);runtime.error.erl=labelLine;
-  errorSite=site;errorNext=next;errorWithDepth=withValues.size();
+  errorSite=site;errorNext=next;
   if(errorResumeNext){pc=next;return true;}handlerActive=true;pc=errorHandler;return true;
 }
 void Frame::onError(const std::string&mode,int target){errorResumeNext=mode=="next";errorHandler=mode=="goto"?target:-1;handlerActive=false;errorSite=-1;}
-void Frame::resume(const std::string&mode,int target){if(errorSite<0||!handlerActive)fail(20);pc=mode=="retry"?errorSite:mode=="next"?errorNext:target;handlerActive=false;errorSite=-1;runtime.error.clear();if(withValues.size()>errorWithDepth)withValues.resize(errorWithDepth);}
+void Frame::resume(const std::string&mode,int target){if(errorSite<0||!handlerActive)fail(20);pc=mode=="retry"?errorSite:mode=="next"?errorNext:target;handlerActive=false;errorSite=-1;runtime.error.clear();}
 
 } // namespace vb6

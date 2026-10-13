@@ -33,9 +33,15 @@ export function aotImageLayout(input){
   if(symbolsCommand===undefined||signatureCommand===undefined||buildCommand===undefined)throw new Error('Missing AOT link metadata');
   const signature=image.signature,linkedit=segments.find(s=>s.name==='__LINKEDIT'),textSegment=segments.find(s=>s.name==='__TEXT');
   if(!linkedit||signature.offset<linkedit.offset||signature.offset+signature.size!==bytes.length||linkedit.offset+linkedit.fileSize!==bytes.length||signature.offset%16)throw new Error('Code signature must terminate __LINKEDIT');
-  const find=name=>{const s=sections.find(s=>s.segment==='__TEXT'&&s.name===name);if(!s||s.size!==2097152||s.alignment<14||s.offset%16384||s.address%16384||s.address-textSegment.address!==s.offset-textSegment.offset||(s.flags&255)!==0)throw new Error('Missing or invalid reserved AOT section: '+name);return s;};
+  const growable=segments.some(s=>s.name==='__VB6CODE');
+  const find=name=>{const segmentName=growable?(name==='__vb6code'?'__VB6CODE':'__VB6META'):'__TEXT';const owner=segments.find(s=>s.name===segmentName),s=sections.find(s=>s.segment===segmentName&&s.name===name);if(!s||!owner||s.size<16384||s.size%16384||(!growable&&s.size!==2097152)||s.alignment!==14||s.offset%16384||s.address%16384||s.address-owner.address!==s.offset-owner.offset||(s.flags&255)!==0)throw new Error('Missing or invalid reserved AOT section: '+name);return s;};
   const code=find('__vb6code'),metadata=find('__vb6meta');
   if(!(code.flags&0x80000000)||code.offset<metadata.offset+metadata.size&&metadata.offset<code.offset+code.size)throw new Error('Invalid AOT code section');
+  if(growable){
+    const c=segments.find(s=>s.name==='__VB6CODE'),m=segments.find(s=>s.name==='__VB6META');
+    if(!m||c.protection!==5||m.protection!==1||[c,m].some(s=>s.size!==s.fileSize||sections.filter(t=>t.segment===s.name).length!==1)||code.size!==c.size||metadata.size!==m.size||c.offset+c.fileSize!==m.offset||m.offset+m.fileSize!==linkedit.offset||c.address+c.size!==m.address||m.address+m.size!==linkedit.address)throw new Error('Invalid growable AOT segment layout');
+    if(segments.filter(s=>s.fileSize).slice(-3).map(s=>s.name).join(',')!=='__VB6CODE,__VB6META,__LINKEDIT')throw new Error('Project segments must follow all fixed native segments');
+  }
   const table=u32(symbolsCommand+8),count=u32(symbolsCommand+12),strings=u32(symbolsCommand+16),stringSize=u32(symbolsCommand+20);range(table,count*16,signature.offset);range(strings,stringSize,signature.offset);
   const wanted=new Set(AOT_HELPERS.map(n=>'_vb6_aot_'+n)),symbols=new Map();
   for(let i=0;i<count;i++){
@@ -47,15 +53,16 @@ export function aotImageLayout(input){
     symbols.set(name,address);
   }
   for(const name of wanted)if(!symbols.has(name))throw new Error('Runtime is missing AOT helper: '+name);
-  return {image,commands,segments,sections,code,metadata,symbols,signature,signatureCommand,buildCommand,uuidCommand,linkedit,textSegment};
+  return {image,growable,commands,segments,sections,code,metadata,symbols,symbolsCommand,signature,signatureCommand,buildCommand,uuidCommand,linkedit,textSegment};
 }
 export async function createAOTRuntimeManifest(bytes,provenance={}){
   const layout=aotImageLayout(bytes);
-  return {version:1,abi:AOT_ABI,architecture:'arm64',sha256:await sha256Bytes(bytes),bytes:bytes.length,code:{offset:layout.code.offset,address:layout.code.address,capacity:layout.code.size},metadata:{offset:layout.metadata.offset,capacity:layout.metadata.size},helpers:Object.fromEntries(layout.symbols),provenance};
+  return {version:1,layout:layout.growable?'project-segments-v2':'reserved-v1',abi:AOT_ABI,architecture:'arm64',sha256:await sha256Bytes(bytes),bytes:bytes.length,code:{offset:layout.code.offset,address:layout.code.address,capacity:layout.code.size},metadata:{offset:layout.metadata.offset,capacity:layout.metadata.size},helpers:Object.fromEntries(layout.symbols),provenance};
 }
 export async function verifyAOTRuntime(bytes,manifest){
   if(!(bytes instanceof Uint8Array)||!manifest||manifest.version!==1||manifest.abi!==AOT_ABI||manifest.architecture!=='arm64'||manifest.bytes!==bytes.length||manifest.sha256!==await sha256Bytes(bytes))throw new Error('AOT runtime integrity or ABI mismatch');
   const layout=aotImageLayout(bytes);
+  if((manifest.layout??'reserved-v1')!==(layout.growable?'project-segments-v2':'reserved-v1'))throw new Error('AOT runtime loader layout mismatch');
   if(manifest.code?.offset!==layout.code.offset||manifest.code?.address!==layout.code.address||manifest.code?.capacity!==layout.code.size||manifest.metadata?.offset!==layout.metadata.offset||manifest.metadata?.capacity!==layout.metadata.size)throw new Error('AOT runtime section manifest mismatch');
   if(!manifest.helpers||Object.keys(manifest.helpers).length!==layout.symbols.size||[...layout.symbols].some(([n,address])=>manifest.helpers[n]!==address))throw new Error('AOT runtime helper manifest mismatch');
   return layout;

@@ -1,5 +1,6 @@
 /** AOT helper calls and control flow -> native ARM64; C++ is a test-only oracle. */
 import {ARM64} from '../../../src/native/arm64.js';
+import {aotOptimizationLevel,optimizeAOTOperations} from './aot-optimizer.js';
 import {AOT_HELPERS} from './aot-abi.js';
 export class AOTFunction {
   constructor(id) {this.id=id;this.ops=[];this.nextSlot=1;this.slots=1;this.sequence=0;}
@@ -17,19 +18,23 @@ export class AOTFunction {
   select(value,pairs,fallback) {this.ops.push({op:'select',value,pairs,fallback});}
   dispatch(value) {this.ops.push({op:'move',value,out:{slot:0}});this.jump('dispatch');}
   end() {this.jump('exit');}
-  emit(assembler) {
+  emit(assembler,optimization=2) {
+    const level=aotOptimizationLevel(optimization),optimized=optimizeAOTOperations(this.ops,level);
+    const stats={removedJumps:optimized.removedJumps,elidedStores:0,forwardedLoads:0};let cachedSlot;
     const a=assembler,prefix='aot_'+this.id+'_',name=s=>prefix+s,frame=Math.ceil(this.slots*8/16)*16;
-    const load=(rd,value)=>value&&typeof value==='object'?a.ldr(rd,31,value.slot*8):a.movImm(rd,value??0);
+    const load=(rd,value)=>{if(level===3&&rd===0&&value&&typeof value==='object'&&cachedSlot===value.slot){stats.forwardedLoads++;return a;}if(rd===0)cachedSlot=undefined;return value&&typeof value==='object'?a.ldr(rd,31,value.slot*8):a.movImm(rd,value??0);};
     let sequence=0;
     const conditional=(condition,target)=>{const inverse={eq:'ne',ne:'eq',lt:'ge',ge:'lt',lo:'hs',hs:'lo'}[condition];if(!inverse)throw new Error('Invalid native condition');const skip=name('skip'+sequence++);a.branch(inverse,skip).b(target).label(skip);};
     a.s.align(16);a.label('aot_entry_'+this.id).enter(frame);
-    for(const op of this.ops) {
-      if(op.op==='label')a.label(name(op.name));
-      else if(op.op==='jump')a.b(name(op.name));
-      else if(op.op==='move'){load(0,op.value);a.str(0,31,op.out.slot*8);}
+    for(const op of optimized.ops) {
+      if(op.op==='label'){cachedSlot=undefined;a.label(name(op.name));}
+      else if(op.op==='jump'){cachedSlot=undefined;a.b(name(op.name));}
+      else if(op.op==='move'){load(0,op.value);a.str(0,31,op.out.slot*8);cachedSlot=op.out.slot;}
       else if(op.op==='branch'){load(0,op.value);a.cmp(0,0);conditional(op.zero?'eq':'ne',name(op.name));}
       else if(op.op==='call'){
-        a.mov(0,19);for(let i=0;i<7;++i)load(i+1,op.args[i]);a.bl('_vb6_aot_'+op.name).str(0,31,op.out.slot*8);
+        cachedSlot=undefined;a.mov(0,19);for(let i=0;i<7;++i)load(i+1,op.args[i]);a.bl('_vb6_aot_'+op.name);
+        if(level>=2&&!optimized.readSlots.has(op.out.slot))stats.elidedStores++;else a.str(0,31,op.out.slot*8);
+        cachedSlot=op.out.slot;
         if(op.checked){a.cmn(0,1);conditional('eq',name('failure'));}
       } else if(op.op==='select'){
         load(0,op.value);
@@ -39,7 +44,7 @@ export class AOTFunction {
         tree([...op.pairs].sort((a,b)=>a[0]-b[0]));
       } else throw new Error('Unknown AOT assembly operation');
     }
-    a.label(name('exit')).leave(frame);
+    a.label(name('exit')).leave(frame);return stats;
   }
   cpp() {
     const value=v=>v&&typeof v==='object'?'t['+v.slot+']':String(v??0)+'ULL';
@@ -56,4 +61,8 @@ export class AOTFunction {
     lines.push('exit:; return;','}');return lines.join('\n');
   }
 }
-export function emitAOTFunctions(functions){const a=new ARM64();for(const f of functions)f.emit(a);return a.s;}
+export function emitAOTFunctions(functions,optimization=2){
+  aotOptimizationLevel(optimization);const a=new ARM64(),stats={level:optimization,removedJumps:0,elidedStores:0,forwardedLoads:0};
+  for(const f of functions){const report=f.emit(a,optimization);for(const key of ['removedJumps','elidedStores','forwardedLoads'])stats[key]+=report[key];}
+  a.s.optimization=Object.freeze(stats);return a.s;
+}

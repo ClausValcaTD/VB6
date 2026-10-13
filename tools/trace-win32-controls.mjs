@@ -22,6 +22,8 @@ export function traceControlFixture(project){
     if(!inside||/^\s*(Dim |End If|Else|Next\b)/i.test(line))return [line];
     const marker=`NativeTrace "line ${index+1}: ${line.trim().slice(0,150).replaceAll('"','""')}"`;
     const values=[];
+    if(project.name==='AotControlAutomation'&&line.includes('values=copy.GetRows()'))values.push('NativeTrace "ADO source Sort=[" & CStr(alias.Sort) & "] clone Sort=[" & CStr(copy.Sort) & "]"', 'NativeTrace "Clone current: ID=" & CStr(copy.Fields.Item("ID").Value) & ", Name=" & CStr(copy.Fields.Item("Name").Value)');
+    if(project.name==='AotControlAutomation'&&line.includes('values(0,0)=1'))values.push('NativeTrace "GetRows cells: (0,0)=" & CStr(values(0,0)) & ", (1,0)=" & CStr(values(1,0)) & ", (0,1)=" & CStr(values(0,1)) & ", (1,1)=" & CStr(values(1,1))');
     if(project.name==='AotControlSurfaces'&&line.includes('GetGuiResources(GetCurrentProcess(),0)<=baseline-2'))values.push('NativeTrace "Surface destruction: result=" & CStr(n) & ", old DC type=" & CStr(GetObjectType(other)) & ", baseline=" & CStr(baseline) & ", GDI now=" & CStr(GetGuiResources(GetCurrentProcess(),0))');
     if(line.includes('Pages.Tabs.Count=3'))values.push('NativeTrace "Tabs=" & CStr(Pages.Tabs.Count) & "," & CStr(Strip.Tabs.Count)');
     if(line.includes('n=1 And treeCalls=1'))values.push('NativeTrace "Tree click: result=" & CStr(n) & ", calls=" & CStr(treeCalls) & ", text=" & treeText & ", key=" & treeKey & ", error=" & CStr(Err.Number)');

@@ -25,7 +25,7 @@ export async function buildAOTTemplate({out=path.join(root,'artifacts/macos-aot/
     const rejected=compilation.find(r=>r.status==='rejected');if(rejected)throw rejected.reason;
     const exports=path.join(work,'exports.txt');await fs.writeFile(exports,['_main',...AOT_HELPERS.map(n=>'_vb6_aot_'+n)].join('\n')+'\n');
     const executable=path.join(work,'runtime-arm64');
-    await invoke(compiler,['-arch','arm64','-isysroot',sdkPath,'-mmacosx-version-min=11.0',...objects,path.join(cache,built.runtimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-Wl,-dead_strip','-Wl,-pie','-Wl,-exported_symbols_list,'+exports,'-o',executable]);
+    await invoke(compiler,['-arch','arm64','-isysroot',sdkPath,'-mmacosx-version-min=11.0',...objects,path.join(cache,built.runtimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-Wl,-dead_strip','-Wl,-pie','-Wl,-segprot,__VB6CODE,rx,rx','-Wl,-segprot,__VB6META,r,r','-Wl,-exported_symbols_list,'+exports,'-o',executable]);
     await invoke('/usr/bin/codesign',['--force','--sign','-','--timestamp=none',executable]);await invoke('/usr/bin/codesign',['--verify','--strict',executable]);
     const bytes=new Uint8Array(await fs.readFile(executable));
     const manifest=await createAOTRuntimeManifest(bytes,{...readAOTSourceProvenance(root),nativeRuntimeSha256:built.runtimeSha256,compilerVersion:built.compilerVersion,sdkVersion:built.sdkVersion});
