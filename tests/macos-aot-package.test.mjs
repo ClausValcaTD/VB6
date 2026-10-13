@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {AOT_ABI} from '../packages/macos-native/src/aot-abi.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -17,7 +18,7 @@ test('the shipped runtime matches the current native source and real execution p
 test('concurrent runtime loads return isolated templates and manifests',async()=>{
  const [a,b]=await Promise.all([loadMacOSAOTRuntime(),loadMacOSAOTRuntime()]);assert.notEqual(a.bytes,b.bytes);assert.deepEqual(a.bytes,b.bytes);
  a.bytes[0]=0;a.manifest.helpers._vb6_aot_clear=0;const c=await loadMacOSAOTRuntime();assert.notEqual(c.bytes[0],0);assert.notEqual(c.manifest.helpers._vb6_aot_clear,0);
- const info=macOSAOTRuntimeInfo();info.abi=0;assert.equal(macOSAOTRuntimeInfo().abi,1);
+ const info=macOSAOTRuntimeInfo();info.abi=0;assert.equal(macOSAOTRuntimeInfo().abi,AOT_ABI);
 });
 test('high-level offline export produces a fully sealed executable without network',async()=>{
  const original=globalThis.fetch;let calls=0;globalThis.fetch=()=>{++calls;throw new Error('Network forbidden');};
