@@ -50,10 +50,12 @@ such as Timer remain genuine VB6 controls; they appear in the hierarchy and
 property inspector but do not become flow-layout participants.
 
 The right **Design** dock contains a compact name/type header, alignment commands,
-Position, Constraints, Auto layout and **All VB6 properties**. The last section
-hosts the original property inspector itself, including its object selector,
-alphabetic/category tabs, type-specific editors and descriptions. There is no
-second property bag to synchronize. Editing Caption, Text, Name, colors, fonts,
+Position, Constraints, Auto layout and searchable **VB6 property sections**.
+Content, Appearance and Typography are initially expanded; Behavior, Data and
+binding, Window, Geometry, Layout and More group the other supported properties.
+These sections use the original inspector's type-specific editor rows and
+descriptions. Classic object/category tabs return on leaving Figma mode. There
+is no second property bag to synchronize. Editing Caption, Text, Name, colors, fonts,
 control arrays or supported custom properties uses the existing validation and
 history paths.
 
@@ -244,13 +246,14 @@ Run from the repository root:
 
 ```sh
 npm run build
-node --test tests/figma-workspace.test.mjs tests/modal-contributions.test.mjs
+node --test tests/figma-*.test.mjs tests/modal-contributions.test.mjs
 npm test
-python -m pip install playwright==1.57.0
+python -m pip install playwright==1.57.0 Pillow
 python -m playwright install --with-deps chromium firefox webkit
 VB6_BROWSER=chromium VB6_TEST_TRANSPORT=http npm run test:figma:browser
 VB6_BROWSER=chromium VB6_TEST_TRANSPORT=file npm run test:figma:browser
 npm run test:layout:designer
+VB6_BROWSER=chromium VB6_TEST_TRANSPORT=http npm run test:figma:editor
 ```
 
 The Figma workspace CI matrix repeats hosted and standalone acceptance in
@@ -280,3 +283,50 @@ stroke-inclusive layout equivalence. Existing grid guides show occupied child
 rectangles, not editable rulers for every empty grid track. Those boundaries do
 not turn the exposed toolbox, property inspector, layout settings or Run action
 into placeholders: each is connected to the real VB6 application pipeline.
+
+## Expanded property and code workspaces
+
+The Design inspector now exposes **Content**, **Appearance** and **Typography**
+by default. **Behavior**, **Data and binding**, **Window**, **Geometry · twips**,
+**Layout properties · twips** and **More VB6 properties** organize the remaining
+properties supported by the current selection. The search field filters by
+property name, section and available component description. Multiple search
+terms must all match. Expand/collapse controls affect only the property view;
+Escape clears search and Enter moves focus to the first editable match.
+
+These sections project the existing PropertyInspector's keys and editor rows.
+They neither invent properties nor maintain a second property bag. Color fields
+keep VB6 OLE/BGR numeric values and the real system-color palette; text and lists
+use the original multiline dialog; Font opens the original font dialog, while
+individual font attributes are directly editable. Mixed values, component
+validation and Undo remain shared with Classic. Running or locked forms cannot
+be edited. A pending dialog/palette cannot apply its result after the project,
+module, selection or originating property row has been replaced.
+
+Code documents replace the irrelevant Design controls with a **Code** sidebar:
+searchable, windowed procedure outline, cursor/line/procedure counts, Go to Line,
+Find/Replace, split editing, Full Module/Current Procedure modes, and line-number
+control. Comment, Uncomment and Format commands use the existing source editor;
+bookmark and breakpoint buttons operate on the existing project/debugger state.
+Form layers remain visible while editing their source; selecting a layer returns
+to its designer. Non-form modules expose the code tools without a fake form.
+The outline consumes the editor's incremental procedure index, not another
+parser or source buffer, and unsubscribes when changing or closing documents.
+
+The source editor has a native transparent textarea above its syntax layer.
+Generic Figma form-field styling must not give that textarea an opaque background
+or different typography/padding. The source/XAML inputs and optional advanced
+editor surfaces are excluded from those chrome rules. Figma code colors follow
+the workspace scheme, but explicit editor font, size and color preferences take
+precedence. Native selection/caret geometry, split panes and source Undo retain
+the existing editor contract. Optional Monaco surfaces use their own native
+folding rather than the legacy Current Procedure projection.
+
+`tools/figma-editor-browser-tests.py` exercises displayed keyword pixels (not just
+DOM text), matching input/syntax metrics, physical typing and split Undo, outline
+navigation, real property dialogs and validation, mixed values, search, and
+Classic restoration. It runs on HTTP/file origins in the Figma browser matrix.
+`tools/figma-advanced-editor-browser-tests.py` additionally exercises the Code sidebar
+against actual optional Monaco editing and split views. Generated screenshots
+and per-case results are retained in CI; an unavailable backend or startup failure
+is not a passing case.
