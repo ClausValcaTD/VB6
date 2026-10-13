@@ -33,24 +33,60 @@ failures preserve the old value. A same-type resize allocates replacement storag
 first, then commits it into the existing descriptor, retaining whole-array aliases
 without a second deep copy through the variable setter.
 
-Direct array-element references hold a shared, scoped lease. Resizing, erasing
-or replacing their array fails with Error 10 until the last reference is
-released, including after handled or propagated errors. Whole-array ByRef
-aliases remain resizable. Record fields preserve their declared fixed-array
-storage and element types; copied record arrays own independent fields.
+Array-element and nested aggregate references hold shared, scoped leases.
+Resizing, erasing or replacing an owning array fails with Error 10 until the
+last active reference is released, including after handled or propagated errors.
+Whole-array ByRef aliases remain resizable. Record fields preserve declared
+fixed-array storage and element types; copied record arrays own independent fields.
 
-These checks do not yet implement every nested record-field, With and For Each
-lease from the browser VM, nor do they establish complete Microsoft VB6 array ABI
-compatibility. Native Declare does not expose raw SAFEARRAY pointers. Keep these
-remaining reference-lifetime boundaries separate from successful value-copy and
-result-storage tests.
+A record or nested array value carries weak ancestry to its containing arrays.
+Reading a value does not itself keep the parent array alive or locked. A direct
+reference, reference `With`, or array enumerator acquires the necessary ownership
+for its execution scope. Deep copies clear ancestry; object references preserve
+identity without locking the array that happened to contain them. Member-call
+arguments resolve once: direct fields remain ByRef, while indirect method/getter
+results release their temporary argument references before later arguments run.
+
+Assignments to records preserve the identity of existing fields, so nested
+references still address the assigned storage. Validation checks shape and locked
+descendants before any field changes; the commit phase uses existing containers
+and payload swaps, without allocating or invoking user code. An invalid assignment
+does not partially update earlier scalar fields.
+
+## Lexical With and For Each
+
+`With` activations use the shared frontend's lexical IDs and control-flow
+intervals, not just the top of a value stack. A skipped or failed inner initializer
+raises Error 91 instead of falling back to an outer receiver. Re-entering a block
+releases its previous activation before evaluating its new initializer. Direct
+record receivers retain storage; grouped and returned record values are independent
+copies. Object receivers retain the original object identity even if the source
+variable or containing array changes.
+
+Array `For Each` reads the live element at each iteration rather than snapshotting
+all elements at loop entry. Its lease protects both the array and containing
+aggregate arrays. Natural completion, `Exit For`, jumps, failed initialization,
+procedure returns and propagated errors release those leases. Existing object and
+Collection enumeration behavior remains separate from this array contract.
+
+Native source checkpoints reconcile active scope intervals. A `GoSub` return
+address or active error continuation keeps suspended scopes alive outside their
+lexical interval; `Return` and `Resume` restore access to those activations.
+Ordinary exits release them. The same source tests run through the browser VM,
+generated Clang procedures and direct ARM64 procedures; no runtime AST interpreter
+is introduced by this scope tracking.
+
+These are source/storage contracts, not complete Microsoft VB6 array ABI
+certification. Native Declare does not expose raw SAFEARRAY pointers. Global
+shutdown, reference cycles and full native control lifecycle remain separate
+compatibility work.
 
 ## SDK and validation
 
-The helper ABI is **2**. The compiler, native loader and payload-provenance check
-must agree. An ABI 1 custom or embedded runtime is rejected before linking, because
-it cannot preserve array-result metadata. Applications already exported with an
-older SDK are not modified. Mach-O container/layout versions are independent of
+The helper ABI is **3**. The compiler, native loader and payload-provenance check
+must agree. ABI 1 and ABI 2 custom or embedded runtimes are rejected before linking,
+because their helper contracts cannot preserve the current result/scope behavior.
+Applications already exported with an older SDK are not modified. Mach-O container/layout versions are independent of
 the helper ABI; reserved-section layout compatibility requires a matching ABI.
 
 `packages/macos-native/tests/arrays.mjs` supplies the source-level acceptance
@@ -63,8 +99,19 @@ element references and failure-atomic checks. The direct harness executes it at 
 browser-exported conformance archives run separately on Apple Silicon. Portable
 helper execution and metadata tests are not substitutes for actual ARM64 execution.
 
+`packages/macos-native/tests/scopes.mjs` adds nested reference, lexical With,
+live array iteration, suspended continuation and cleanup acceptance to those
+same source-program execution paths. `tests/scopes.cpp` independently checks
+lease sharing, weak ancestry, record-field identity and failure-atomic stores
+under AddressSanitizer and UndefinedBehaviorSanitizer. The SDK embedding tool
+requires successful native scope-ownership proof as well as ARM64 execution,
+large-project/O0–O3 coverage and strict signature validation.
+
 Reference: Microsoft documents that whole-array assignment requires matching
 array types and a resizable destination, or a scalar Variant destination:
 https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/can-t-assign-to-an-array
 This shared VBA reference informs the contract; it is not a licensed VB6
 differential-execution certification.
+
+Microsoft also documents temporary array locks while elements are passed ByRef:
+https://learn.microsoft.com/en-us/office/vba/language/reference/user-interface-help/this-array-is-fixed-or-temporarily-locked-error-10
