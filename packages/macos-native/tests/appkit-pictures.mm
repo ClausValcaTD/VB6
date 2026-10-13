@@ -24,6 +24,16 @@ void checkNativePictures(Runtime& rt,MacHost& host,const std::shared_ptr<Instanc
   auto pixels=[[NSBitmapImageRep alloc]initWithCGImage:cg];assert(pixels.pixelsWide==2&&pixels.pixelsHigh==2);
   // Image codec must retain the actual colors, not only nominal dimensions.
   std::set<int32_t> colors;for(int y=0;y<2;y++)for(int x=0;x<2;x++)colors.insert(colorValue([pixels colorAtX:x y:y]));
+  if(colors!=std::set<int32_t>({0xff0000,0x00ff00,0x0000ff,0xffffff})){
+    std::cerr<<"PICTURE_PIXEL_DIAGNOSTICS space="<<pixels.colorSpace.description.UTF8String
+      <<" bps="<<pixels.bitsPerSample<<" bpp="<<pixels.bitsPerPixel<<" row="<<pixels.bytesPerRow<<" colors=";
+    for(auto value:colors)std::cerr<<std::hex<<value<<" ";
+    std::cerr<<std::dec<<"\n";
+    for(int y=0;y<2;y++)for(int x=0;x<2;x++){NSUInteger components[5]={};
+      [pixels getPixel:components atX:x y:y];
+      std::cerr<<x<<","<<y<<": "<<components[0]<<","<<components[1]<<","<<components[2]<<","<<components[3]<<"\n";
+    }
+  }
   assert(colors==std::set<int32_t>({0xff0000,0x00ff00,0x0000ff,0xffffff}));
   auto control=ctl(form,"c7"),box=ctl(form,"c6"),button=ctl(form,"c0");
   control->set(rt,"stretch",Value::boolean(false));control->set(rt,"picture",picture,true);
