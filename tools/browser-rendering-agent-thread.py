@@ -46,6 +46,29 @@ results = []
 def check(value, message):
     if not value: raise AssertionError(message)
 
+def record_failure(page, result, error):
+    # Save the primary failure BEFORE attempting a diagnostic screenshot. A
+    # stalled compositor must not erase the failed case from the final report.
+    result.update(passed=False, error=str(error))
+    traceback.print_exc(); print('FAIL', result['name'], flush=True)
+    try:
+        page.screenshot(path=str(OUT / (result['name'] + '-failure.png')), caret='initial')
+    except Exception as capture_error:
+        result['failureScreenshotError'] = str(capture_error)
+
+
+def close_case(page, context, result):
+    # Closing a browsing context is not an explicit renderer disposal. Release
+    # the retained GPU buffers/context, observers and thread state before the
+    # next DPI case allocates resources in the same browser process.
+    try:
+        page.evaluate('()=>{window.renderer?.dispose();window.fixture?.view?.dispose();}')
+    except Exception as error:
+        result.update(passed=False, cleanupError=str(error))
+    finally:
+        context.close()
+
+
 def equal(a, b, label):
     diff = ImageChops.difference(Image.open(io.BytesIO(a)).convert('RGB'), Image.open(io.BytesIO(b)).convert('RGB'))
     if diff.getbbox():
@@ -111,6 +134,7 @@ try:
                 context = browser.new_context(viewport={'width': 1120, 'height': 850}, device_scale_factor=dpr)
                 page = context.new_page(); errors = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
+                result = {'name': name, 'passed': False}; results.append(result)
                 try:
                     if server: page.goto(f'http://127.0.0.1:{server.server_port}/tests/fixtures/rendering.html')
                     page.set_content(html)
@@ -166,13 +190,11 @@ try:
                     check(page.evaluate('auditReads.hiddenGeometry') == 0, 'Hidden nested result was measured')
                     check(not errors, str(errors))
                     final = page.evaluate('renderer.getStats()')
-                    results.append({'name': name, 'passed': True, 'stats': final, 'audit': page.evaluate('auditReads'), 'pixelInvariants': 8})
+                    result.update(passed=True, stats=final, audit=page.evaluate('auditReads'), pixelInvariants=8)
                     print('PASS', name, flush=True)
                 except Exception as error:
-                    page.screenshot(path=str(OUT / (name + '-failure.png')), caret='initial')
-                    results.append({'name': name, 'passed': False, 'error': str(error)})
-                    traceback.print_exc(); print('FAIL', name, flush=True)
-                finally: context.close()
+                    record_failure(page, result, error)
+                finally: close_case(page, context, result)
         browser.close()
 finally:
     if server: server.shutdown(); server.server_close()
