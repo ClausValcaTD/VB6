@@ -15,6 +15,8 @@ These guides describe the implemented system, not complete native VB6 parity.
   Hardened Runtime, entitlement approval, notarization and final-archive verification.
 - [Native macOS export](MACOS-EXPORT.md): Apple Silicon compiler, AppKit runtime,
   approved local builds, source kits, reusable APIs and compatibility boundaries.
+- [Native macOS resources and pictures](MACOS-RESOURCES.md): RES/FRX imports,
+  resource functions, picture ownership, cursor metadata and sealed bundle data.
 - [Native macOS arrays](MACOS-ARRAYS.md): typed result storage, value ownership,
   ReDim, helper ABI and executable acceptance.
 - [Native macOS lifetime and editing](MACOS-LIFETIME-EDITING.md): reference release,
