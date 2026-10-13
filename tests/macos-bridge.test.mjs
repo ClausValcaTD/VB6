@@ -17,12 +17,16 @@ const build = () => ({method: 'build', project: fixtureProject()});
 
 test('synthetic native bridge/client roundtrip uses checked source and retains original archive bytes', async t => {
   let approvals = 0, compilations = 0;
+  // A second ZIP construction can cross the format's two-second timestamp
+  // boundary. Compare the transport with its actual compiler bytes, not a
+  // newly generated archive; retain a separate copy to detect mutation too.
+  const compiledBytes = macOSArchiveFixture(), expectedBytes = compiledBytes.slice();
   const bridge = await bridgeFor(t, {authorize: async manifest => {++approvals; assert.match(manifest.sourceSha256, /^[a-f0-9]{64}$/); assert.equal(manifest.target, 'macos-arm64'); manifest.name = 'CannotMutateKit'; return true;}},
-    {compile: async (kit, options) => {++compilations; assert.equal(kit.options.name, 'NativeFixture'); assert.match(kit.files['main.cpp'], /initializeProgram/); assert.equal(options.identity, '-'); assert.ok(options.signal); return macOSArchiveFixture();}});
+    {compile: async (kit, options) => {++compilations; assert.equal(kit.options.name, 'NativeFixture'); assert.match(kit.files['main.cpp'], /initializeProgram/); assert.equal(options.identity, '-'); assert.ok(options.signal); return compiledBytes;}});
   const client = new MacOSCompilerClient((url, options) => fetch(url, {...options, headers: {...options.headers, Origin: origin}}));
   t.after(() => client.disconnect());
   await client.connect(bridge.url, bridge.token); const result = await client.build(fixtureProject());
-  assert.equal(approvals, 1); assert.equal(compilations, 1); assert.deepEqual(result.bytes, macOSArchiveFixture());
+  assert.equal(approvals, 1); assert.equal(compilations, 1); assert.deepEqual(result.bytes, expectedBytes); assert.deepEqual(compiledBytes, expectedBytes);
   assert.equal(result.report.artifact, 'native-executable'); assert.equal(result.report.browserSignatureCryptographicallyVerified, false);
   assert.ok(!JSON.stringify(client).includes(token)); client.disconnect(); assert.equal(client.connected, false);
   await assert.rejects(client.build(fixtureProject()), /Connect/);
