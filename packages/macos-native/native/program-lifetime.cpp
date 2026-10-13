@@ -124,6 +124,7 @@ void Runtime::stop() noexcept {
   files.clear();
   subscriptions.clear();
   constants.clear();
+  resources.reset();
   finished=true;
 }
 } // namespace vb6

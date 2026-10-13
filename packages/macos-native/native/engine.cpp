@@ -1,9 +1,10 @@
 // Native module lifetime, startup, forms and host boundary. MIT.
 #include "vb6.hpp"
 #include "lifetime.hpp"
+#include "resources.hpp"
 #include <iostream>
 namespace vb6 {
-Runtime::Runtime(std::unique_ptr<NativeHost> value):host(std::move(value)){if(!host)throw std::invalid_argument("Native host required");host->attach(*this);installBuiltins(*this);installFileBuiltins(*this);installFinancialBuiltins(*this);}
+Runtime::Runtime(std::unique_ptr<NativeHost> value):host(std::move(value)){if(!host)throw std::invalid_argument("Native host required");host->attach(*this);installBuiltins(*this);installFileBuiltins(*this);installFinancialBuiltins(*this);installResourceBuiltins(*this);}
 Runtime::~Runtime(){stop();}
 Value Runtime::defaultValue(const std::string&raw,Frame*frame){
   auto type=lower(raw);
