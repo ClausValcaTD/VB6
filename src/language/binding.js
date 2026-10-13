@@ -24,7 +24,20 @@ export function bindConstants(modules,settings={}) {
   const scalarTypes=new Set(['byte','integer','long','single','double','currency','date','string','boolean','variant','decimal','any']);
   const append=(map,key,value)=>{const list=map.get(key);if(list)list.push(value);else map.set(key,[value]);};
   const intrinsic=intrinsicTable(settings.anchoring===true);
-  let steps=0;
+  let steps=0,literalCount=0;
+  // Pure, immutable numeric literals are frequently repeated in fixed bounds.
+  // Intern at most 256 within this binding pass; never retain an AST or reuse
+  // a value across edits. Type participates in identity; negative zero is not
+  // interned because Map deliberately treats it as the same key as zero.
+  const numericLiterals=new Map();
+  function literal(node){
+    if(typeof node.value!=='number'||Object.is(node.value,-0))return literalScalar(node);
+    const type=node.valueType||'double',values=numericLiterals.get(type);
+    if(values?.has(node.value))return values.get(node.value);
+    const result=literalScalar(node);
+    if(literalCount<256){if(values)values.set(node.value,result);else numericLiterals.set(type,new Map([[node.value,result]]));literalCount++;}
+    return result;
+  }
   const report=(e,m,line)=>diagnostics.push({severity:'error',number:e.number||1002,message:e.message,source:e.source||m.name,line:e.line||line||1,column:1});
   const fail=message=>{throw new VBError(message,1002);};
   for(const m of modules.values()){
@@ -62,7 +75,8 @@ export function bindConstants(modules,settings={}) {
     if(!node||++steps>100000||depth>256)fail('Constant expression complexity limit exceeded');
     const ev=n=>evaluate(n,m,p,depth+1);
     switch(node.kind){
-      case 'literal':if(node.value===null)fail('Invalid use of Null in constant expression');return literalScalar(node);
+      case 'literal':if(node.value===null)fail('Invalid use of Null in constant expression');return literal(node);
+      case 'empty':return tagScalar(undefined);
       case 'date':return literalScalar(node);
       case 'currency':return literalScalar(node);
       case 'group':return ev(node.expr);
@@ -106,6 +120,30 @@ export function bindConstants(modules,settings={}) {
       p.defaultBindings.set(lower(param.name),unbox(value));p.defaultScalars.set(lower(param.name),value);
     }catch(e){report(e,m,p.line);}
   }
+  // Array dimensions in Dim/Static/module/record declarations are constant
+  // expressions, unlike ReDim. Bind them in the declaration's lexical scope,
+  // keeping syntax intact for tooling/rebinding and never allocating storage.
+  const boundValue=(node,m,p)=>{
+    const value=evaluate(node,m,p),raw=unbox(value);
+    // Evaluation has already checked the authored literal/subtype. Integral
+    // numbers inside Long's range need neither rounding nor a second coercion.
+    return typeof raw==='number'&&Number.isInteger(raw)&&raw>=-2147483648&&raw<=2147483647?raw:coerce(value,'Long');
+  };
+  const fixedBounds=(d,m,p=null,line=d.line)=>{
+    if(!d.bounds?.length){if(Object.hasOwn(d,'boundValues'))d.boundValues=undefined;return;}
+    // Keep a stable declaration shape across binding passes. Deleting and
+    // recreating this field deoptimizes every dependent declaration on edits.
+    d.boundValues=undefined;
+    try {
+      const bounds=d.bounds.map(([lo,hi])=>{
+        const lower=lo?boundValue(lo,m,p):m.optionBase;
+        const upper=boundValue(hi,m,p);
+        if(lower>upper)throw new VBError('Array lower bound cannot exceed its upper bound',1002);
+        return Object.freeze([lower,upper]);
+      });
+      d.boundValues=Object.freeze(bounds);
+    }catch(error){report(error,m,line);}
+  };
   // Public constant values exist before runtime field initialization. Preserve
   // ambiguity rather than selecting whichever module happens to be first.
   const publicValues=new Map();
@@ -130,7 +168,9 @@ export function bindConstants(modules,settings={}) {
     }
     for(const [key,entry] of scopes.get(m).enums)m.enumBindings.set(key,enumNamespaces.get(entry));
     if(settings.anchoring===true)for(const [key,entries]of Object.entries(LAYOUT_ENUMS))if(!m.enumBindings.has(key)&&!modules.has(key))m.enumBindings.set(key,Object.freeze({__vbEnum:true,owner:'VB6.Layout',values:Object.freeze(Object.fromEntries(Object.entries(entries).map(([k,v])=>[lower(k),v])))}));
-    const storage=(d,p=null,line=d.line)=>{delete d.storageType;try{
+    const storage=(d,p=null,line=d.line,fixed=true)=>{delete d.storageType;
+      if(fixed)fixedBounds(d,m,p,line);else delete d.boundValues;
+      try{
       if(enumDefinition(d.type,m))d.storageType='Long';
       if(d.fixedLengthExpression){d.fixedLength=null;const length=unbox(evaluate(d.fixedLengthExpression,m,p));if(typeof length!=='number'||!Number.isInteger(length)||length<1||length>65535)fail('Fixed string length must be an integer from 1 to 65535');d.fixedLength=length;}
     }catch(e){report(e,m,line);}};
@@ -139,7 +179,7 @@ export function bindConstants(modules,settings={}) {
     for(const p of m.procedures.values()){
       delete p.storageReturnType;try{if(enumDefinition(p.returnType,m))p.storageReturnType='Long';}catch(e){report(e,m,p.line);}
       for(const d of p.params){storage(d);if(d.storageType&&p.defaultBindings.has(lower(d.name)))try{const value=storageScalar(p.defaultScalars.get(lower(d.name)),d.storageType);p.defaultBindings.set(lower(d.name),unbox(value));p.defaultScalars.set(lower(d.name),value);}catch(e){report(e,m,p.line);}}
-      for(const ins of p.code)if(ins.op==='dim'||ins.op==='redim')for(const d of ins.decls)storage(d,p,ins.line);
+      for(const ins of p.code)if(ins.op==='dim'||ins.op==='redim')for(const d of ins.decls)storage(d,p,ins.line,ins.op==='dim');
     }
   }
   diagnostics.push(...bindRedimDeclarations(modules,scopes));

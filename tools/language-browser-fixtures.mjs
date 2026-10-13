@@ -3,6 +3,58 @@ import {SETTER_ORDER_FIXTURE,SETTER_ORDER_EXPECTED} from '../tests/migration-set
 const project=code=>({...newProject('LanguageParity'),startup:'Sub Main',modules:[{id:'m',name:'M',kind:'module',code}]});
 const withClass=(code,extra)=>{const result=project(code);result.modules.push(extra);return result;};
 const fixtures=[
+ {name:'Compile rejection: variable-sized fixed array',project:project(`Sub Main()
+Dim size As Long
+Dim a(size) As Long
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:3,number:1002,message:'Constant expression required'}]},
+ {name:'Compile rejection: reversed fixed bounds',project:project(`Sub Main()
+Dim a(3 To 1) As Long
+Debug.Print "must not run"
+End Sub`),diagnostics:[{source:'M',line:2,number:1002,message:'lower bound'}]},
+ {name:'Compile rejection: undeclared record field bound',project:withClass(`Sub Main()
+Debug.Print "must not run"
+End Sub`,{id:'types',name:'Types',kind:'module',code:'Type R\nValues(UnknownSize) As Long\nEnd Type'}),diagnostics:[{source:'Types',line:2,number:1002,message:'not defined'}]},
+ {name:'Fixed dimensions use Long rounding and forward local constants',project:project(`Option Base 1
+Sub Main()
+Dim a(-2.5 To Upper) As Long
+Const Upper = Later + 1
+Const Later = 3
+Debug.Print LBound(a), UBound(a)
+End Sub`),expected:['-2 4'],error:null},
+ {name:'Imported record bounds use the declaration module not the caller',project:withClass(`Option Base 0
+Private Const Size = 20
+Sub Main()
+Const Size = 30
+Dim r As RecordType
+Debug.Print LBound(r.Values), UBound(r.Values)
+End Sub`,{id:'types',name:'Types',kind:'module',code:`Option Base 1
+Private Const Size = 4
+Public Type RecordType
+Values(Size) As Long
+End Type`}),expected:['1 4'],error:null},
+ {name:'Fixed arrays retain per-call and Static storage ownership',project:project(`Sub Main()
+Work
+Work
+End Sub
+Sub Work()
+Const Size = 2
+Dim a(Size) As Long
+Static b(Size) As Long
+a(0) = a(0) + 1
+b(0) = b(0) + 1
+Debug.Print a(0), b(0), UBound(a)
+End Sub`),expected:['1 1 2','1 2 2'],error:null},
+ {name:'ReDim keeps runtime bound side effects',project:project(`Dim calls As Long
+Function Size() As Long
+calls = calls + 1
+Size = 3
+End Function
+Sub Main()
+Dim a() As Long
+ReDim a(1 To Size())
+Debug.Print LBound(a), UBound(a), calls
+End Sub`),expected:['1 3 1'],error:null},
  {name:'With record storage and Exit Do cleanup',project:project(`Private Type Item
 Value As Long
 End Type
