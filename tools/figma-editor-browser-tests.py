@@ -63,23 +63,33 @@ class EditorProperties(base.FigmaWorkspace):
                   syntax: Object.fromEntries(keys.map(k=>[k,syntax[k]]))};
         }""")
 
-    def assert_source_pixels(self, label):
+    def assert_source_pixels(self, label, expected_rgb):
         editor=self.page.locator('.mdi-window.mdi-active .source-editor')
         token=editor.locator('.syntax-line').first.locator('.syn-keyword').first
         expect(token).to_have_text('Option')
-        geometry=token.evaluate("""n=>{const r=n.getBoundingClientRect();return {
+        # Query the current syntax token and its geometry in the same page task;
+        # source virtualization may replace the token between protocol calls.
+        geometry=editor.evaluate("""root=>{const n=root.querySelector('.syntax-line .syn-keyword');
+          if(!n?.isConnected)throw new Error('No connected syntax keyword');
+          const r=n.getBoundingClientRect();return {
           x:r.x,y:r.y,width:r.width,height:r.height,color:getComputedStyle(n).color};}""")
         data=self.source_metrics()
         self.assertEqual(data['background'], 'rgba(0, 0, 0, 0)')
         self.assertEqual(data['input'],data['syntax'])
+        self.assertGreater(geometry['width'],0);self.assertGreater(geometry['height'],0)
+        # Expected colors come from the fixture/contract, independently of CSSOM
+        # color serialization. Preserve raw metrics even if screenshot fails.
+        evidence={'metrics':data,'keyword':geometry,'expectedRGB':list(expected_rgb),
+                  'renderer':self.page.evaluate('vb6Studio.rendering.getStats()')}
+        (REPORT/(label+'.json')).write_text(json.dumps(evidence,indent=2))
         png=self.page.screenshot(path=str(REPORT/(label+'.png')),caret='hide',timeout=10000)
         image=Image.open(io.BytesIO(png)).convert('RGB')
-        rgb=tuple(int(x.strip()) for x in geometry['color'][4:-1].split(','))
+        rgb=expected_rgb
         r=geometry;crop=image.crop((int(r['x']),int(r['y']),int(r['x']+r['width']+1),int(r['y']+r['height']+1)))
         # Rasterizer antialiasing differs by engine. Require actual interior
         # keyword-colored pixels; the opaque broken overlay has zero of these.
         ink=sum(1 for p in (crop.getpixel((x,y)) for y in range(crop.height) for x in range(crop.width)) if max(abs(p[i]-rgb[i]) for i in range(3))<=20)
-        evidence={'metrics':data,'keyword':geometry,'inkPixels':ink,'renderer':self.page.evaluate('vb6Studio.rendering.getStats()')}
+        evidence['inkPixels']=ink
         (REPORT/(label+'.json')).write_text(json.dumps(evidence,indent=2))
         self.assertGreater(ink,10,'Displayed code must contain keyword glyphs, not an opaque input overlay')
 
@@ -91,7 +101,7 @@ class EditorProperties(base.FigmaWorkspace):
             self.assertEqual(self.page.evaluate('vb6Studio.rendering.backend'),backend)
             for scheme in ['light','dark']:
                 self.page.evaluate('scheme=>vb6Studio.figmaMode.configure({mode:"figma",scheme})',scheme)
-                self.assert_source_pixels('code-'+backend+'-'+scheme)
+                self.assert_source_pixels('code-'+backend+'-'+scheme,(23,80,173) if scheme=='light' else (145,183,255))
                 self.assertEqual(self.page.evaluate('vb6Studio.rendering.backend'),backend)
         # Rendering policy is IDE-only. Neither mode nor colors edit the source.
         self.assertEqual(before,self.snapshot());self.done()
@@ -259,7 +269,7 @@ class EditorProperties(base.FigmaWorkspace):
     def test_custom_editor_appearance_survives_workspace_and_split(self):
         self.page.evaluate('Object.assign(vb6Studio.appearance,{editorFont:"monospace",editorSize:18,codeColors:{keyword:"#bb4488",background:"#fafafa"}});vb6Studio.applyAppearance()')
         self.enable();self.open_code()
-        self.assert_source_pixels('custom-code-appearance')
+        self.assert_source_pixels('custom-code-appearance',(187,68,136))
         self.assertEqual(self.source_metrics()['input']['fontSize'],'18px')
         self.page.get_by_role('button',name='Split code editor',exact=True).click()
         data=self.page.locator('.mdi-active .source-editor').evaluate('n=>[...n.querySelectorAll(".source-input,.syntax-layer")].map(e=>[getComputedStyle(e).font,getComputedStyle(e).padding])')
