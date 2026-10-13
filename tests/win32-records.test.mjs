@@ -50,7 +50,7 @@ test('unknown fields, omitted subscripts and wrong ranks remain diagnostics',()=
  for(const expr of ['p.missing=1','p.data=1','p.data(1,2)=1'])assert.throws(()=>compile('Private Type T\n data(0 To 2) As Long\nEnd Type\nPublic Sub Main()\nDim p As T\n'+expr+'\nEnd Sub'),/field|rank/);
 });
 test('private record visibility and same-name record identity are distinct',()=>{
- const p=project('Public Sub Main()\nDim p As POINTAPI\nEnd Sub');p.modules.push({id:'other',name:'Other',kind:'module',code:point});assert.throws(()=>compileWin32(p),/storage/);
+ const p=project('Public Sub Main()\nDim p As POINTAPI\nEnd Sub');p.modules.push({id:'other',name:'Other',kind:'module',code:point});assert.throws(()=>compileWin32(p),error=>{assert.deepEqual(error.diagnostics.map(({code,source,line})=>({code,source,line})),[{code:'VB_RECORD_TYPE',source:'Module1',line:2}]);assert.match(error.message,/not accessible/);return true;});
  const program=compileProject(project(point+main)),layouts=new NativeRecordLayouts(program);const module=program.modules.get('module1');assert.equal(layouts.resolve('POINTAPI',module).size,8);
 });
 
