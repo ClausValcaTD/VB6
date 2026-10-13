@@ -1,0 +1,13 @@
+.designer-collection-editor {display:grid;grid-template-columns:minmax(150px,1fr) minmax(240px,2fr);gap:12px;min-height:230px}
+.designer-collection-list {display:flex;flex-direction:column;gap:6px;min-width:0}
+.designer-collection-list > select {width:100%;min-height:190px;flex:1}
+.designer-collection-actions {display:flex;flex-wrap:wrap;gap:4px}
+.designer-item-fields {align-content:start;gap:6px;min-width:0}
+.designer-item-fields input,.designer-item-fields textarea {max-width:100%;min-width:0}
+.designer-item-fields textarea {height:68px;resize:vertical}
+.designer-grid-data {box-sizing:border-box;width:100%;min-height:260px;white-space:pre;font-family:monospace;tab-size:12}
+.designer-sstab-properties {display:grid;gap:10px}
+.designer-sstab-properties fieldset {padding:10px}
+.designer-sstab-properties .dialog-grid {gap:6px}
+.designer-sstab-properties > fieldset:first-child > button {margin-top:8px}
+@media(max-width:600px) {.designer-collection-editor{grid-template-columns:1fr}.designer-collection-list > select{min-height:110px}}
