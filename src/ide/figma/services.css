@@ -1,0 +1,54 @@
+/* Services share live IDE tool views; palette variables are scoped to those
+   tools, never to authored controls, runtime islands or source input layers. */
+:root[data-ide-workspace="figma"] :is(.figma-tool-surface,.figma-utility-panel) {
+  --vb-face:var(--fg-panel);--vb-window:var(--fg-canvas);--vb-window-text:var(--fg-text);--vb-text:var(--fg-text);
+  --vb-shadow:var(--fg-line);--vb-dark:var(--fg-muted);--vb-light:var(--fg-panel);--vb-highlight:var(--fg-line);
+  --vb-selection:var(--fg-selected);--vb-selection-text:var(--fg-text);--vb-title:var(--fg-selected);--vb-title-text:var(--fg-text);
+  --vb-info:var(--fg-input);--vb-link:var(--fg-blue);--vb-font:var(--fg-font);--vb-size:12px;
+}
+:root[data-ide-workspace="figma"] .figma-service-actions {display:flex;gap:3px;align-items:center;border-right:1px solid var(--fg-line);padding-right:6px;margin-right:4px;}
+:root[data-ide-workspace="figma"] .figma-tool-action {display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:30px;padding:4px 8px;white-space:nowrap;}
+:root[data-ide-workspace="figma"] .figma-service-actions [data-state="running"],
+:root[data-ide-workspace="figma"] .figma-service-actions [data-state="sharing"] {box-shadow:inset 0 -2px var(--fg-blue)!important;}
+:root[data-ide-workspace="figma"] .figma-hosted-tool {display:flex;flex-direction:column;min-height:0;height:100%;overflow:hidden;container-type:inline-size;}
+:root[data-ide-workspace="figma"] .figma-host-actions {display:flex;flex-wrap:wrap;gap:3px;padding:6px 8px;border-bottom:1px solid var(--fg-line);flex:none;}
+:root[data-ide-workspace="figma"] .figma-host-actions .figma-tool-action {font-size:11px;white-space:normal;}
+:root[data-ide-workspace="figma"] .figma-host-content {flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;overflow:hidden;}
+:root[data-ide-workspace="figma"] .figma-host-content>.figma-tool-surface {flex:1;min-height:0;}
+:root[data-ide-workspace="figma"] .figma-hosted-tool[hidden],
+:root[data-ide-workspace="figma"] .figma-asset-card[hidden] {display:none!important;}
+:root[data-ide-workspace="figma"] .figma-tool-surface .dialog-tabs {display:flex;flex-wrap:nowrap;overflow-x:auto;min-height:34px;height:auto;flex-shrink:0;padding:3px 5px;border-bottom:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-tool-surface .dialog-tabs>button {flex:none;white-space:nowrap;min-height:28px;border:0;border-radius:0;}
+:root[data-ide-workspace="figma"] .figma-tool-surface .dialog-tabs>button[aria-selected="true"] {box-shadow:inset 0 -2px var(--fg-blue)!important;background:var(--fg-selected);}
+:root[data-ide-workspace="figma"] .figma-tool-surface :is(fieldset,.agent-conversation,.agent-log,.agent-code-block,.mcp-summary-state) {border:1px solid var(--fg-line);box-shadow:none;border-radius:5px;}
+:root[data-ide-workspace="figma"] .figma-tool-surface .agent-toolbar {padding:6px;}
+:root[data-ide-workspace="figma"] .figma-tool-surface .agent-composer {padding:8px;border-top:1px solid var(--fg-line);}
+:root[data-ide-workspace="figma"] .figma-tool-surface .agent-page {gap:7px;}
+:root[data-ide-workspace="figma"] .figma-tool-surface .agent-message-body pre {font:12px/1.5 ui-monospace,monospace;}
+:root[data-ide-workspace="figma"] .figma-context-preview {width:100%;box-sizing:border-box;font:12px/1.45 ui-monospace,monospace!important;resize:vertical;}
+@container(max-width:500px) {
+  :root[data-ide-workspace="figma"] .figma-host-content .agent-field {flex-direction:column;align-items:stretch;gap:4px;}
+  :root[data-ide-workspace="figma"] .figma-host-content .agent-field>span {flex-basis:auto;}
+  :root[data-ide-workspace="figma"] .figma-host-content .agent-tool-catalog {grid-template-columns:1fr;overflow:auto;}
+  :root[data-ide-workspace="figma"] .figma-host-content .agent-diff {grid-template-columns:1fr;}
+}
+@media(max-width:1100px) {
+  :root[data-ide-workspace="figma"] .figma-service-actions .figma-tool-action {font-size:0;padding:6px;min-width:30px;}
+  :root[data-ide-workspace="figma"] .figma-header>.figma-document-name {display:none;}
+}
+
+/* Native desktop dragging; explicit 28x44 grip for pointer/touch/keyboard.
+   The remainder of each Assets card retains browser scrolling and tool clicks. */
+:root[data-ide-workspace="figma"] .figma-asset-card {display:flex;min-width:0;border:1px solid var(--fg-line);border-radius:6px;overflow:hidden;background:var(--fg-panel);}
+:root[data-ide-workspace="figma"] .figma-asset-card>[data-control-type] {display:flex;flex:1;min-width:0;flex-direction:column;align-items:center;justify-content:center;gap:7px;height:76px!important;width:auto!important;padding:8px 0!important;border:0!important;cursor:grab;}
+:root[data-ide-workspace="figma"] .figma-asset-card:has(.active) {border-color:var(--fg-blue);background:var(--fg-selected);}
+:root[data-ide-workspace="figma"] .figma-asset-card>.figma-asset-grip {flex:0 0 28px;width:28px!important;height:76px!important;min-height:44px!important;padding:0!important;touch-action:none;cursor:grab;font-size:18px;color:var(--fg-muted);border-left:1px solid var(--fg-line);border-radius:0;}
+:root[data-ide-workspace="figma"] :is(.figma-asset-ghost,.figma-asset-target,.figma-asset-footprint,.figma-asset-insertion) {position:fixed;pointer-events:none;z-index:2147483100;box-sizing:border-box;}
+:root[data-ide-workspace="figma"] .figma-asset-ghost {max-width:270px;overflow:hidden;text-overflow:ellipsis;border:1px solid var(--fg-line);border-radius:6px;box-shadow:var(--fg-shadow);background:var(--fg-panel);color:var(--fg-text);font:12px var(--fg-font);padding:9px;}
+:root[data-ide-workspace="figma"] .figma-asset-ghost[data-valid="true"] {border-color:var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-asset-target {border:2px solid var(--fg-blue);}
+:root[data-ide-workspace="figma"] .figma-asset-insertion {background:var(--fg-blue);}
+:root[data-ide-workspace="figma"] :is(.figma-asset-ghost,.figma-asset-target,.figma-asset-footprint,.figma-asset-insertion)[hidden] {display:none!important;}
+.figma-asset-announcement {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+
+:root[data-ide-workspace="figma"] .figma-asset-footprint {border:1px dashed var(--fg-blue);background:color-mix(in srgb,var(--fg-blue) 12%,transparent);}

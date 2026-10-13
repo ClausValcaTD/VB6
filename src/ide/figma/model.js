@@ -49,7 +49,7 @@ export function layerRows(form,{collapsed=new Set(),query=''}={}){
 }
 /** Build a mode-specific profile without changing the canonical classic snapshot. */
 export function figmaDockProfile(snapshot){
-  const value=structuredClone(snapshot),left=['figma-layers','toolbox','project'],right=['properties','auto-layout'];
+  const value=structuredClone(snapshot),left=['figma-layers','toolbox','project'],right=['properties','auto-layout','figma-tool-agent'];
   const moved=new Set([...left,...right,'layout']);
   for(const group of value.groups){group.tabs=group.tabs.filter(id=>!moved.has(id));if(!group.tabs.includes(group.active))group.active=group.tabs[0]||null;}
   value.groups=value.groups.filter(group=>group.tabs.length);
@@ -57,7 +57,7 @@ export function figmaDockProfile(snapshot){
   for(const [id,edge,tabs,active]of [['figma-left','left',left,'figma-layers'],['figma-right','right',right,'properties']]){
     const found=tabs.filter(t=>known.has(t));if(!found.length)continue;
     value.groups.push({id,edge,tabs:found,active:found.includes(active)?active:found[0],weight:1,bounds:{x:90,y:90,width:300,height:500}});
-    for(const name of found){const win=known.get(name);win.group=id;win.hidden=false;win.dockable=true;}
+    for(const name of found){const win=known.get(name);win.group=id;if(name!=='figma-tool-agent')win.hidden=false;win.dockable=true;}
   }
   if(known.has('layout'))known.get('layout').hidden=true;
   value.sizes={...value.sizes,left:256,right:304};return value;

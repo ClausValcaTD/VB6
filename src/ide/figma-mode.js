@@ -1,3 +1,5 @@
+import {createFigmaTools} from './figma/tools.js';
+import {createFigmaAssets} from './figma/assets.js';
 import {rendererForDocument} from '../rendering/renderer.js';
 import {commitWorkspacePresentation} from './figma/presentation.js';
 import {el,clone} from '../core/core.js';
@@ -76,8 +78,8 @@ export function installFigmaMode(ide){
     const inspector=createFigmaInspector(workspace),search=el('input',{class:'figma-assets-search',type:'search',placeholder:'Search VB6 controls…','aria-label':'Search VB6 controls'});
     ide.toolboxFilter.before(search);search.addEventListener('input',()=>decorateToolbox());search.addEventListener('keydown',e=>e.stopPropagation());
     ide.root.prepend(header);ide.center.append(toolbar);
-    const codePanel=createFigmaCodePanel(workspace);
-    return {header,title,file,design,code,run,stop,undo,redo,toolbar,zoom,buttons,layers,inspector,codePanel,search,addLayout,left,right};
+    const codePanel=createFigmaCodePanel(workspace),services=createFigmaTools(workspace),assets=createFigmaAssets(workspace);
+    return {services,assets,header,title,file,design,code,run,stop,undo,redo,toolbar,zoom,buttons,layers,inspector,codePanel,search,addLayout,left,right};
   }
   function decorateToolbox(){
     if(!workspace.enabled||!workspace.ui)return;const query=workspace.ui.search.value.trim().toLocaleLowerCase();
@@ -86,17 +88,18 @@ export function installFigmaMode(ide){
       button.hidden=!!query&&!button.dataset.controlType.toLocaleLowerCase().includes(query);
       button.disabled=ide.runState!=='design'||!!ide.designer.locked;
     }
+    workspace.ui.assets?.decorate();
   }
   workspace.sync=()=>{
     if(!workspace.enabled||workspace.switching||!workspace.ui)return;const ui=workspace.ui,d=workspace.currentDesigner();
     for(const designer of ide.documents.designers.values())attach(designer);
-    ui.title.textContent=ide.project.name;ui.file.textContent=ide.activeModule?.name||'No document';ui.title.title=ide.project.name+(ide.dirty?' — unsaved changes':'');
+    ui.title.textContent=ide.project.name;ui.file.textContent=ide.documents.tools.get(ide.documents.mdi.active)?.title||ide.activeModule?.name||'No document';ui.title.title=ide.project.name+(ide.dirty?' — unsaved changes':'');
     ui.design.disabled=!ide.activeModule?.form;ui.code.disabled=!ide.activeModule;
-    ui.design.setAttribute('aria-pressed',String(!!d));ui.code.setAttribute('aria-pressed',String(ide.activeDoc?.view==='code'));
+    ui.design.setAttribute('aria-pressed',String(!!d));ui.code.setAttribute('aria-pressed',String(!!workspace.currentCodeEditor()));
     ui.run.disabled=ide.runState==='running';ui.stop.disabled=ide.runState==='design';ui.undo.disabled=ide.runState!=='design'||!ide.history.undoStack.length;ui.redo.disabled=ide.runState!=='design'||!ide.history.redoStack.length;
     ui.toolbar.hidden=!d;ui.addLayout.disabled=!workspace.writable();ui.left.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='layers':['figma-layers','toolbox','project'].some(id=>!ide.docking.model.windows.get(id)?.hidden)));ui.right.setAttribute('aria-expanded',String(view.innerWidth<=850?ide.root.dataset.figmaSidebar==='design':!ide.docking.model.windows.get('properties')?.hidden));ui.zoom.textContent=Math.round((d?.zoom||1)*100)+'%';
     for(const [type,button]of ui.buttons){button.disabled=!d||(type!=='Hand'&&!workspace.writable());button.setAttribute('aria-pressed',String(type==='Hand'?!!workspace.viewports.get(d)?.hand:d?.tool===type&&!workspace.viewports.get(d)?.hand));}
-    ui.layers.sync();ui.inspector.sync();ui.codePanel.sync();
+    ui.layers.sync();ui.inspector.sync();ui.codePanel.sync();ui.services.sync();
     const propertiesPanel=ide.docking.panels.get('properties'),panelTitle=workspace.currentCodeEditor()?'Code':'Design';
     if(propertiesPanel&&propertiesPanel.title!==panelTitle){propertiesPanel.title=panelTitle;ide.docking.render();}
     decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance(false);
@@ -119,7 +122,7 @@ export function installFigmaMode(ide){
         }else{
           saveProfiles();workspace.enabled=false;delete ide.root.dataset.figmaSidebar;delete ide.root.dataset.figmaWindowMode;
           for(const viewport of [...workspace.viewports.values()])viewport.dispose();workspace.classicViewportStates=null;
-          workspace.ui.codePanel.dispose();workspace.ui.inspector.dispose();workspace.ui.layers.dispose();ide.docking.unregister('figma-layers');
+          workspace.ui.assets.dispose();workspace.ui.services.dispose();workspace.ui.codePanel.dispose();workspace.ui.inspector.dispose();workspace.ui.layers.dispose();ide.docking.unregister('figma-layers');
           for(const node of [workspace.ui.header,workspace.ui.toolbar,workspace.ui.search])node.remove();workspace.ui=null;
           for(const [id,title]of workspace.titles||[])if(ide.docking.panels.has(id))ide.docking.panels.get(id).title=title;
           if(profiles.classic)ide.docking.restore(profiles.classic);
@@ -150,6 +153,6 @@ export function installFigmaMode(ide){
   const uninstallOptions=installFigmaOptions(workspace);
   media?.addEventListener?.('change',workspace.appearance);
   ide.root.addEventListener('keydown',event=>{if(workspace.enabled&&event.key==='Escape'&&ide.root.dataset.figmaSidebar){delete ide.root.dataset.figmaSidebar;workspace.ui?.left.focus({preventScroll:true});workspace.scheduleSync();event.preventDefault();event.stopPropagation();}},{capture:true});
-  view.addEventListener('pagehide',event=>{saveProfiles();if(!event.persisted){view.cancelAnimationFrame(workspace.frame);uninstallOptions();media?.removeEventListener?.('change',workspace.appearance);for(const v of [...workspace.viewports.values()])v.dispose({restore:false});workspace.ui?.codePanel.dispose();workspace.ui?.layers.dispose();}});
+  view.addEventListener('pagehide',event=>{saveProfiles();if(!event.persisted){view.cancelAnimationFrame(workspace.frame);uninstallOptions();media?.removeEventListener?.('change',workspace.appearance);for(const v of [...workspace.viewports.values()])v.dispose({restore:false});workspace.ui?.assets.dispose();workspace.ui?.services.dispose();workspace.ui?.codePanel.dispose();workspace.ui?.layers.dispose();}});
   workspace.configure(workspace.settings,{persist:false});return workspace;
 }
