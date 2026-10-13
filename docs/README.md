@@ -48,6 +48,10 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 ## IDE, appearance and rendering
 
+- [Optional Figma workspace](figma-workspace.md): real VB6 Assets/Layers/Design,
+  reversible workspace profiles, canvas navigation, auto layout and anchoring.
+- [Figma paint publication](figma-presentation.md): retained-renderer transactions,
+  native/canvas synchronization and composited-pixel regression gates.
 - [Optional advanced editor](ADVANCED-EDITOR.md): minimap, source navigation, split views,
   safe debugger data tips, VB6/XAML language servers, lifecycle and deployment.
 
@@ -89,7 +93,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - Native Automation: [startup/deadlines](NATIVE-AUTOMATION-STARTUP.md),
   [typed scalars](NATIVE-SCALAR-INTEROP.md) and [DATE transport](NATIVE-DATE-TRANSPORT.md).
 - OCX: [setup and support](OCX-SUPPORT.md), [container contracts](OCX-CONTAINER-CONTRACTS.md),
-  [active objects](OCX-ACTIVE-OBJECT.md), [property browsing](OCX-PROPERTY-BROWSING.md)
+  [active objects](OCX-ACTIVE-OBJECT.md) and [property browsing](OCX-PROPERTY-BROWSING.md)
   and [source PropertyPages](OCX-SOURCE-PROPERTY-PAGES.md).
 
 ## Coding agents and automation

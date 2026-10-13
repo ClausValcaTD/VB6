@@ -23,9 +23,9 @@ void main(){
  vec4 c=mode>.5?texture(image,uv)*tint:tint; outputColor=vec4(c.rgb*c.a,c.a);
 }`;
 export class WebGLPainter {
-  constructor(canvas, {onLost = () => {}} = {}) {
+  constructor(canvas, {onLost = () => {}, preserveDrawingBuffer = false} = {}) {
     this.canvas = canvas; this.name = 'webgl2'; this.textures = new Map(); this.stats = {frames: 0, drawCalls: 0, uploadedBytes: 0, bufferAllocations: 0, geometryPacks: 0, instanceUploads: 0};
-    const context = acquireWebGLContext(canvas), gl = this.gl = context.gl;
+    const context = acquireWebGLContext(canvas, {preserveDrawingBuffer}), gl = this.gl = context.gl;
     this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     this.lost = event => { event.preventDefault(); if (!this.disposed) onLost('WebGL2 context lost'); }; canvas.addEventListener('webglcontextlost', this.lost);
     const shader = (type, source) => { const s = gl.createShader(type); gl.shaderSource(s, source); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) { const log = gl.getShaderInfoLog(s); gl.deleteShader(s); throw new Error(log); } return s; };
@@ -80,6 +80,13 @@ export class WebGLPainter {
       gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, group.count);
     }
     if (!reuse || resized || usedPages.size) { const error = gl.getError(); if (error !== gl.NO_ERROR) throw new Error('WebGL2 rendering error: ' + error); }
+    // Demand rendering can run from a synchronous workspace/options transaction,
+    // not a RAF callback. Submit the final batch explicitly; a later unchanged
+    // retained scene deliberately performs no draw. flush() is non-blocking and
+    // does not replace the context, wait on the GPU, or require a polling loop.
+    // https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/WebGL_best_practices#flush_when_expecting_results
+    gl.flush();
+    this.stats.flushes = (this.stats.flushes || 0) + 1;
     this.stats.frames++; this.stats.drawCalls = groups.length; this.stats.atlasPages = this.textures.size;
   }
   dispose() {

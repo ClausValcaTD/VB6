@@ -69,6 +69,49 @@ alpha, transparent holes, image revisions and fractional-DPI clipping retain
 their original raster operations. Exceptions restore the saved clipping state.
 `clipChanges` and `fillStyleChanges` report per-frame state changes, not GPU time.
 
+## Retained WebGL workspace presentation
+
+A retained document renderer deliberately skips unchanged frames. Its WebGL2
+context therefore requests `preserveDrawingBuffer: true` at creation, so browser
+composition does not clear the buffer that the retained layer still owns. The
+context attribute cannot be changed after creation. Direct `WebGLPainter` and
+`acquireWebGLContext` consumers keep the non-preserved default; they can request
+preservation explicitly when they also retain their output between draws.
+
+This contract fixes the observed WebKit case where switching the Figma workspace
+between Light and Dark left the displayed canvas one transaction behind, despite
+current DOM styles, matching CPU/GPU instance data and correct immediate redraw
+pixels. Flushing, GPU completion fences, `gl.finish`, changing CSS containment
+and promoting the canvas did not repair that publication behavior in the
+controlled comparison. Drawing-buffer preservation did, without changing the
+requested renderer order or replacing the live driver and atlas on each switch.
+
+Preservation is scoped to retained document layers, not enabled as a global
+benchmark optimization. It can require additional storage or copying and can
+cost performance on some platforms. This correctness requirement is not a claim
+of zero overhead or physical-GPU speedup. There is no blocking GPU wait, GPU
+readback, user-agent workaround or perpetual repaint timer in the fix. Context
+loss still follows the ordinary ordered fallback and cleanup paths.
+
+The dedicated regression requires an actual WebGL2 context with preservation,
+checks eight alternating theme transactions against composited screenshot
+pixels, retains driver identity and authored project data, and verifies that
+frame counts stop increasing at idle:
+
+```sh
+VB6_BROWSER=webkit VB6_TEST_TRANSPORT=http python tools/figma-retained-webgl-browser-tests.py
+VB6_BROWSER=webkit VB6_TEST_TRANSPORT=file python tools/figma-retained-webgl-browser-tests.py
+```
+
+The Figma workflow also runs this case in Firefox and Chromium. Its separate
+Chromium renderer qualification uses explicitly labelled software GL; those
+unsafe/test-only flags are not production browser advice. Falling back to HTML
+fails this required-WebGL case rather than silently skipping it. Screenshot
+assertions do not issue diagnostic redraws or readbacks to obtain a passing
+image. Evidence is retained under `reports/figma-workspace/<browser>/<transport>/retained-webgl`.
+See [Figma workspace](figma-workspace.md) and the
+[WebGL drawing-buffer contract](https://registry.khronos.org/webgl/specs/latest/1.0/#2.2).
+
 ## Stray tool-result labels or torn text in the coding-agent view
 
 Closed tool-result disclosures must not contribute any GPU paint or native
