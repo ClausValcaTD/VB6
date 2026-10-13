@@ -43,6 +43,24 @@ export function createFigmaPropertyPanel(workspace) {
       if(!matches)inspector.grid.append(el('p',{class:'figma-help',role:'status'},'No matching properties.'));
     }
   };
+  // A commit rebuilds the canonical rows. Blur before native Tab navigation and
+  // restore its origin by property/selection identity, so the browser chooses
+  // the next focusable field/button/summary in its own forward or reverse order.
+  // Do not dispatch another change or steal focus from validation modality.
+  const onTab=event=>{
+    const field=event.target;
+    if(event.key!=='Tab'||event.defaultPrevented||event.isComposing||event.ctrlKey||event.altKey||event.metaKey||
+      !field.matches?.('input[data-property],select[data-property]'))return;
+    const {ide}=workspace,project=ide.project,module=ide.activeModule,key=field.dataset.property;
+    const targets=inspector.targets.map(target=>target.id||target);
+    field.blur();
+    const replacement=inspector.fields.get(key),sameSelection=targets.length===inspector.targets.length&&
+      targets.every((id,index)=>id===(inspector.targets[index]?.id||inspector.targets[index]));
+    if(inspector.presentation===presentation&&ide.project===project&&ide.activeModule===module&&sameSelection&&
+      replacement?.isConnected&&!replacement.disabled&&!replacement.closest('[inert]'))replacement.focus({preventScroll:true});
+    else event.preventDefault();
+  };
+  inspector.grid.addEventListener('keydown',onTab,true);
   inspector.presentation=presentation;
   inspector.wrapper.before(bar);
   search.addEventListener('input',()=>inspector.render());
@@ -56,6 +74,7 @@ export function createFigmaPropertyPanel(workspace) {
   });
   inspector.render();
   return {bar,search,dispose(){
+    inspector.grid.removeEventListener('keydown',onTab,true);
     inspector.presentation=previous;
     bar.remove();
     inspector.render();
