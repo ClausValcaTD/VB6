@@ -35,6 +35,7 @@ const signatures={
 };
 const MACOS_API_SIGNATURES=Object.freeze(Object.fromEntries(Object.entries(signatures).map(([lib,entries])=>[lib,Object.freeze({...entries})])));
 function resolveMacOSDeclaration(procedure,module=''){
+  if(procedure.returnArray)throw new MacOSCompileError('Declare array returns require an explicit native array ABI',module,procedure.line,'MAC213');
   const external=procedure.external;
   const library=String(external.library).toLowerCase().replace(/\.dll$/,'');
   const requested=external.entry;const table=MACOS_API_SIGNATURES[library];

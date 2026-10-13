@@ -11,7 +11,8 @@
     ".": "./dist/index.js",
     "./builder": "./src/build-driver.mjs",
     "./node": "./src/node.mjs",
-    "./bridge": "./src/bridge.mjs"
+    "./bridge": "./src/bridge.mjs",
+    "./distribution": "./src/distribution.mjs"
   },
   "bin": {
     "vb6-macos": "./bin/vb6-macos.mjs"
@@ -24,6 +25,7 @@
     "src/target.js",
     "src/mach-o.js",
     "src/node.mjs",
+    "src/distribution.mjs",
     "src/bridge.mjs",
     "bin",
     "README.md",

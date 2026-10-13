@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {AOT_ABI} from '../packages/macos-native/src/aot-abi.js';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -12,12 +13,12 @@ import {readZip} from '../src/project/zip.js';
 const project={schema:1,name:'OfflineNative',startup:'Sub Main',modules:[{name:'MainModule',kind:'module',code:'Public Sub Main()\nDebug.Print "OFFLINE_NATIVE_OK"\nEnd Sub'}]};
 test('the shipped runtime matches the current native source and real execution provenance',()=>{
  const manifest=macOSAOTRuntimeInfo();assert.deepEqual(manifest.provenance, {...manifest.provenance,...readAOTSourceProvenance()});
- assert.equal(checkAOTRuntimeProvenance().sha256,manifest.sha256);assert.equal(manifest.verification.arm64ExecutionVerified,true);assert.equal(manifest.verification.nativeSignatureVerified,true);
+ assert.equal(checkAOTRuntimeProvenance().sha256,manifest.sha256);assert.equal(manifest.verification.arm64ExecutionVerified,true);assert.equal(manifest.verification.nativeSignatureVerified,true);assert.equal(manifest.verification.scopeOwnershipVerified,true);
 });
 test('concurrent runtime loads return isolated templates and manifests',async()=>{
  const [a,b]=await Promise.all([loadMacOSAOTRuntime(),loadMacOSAOTRuntime()]);assert.notEqual(a.bytes,b.bytes);assert.deepEqual(a.bytes,b.bytes);
  a.bytes[0]=0;a.manifest.helpers._vb6_aot_clear=0;const c=await loadMacOSAOTRuntime();assert.notEqual(c.bytes[0],0);assert.notEqual(c.manifest.helpers._vb6_aot_clear,0);
- const info=macOSAOTRuntimeInfo();info.abi=0;assert.equal(macOSAOTRuntimeInfo().abi,1);
+ const info=macOSAOTRuntimeInfo();info.abi=0;assert.equal(macOSAOTRuntimeInfo().abi,AOT_ABI);
 });
 test('high-level offline export produces a fully sealed executable without network',async()=>{
  const original=globalThis.fetch;let calls=0;globalThis.fetch=()=>{++calls;throw new Error('Network forbidden');};
@@ -43,4 +44,10 @@ test('compressed SDK packaging round-trips empty, repeated and random bytes',asy
 });
 test('runtime embedding refuses source-only or fabricated execution reports',async()=>{
  const runtime=await loadMacOSAOTRuntime();for(const proof of [undefined,{platform:'linux',arch:'x64',arm64ExecutionVerified:false,nativeSignatureVerified:false},{platform:'darwin',arch:'arm64',arm64ExecutionVerified:true,nativeSignatureVerified:true,runtime:{sha256:'wrong'}}])await assert.rejects(encodeAOTRuntimePayload(runtime,{proof}),/native execution/);
+});
+
+test('runtime embedding requires scoped-ownership proof for the current native ABI',async()=>{
+ const runtime=await loadMacOSAOTRuntime();
+ const proof={platform:'darwin',arch:'arm64',arm64ExecutionVerified:true,nativeSignatureVerified:true,runtime:runtime.manifest,largeCapacityVerified:true,optimizationLevelsVerified:[0,1,2,3]};
+ await assert.rejects(encodeAOTRuntimePayload(runtime,{proof}),/scope ownership/);
 });

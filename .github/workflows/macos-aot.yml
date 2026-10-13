@@ -14,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        os: [ubuntu-24.04, macos-14, macos-15, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
     steps:
@@ -31,15 +31,19 @@ jobs:
           node-version: 22
       - name: ARM64 encoding, app packaging and tamper rejection
         run: node tools/build-macos-native.mjs
-      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs
+      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs tests/macos-aot-capacity.test.mjs tests/macos-aot-resize.test.mjs tests/macos-aot-optimizer.test.mjs tests/macos-distribution.test.mjs tests/macos-distribution-cli.test.mjs
       - name: Execute sanitized helper oracle and genuine Apple Silicon export
         run: node tools/test-macos-aot.mjs
+      - name: Verify trusted local distribution with actual Apple tools
+        if: runner.os == 'macOS'
+        run: node tools/test-macos-distribution.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: macos-aot-${{ matrix.os }}
           path: |
             reports/macos-aot
+            reports/macos-aot-distribution
             artifacts/macos-aot
           retention-days: 14
   browser:
@@ -74,7 +78,11 @@ jobs:
           retention-days: 14
   browser-native:
     needs: browser
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -88,11 +96,11 @@ jobs:
         with:
           pattern: macos-direct-browser-*
           path: browser-input
-      - name: Verify and execute all six browser-exported ARM64 applications
+      - name: Verify and execute all 24 browser-exported ARM64 applications
         run: node tools/test-macos-browser-artifacts.mjs browser-input
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: macos-direct-browser-native-execution
+          name: macos-direct-browser-native-execution-${{ matrix.os }}
           path: reports/macos-aot-browser-native
           retention-days: 14

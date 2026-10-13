@@ -6,7 +6,7 @@ VB6-to-Apple-Silicon AOT compiler, native runtime and AppKit host. The default b
 
 Choose **File → Make Project.app (macOS Apple Silicon)…**. This is independent of Windows AOT, Microsoft VB6 runtime, VB.NET and HTML export.
 
-**Export .app ZIP** is the default executable path and needs no Mac bridge, server, Clang or network. It uses the embedded O2 SDK, preserves executable permissions, and seals code pages and resources. The direct target has a 2 MiB project-code capacity and 2 MiB metadata capacity, with explicit diagnostics on overflow. See [direct AOT architecture and APIs](../../docs/MACOS-DIRECT-AOT.md).
+**Export .app ZIP** is the default executable path and needs no Mac bridge, server, Clang or network. It supports O0–O3 project-code optimization with the embedded O2 native SDK, preserves executable permissions, and seals code pages and resources. Code and metadata segments grow independently in 16 KiB pages, bounded by the 64 MiB image budget and the native reader's 8 MiB metadata budget; overflow is diagnosed before image allocation. See [direct AOT architecture and APIs](../../docs/MACOS-DIRECT-AOT.md).
 
 **Download Source Build Kit** works without a Mac connection. Extract the ZIP on macOS and run `node build.mjs`. The kit contains generated native source, the runtime SDK and build scripts; it is not an executable.
 
@@ -71,11 +71,11 @@ Project-defined `Implements` contracts support private method implementations, n
 
 The local compiler resolves Apple Clang through the installed Xcode SDK. It stages source privately, invokes tools without shell interpolation, caches runtime objects by source/toolchain, verifies the arm64 image and code signature, and preserves executable modes and original signed ZIP bytes. The bridge client checks archive structure and transport hashes. Direct export additionally verifies every code-page hash and bundle resource seal; neither browser path evaluates macOS trust.
 
-Default signing is ad-hoc. **Ad-hoc signing is not notarization, Gatekeeper approval or Developer ID signing.** Configure a signing identity on the trusted local builder, never through project data. Distribution requires the developer's own signing and notarization process. Native programs are not sandboxed by this compiler.
+Default signing is ad-hoc. **Ad-hoc signing is not notarization, Gatekeeper approval or Developer ID signing.** Configure a signing identity on the trusted local builder, never through project data. The explicit local `--distribute` CLI and `./distribution` API support Developer ID Application signing with Hardened Runtime, approved JSON entitlements, and optional `--notarize-profile` submission/stapling/Gatekeeper assessment. The user's local Keychain owns identities and credentials. See [distribution authority and usage](../../docs/MACOS-DISTRIBUTION.md). Native programs are not sandboxed by default.
 
 ## Validation and remaining boundaries
 
-`node tools/test-macos-aot.mjs` validates actual generated ARM64 execution, strict Apple signature verification and sanitized helper-call conformance. The Direct macOS AOT workflow also tests real offline browser downloads and executes those exact archives on Apple Silicon.
+`node tools/test-macos-aot.mjs` validates actual generated ARM64 execution, strict Apple signature verification and sanitized helper-call conformance. The Direct macOS AOT workflow tests all four optimization levels, real large projects, offline browser downloads and exact-archive execution on Apple Silicon across macOS 14, 15 and 26. `node tools/test-macos-distribution.mjs` validates real ad-hoc signing and final-archive execution; notary-service transaction tests are explicitly synthetic unless valid developer credentials are used separately.
 
 `npm run test:macos` tests compiler contracts, archive validation, bridge denial/cancellation, offline package extraction and cross-platform source determinism. `npm run test:macos:browser` tests IDE downloads, cancellation and stale-project protection over HTTP and file origins.
 

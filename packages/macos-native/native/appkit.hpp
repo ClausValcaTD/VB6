@@ -60,6 +60,7 @@ struct MacHost final:NativeHost {
   Value createObject(Runtime&,const std::string&)override;Value appProperty(Runtime&,const std::string&)override;Value builtin(Frame&,const std::string&,Args)override;
   Value api(Runtime&,const std::string&,Args)override;void graphics(Frame&,Value,const std::string&,std::vector<Value>,Value,bool)override;
   int run(Runtime&)override;void pump()override;void shutdown()override;
+  bool hasOpenForms()const noexcept override{return !forms.empty();}
   Value messageBox(const Text&,int64_t,const Text&);Value inputBox(const Text&,const Text&,const Text&);Value dialog(MacControl&,const std::string&);
 };
 Value createNativePrinter(MacHost&,const std::string&);

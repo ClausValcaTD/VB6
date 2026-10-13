@@ -4,7 +4,7 @@
 #include <iostream>
 namespace vb6 {
 Runtime::Runtime(std::unique_ptr<NativeHost> value):host(std::move(value)){if(!host)throw std::invalid_argument("Native host required");host->attach(*this);installBuiltins(*this);installFileBuiltins(*this);installFinancialBuiltins(*this);}
-Runtime::~Runtime(){ending=true;stopNativeFinalizers(*this);host->shutdown();instances.clear();files.clear();}
+Runtime::~Runtime(){stop();}
 Value Runtime::defaultValue(const std::string&raw,Frame*frame){
   auto type=lower(raw);
   if(type=="variant")return {};if(type=="object"||modules.count(type))return Value::object(nullptr);
@@ -15,18 +15,24 @@ Value Runtime::defaultValue(const std::string&raw,Frame*frame){
   return coerce(Value{},type);
 }
 std::shared_ptr<Instance> Runtime::instance(const std::string&raw,bool fresh){
+  if(finished)fail(5,"Native program has finished");
   auto name=lower(raw);auto m=modules.find(name);if(m==modules.end())fail(429,"Unknown class: "+raw);
   if(!fresh){auto found=instances.find(name);if(found!=instances.end())return found->second;}
   auto object=makeNativeInstance(*this,m->second);object->initializing=true;
   if(!fresh)instances[name]=object;
-  try{Frame frame(*this,object);if(m->second.initialize)m->second.initialize(frame);object->initialized=true;object->initializing=false;if(m->second.kind=="class")dispatch(object,"class_initialize");}
-  catch(...){object->initialized=false;object->initializing=false;if(!fresh)instances.erase(name);throw;}
+  try{Frame frame(*this,object);if(m->second.initialize)m->second.initialize(frame);object->initialized=true;object->initializing=false;if(m->second.kind=="class")dispatch(object,"class_initialize");
+    else if(m->second.kind=="form"){object->formInitialized=true;dispatch(object,m->second.form&&m->second.form->type=="MDIForm"?"mdiform_initialize":"form_initialize");}}
+  catch(...){object->initialized=false;object->formInitialized=false;object->initializing=false;
+    if(object->loaded){try{host->formCall(object,"__unload",{});}catch(...){}object->loaded=false;object->controls.clear();}
+    if(!fresh){auto it=instances.find(name);if(it!=instances.end()&&it->second==object)instances.erase(it);}throw;}
   return object;
 }
 Value Runtime::create(const std::string&raw){auto name=lower(raw);if(modules.count(name))return Value::object(instance(name,true));return createLibraryObject(*this,name);}
 Value Runtime::invoke(const std::shared_ptr<Instance>&object,const std::string&raw,Args args,bool internal){
   auto name=lower(raw);auto found=object->module->procedures.find(name);if(found==object->module->procedures.end())fail(438,"Unknown procedure: "+raw);
   auto&proc=found->second;if(!internal&&proc.scope=="private")fail(438);if(!proc.code)fail(453);
+  if(proc.returnArray&&proc.parameters.empty()&&!args.empty())
+    return callValue(*this,invoke(object,raw,{},internal),std::move(args));
   Value result;
   {Frame frame(*this,object,&proc,std::move(args));result=proc.code(frame);}
   drainNativeFinalizers(*this);return result;
@@ -34,12 +40,13 @@ Value Runtime::invoke(const std::shared_ptr<Instance>&object,const std::string&r
 Value Runtime::dispatch(const std::shared_ptr<Instance>&object,const std::string&name,Args args){if(!object->module->procedures.count(lower(name)))return {};return invoke(object,name,std::move(args),true);}
 void Runtime::load(const std::shared_ptr<Instance>&object){
   if(object->module->kind!="form")fail(424);if(object->loaded||object->loading)return;object->loading=true;
-  try{host->createForm(object);object->loaded=true;std::string prefix=object->module->form&&object->module->form->type=="MDIForm"?"mdiform_":"form_";if(!object->formInitialized){object->formInitialized=true;dispatch(object,prefix+"initialize");}dispatch(object,prefix+"load");object->loading=false;}
+  try{host->createForm(object);object->loaded=true;std::string prefix=object->module->form&&object->module->form->type=="MDIForm"?"mdiform_":"form_";dispatch(object,prefix+"load");object->loading=false;}
   catch(...){object->loading=false;try{if(object->loaded)host->formCall(object,"__unload",{});}catch(...){}object->loaded=false;object->controls.clear();throw;}
 }
-void Runtime::unload(const std::shared_ptr<Instance>&object){
+void Runtime::unload(const std::shared_ptr<Instance>&object,int16_t mode){
+  if(mode<0||mode>5)fail(5,"Invalid form unload mode");
   if(!object->loaded||object->unloading)return;object->unloading=true;
-  try{std::string prefix=object->module->form&&object->module->form->type=="MDIForm"?"mdiform_":"form_";auto cancel=std::make_shared<Cell>(Value::integer(0,Type::Integer),"integer");dispatch(object,prefix+"queryunload",{Arg(cellRef(cancel)),Arg(Value::integer(0,Type::Integer))});if(!cancel->get().truth())dispatch(object,prefix+"unload",{Arg(cellRef(cancel))});
+  try{std::string prefix=object->module->form&&object->module->form->type=="MDIForm"?"mdiform_":"form_";auto cancel=std::make_shared<Cell>(Value::integer(0,Type::Integer),"integer");dispatch(object,prefix+"queryunload",{Arg(cellRef(cancel)),Arg(Value::integer(mode,Type::Integer))});if(!cancel->get().truth())dispatch(object,prefix+"unload",{Arg(cellRef(cancel))});
     if(!cancel->get().truth()){host->formCall(object,"__unload",{});object->loaded=false;object->controls.clear();}object->unloading=false;
   }catch(...){object->unloading=false;throw;}
 }
@@ -49,14 +56,16 @@ void Runtime::bindEvents(std::shared_ptr<Instance> sink,const std::string&field,
 }
 void Runtime::raiseEvent(const std::shared_ptr<Instance>&source,const std::string&name,Args args){auto copy=subscriptions;for(auto&s:copy)if(sameObject(s.source.lock(),source))if(auto sink=s.sink.lock())dispatch(sink,s.field+"_"+name,args);}
 void Runtime::run(){
+  if(finished||depth||finishing)fail(5,"Native program is not ready to run");
   try{
     for(auto&entry:modules)if(entry.second.kind=="module")instance(entry.first);
     if(lower(startup)=="sub main"||lower(startup)=="main"){
       std::shared_ptr<Instance> owner;for(auto&entry:modules)if(entry.second.kind=="module"&&entry.second.procedures.count("main")){if(owner)fail(5,"Ambiguous Sub Main");owner=instance(entry.first);}
       if(!owner)fail(453,"Sub Main is not defined");invoke(owner,"main",{},true);
-    }else{auto form=instance(startup);load(form);host->formCall(form,"show",{});}
-    host->run(*this);drainNativeFinalizers(*this);
-  }catch(const EndExecution&){ending=true;host->shutdown();}
+    }else{auto form=instance(startup);load(form);if(form->loaded)host->formCall(form,"show",{});}
+    do {host->run(*this);drainNativeFinalizers(*this);} while(!finish());
+  }catch(const EndExecution&){stop();}
+  catch(...){stop();throw;}
 }
 Value NativeHost::createObject(Runtime&,const std::string&name){fail(429,"Native object unavailable: "+name);}
 Value NativeHost::appProperty(Runtime&,const std::string&){fail(438);}

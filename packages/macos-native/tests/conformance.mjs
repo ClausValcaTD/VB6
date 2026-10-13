@@ -1,7 +1,9 @@
+import {scopeModules} from './scopes.mjs';
+import {arrayModules} from './arrays.mjs';
 import {lifetimeModules} from './lifetimes.mjs';
 import {interfaceModules} from './interfaces.mjs';
 export function conformanceProject() {
-  return {schema:1,name:'NativeConformance',startup:'Sub Main',modules:[...interfaceModules(),...lifetimeModules(),
+  return {schema:1,name:'NativeConformance',startup:'Sub Main',modules:[...scopeModules(),...interfaceModules(),...lifetimeModules(),...arrayModules(),
     {name:'Counter',kind:'class',code:`Option Explicit
 Private n As Long
 Public Property Get Value() As Long
@@ -50,6 +52,8 @@ Public Sub Main()
   Close #file
   Kill "native-conformance.bin"
   Debug.Assert value = 11
+  CheckNativeArrays
+  CheckNativeScopes
   CheckNativeInterfaces
   CheckNativeLifetimes
   Debug.Print "NATIVE_CONFORMANCE_OK"
