@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import {programLifetimeProject,formLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
+import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {compileMacOS} from '../packages/macos-native/src/compiler.js';
 import {compileMacOSAOT} from '../packages/macos-native/src/aot-compiler.js';
 
-for(const [name,factory] of [['program roots',programLifetimeProject],['default forms',formLifetimeProject]])
+for(const [name,factory] of [['program roots',programLifetimeProject],['default forms',formLifetimeProject],['abrupt End',abruptLifetimeProject]])
   test('both native compilers lower '+name+' at all optimization levels',()=>{
     for(const optimization of [0,1,2,3]){
       const project=factory(),before=JSON.stringify(project);

@@ -122,3 +122,12 @@ Private Sub Form_Terminate()
 End Sub`}
   ]};
 }
+
+/** End is abrupt: no Terminate callback or code after End may execute. */
+export function abruptLifetimeProject() {
+  const project=programLifetimeProject();project.name='NativeAbruptLifetime';
+  const module=project.modules.find(item=>item.name==='Main');
+  module.code=module.code.replace('  BodyFinished = True',
+    '  BodyFinished = True\n  WasAbrupt = True\n  End');
+  return project;
+}

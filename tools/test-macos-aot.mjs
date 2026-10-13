@@ -9,7 +9,7 @@ import {runTool} from '../packages/macos-native/src/build-driver.mjs';
 import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-native/src/aot-compiler.js';
 import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
-import {programLifetimeProject,formLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
+import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
 import {largeAOTProject} from '../packages/macos-native/tests/aot-large.mjs';
 import {buildAOTTemplate} from './build-macos-aot-template.mjs';
@@ -50,7 +50,16 @@ try{
   await run(compiler,[...flags,rootSource,...objects,'-o',rootOracle]);
   rootMarkers(await run(rootOracle,[]));
   assert.deepEqual((await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8')).trim().split(/\r?\n/).sort(),['array','global','static']);
-  report.programRootOracleVerified=true;
+  const abruptMarkers=output=>{
+    assert.ok(!output.includes('NATIVE_PROGRAM_BODY_OK'),'End must not fall through');
+    assert.ok(!output.includes('NATIVE_ROOT_RELEASED:'),'End must not invoke Terminate');
+  };
+  const abruptSource=path.join(work,'abrupt-oracle.cpp'),abruptOracle=path.join(work,'abrupt-oracle');
+  await fs.writeFile(abruptSource,emitAOTPortableTestSource(compileMacOSAOT(abruptLifetimeProject())));
+  await run(compiler,[...flags,abruptSource,...objects,'-o',abruptOracle]);
+  abruptMarkers(await run(abruptOracle,[]));
+  assert.equal(await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8'),'');
+  report.programRootOracleVerified=true;report.abruptExitOracleVerified=true;
   const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
   await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
   // A faulty expected error must fail the native test, not be swallowed by
@@ -65,7 +74,7 @@ try{
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;
-    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))]]){
+    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))]]){
       const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
       const result=await exportMacOSAOT(p,runtime,options);
       if(label==='large'){assert.ok(result.report.codeBytes>2097152,'Native large program must exceed old code cap');assert.ok(result.report.metadataBytes>2097152,'Native large program must exceed old metadata cap');}
@@ -76,11 +85,13 @@ try{
       // Crucially, do NOT invoke Clang on project source or re-sign with codesign.
       await run('/usr/bin/codesign',['--verify','--strict','--verbose=2',app]);
       validate(await run(executable,[]));
+      if(label==='roots')assert.deepEqual((await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8')).trim().split(/\r?\n/).sort(),['array','global','static']);
+      if(label==='abrupt')assert.equal(await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8'),'');
       report.checks.push(key+': direct ARM64 code executed and app signature verified');
       report[key]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes,metadataBytes:result.report.metadataBytes,optimization:result.report.projectOptimization};
       if(optimization===2)report[label]=report[key];
     }
-    report.programLifetimeVerified=true;
+    report.programLifetimeVerified=true;report.abruptExitVerified=true;
     report.largeCapacityVerified=true;report.optimizationLevelsVerified=[0,1,2,3];
     report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
   }
