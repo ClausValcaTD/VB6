@@ -97,12 +97,18 @@ export class ExpressionParser {
   parse() { const node=this.expression();if(this.peek().type!=='eof')throw new VBError(`Unexpected '${this.peek().raw}' in expression`,1002,null,0,this.peek().start+1);return this.finish(node); }
 }
 export const parseExpression = text => new ExpressionParser(text.trim()).parse();
-export function parseCall(text,{explicit=false}={}) {
+export function parseCall(text,{explicit=false,continuations=null}={}) {
   const p=new ExpressionParser(text); let callee=p.take(); let node;
   if(callee.type==='op'&&callee.value==='.') node={kind:'member',object:{kind:'with'},name:p.memberName()};
   else if(callee.type==='id') node={kind:'id',name:callee.value};
   else throw new VBError('Expected procedure name',1002);
-  while(p.match('.'))node={kind:'member',object:node,name:p.memberName()};
+  // Without Call, whitespace before a dot starts a positional With argument,
+  // not another part of the procedure name (MS-VBAL 5.4.2.1). An explicit
+  // physical continuation also permits member access (5.6.12); logical-line
+  // joining retains its offsets rather than confusing it with ordinary spaces.
+  while(p.peek().value==='.'&&(explicit||p.peek().start===p.tokens[p.i-1].end||continuations?.some(at=>at>p.tokens[p.i-1].end&&at<=p.peek().start))){
+    p.take();node={kind:'member',object:node,name:p.memberName()};
+  }
   if(p.peek().type==='eof') return p.finish({kind:'call',callee:node,args:[]});
   const rest=text.slice(p.peek().start).trim();
   if(rest.startsWith('(')) {

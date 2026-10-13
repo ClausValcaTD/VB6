@@ -3,7 +3,7 @@ import {instructionMap,linearInstruction,instructionKey,uniqueInstructionLines} 
 import {VBError} from '../language/lexer.js';
 const json=value=>JSON.stringify(value,(_,v)=>v instanceof Map?[...v]:v);
 const executionSettings=settings=>{const {errorTrapping,...rest}=settings||{};return rest;};
-const signature=p=>({name:p.name,kind:p.kind,scope:p.scope,accessor:p.accessor,static:p.static,params:p.params,returnType:p.returnType});
+const signature=p=>({name:p.name,kind:p.kind,scope:p.scope,accessor:p.accessor,static:p.static,params:p.params,returnType:p.returnType,returnArray:!!p.returnArray});
 const moduleShape=m=>({kind:m.kind,interfaces:m.interfaces,defaultTypes:m.defaultTypes,defaultMember:m.defaultMember,declarations:m.declarations,types:m.types,events:m.events,enums:m.enums,form:m.form,optionExplicit:m.optionExplicit,optionBase:m.optionBase,optionCompare:m.optionCompare});
 function instructionShape(ins){
   const {line,column,endColumn,source,procedure,sequencePoint,...rest}=ins;
@@ -22,6 +22,14 @@ export function validateStaticStorage(oldModule,newModule){
     for(const ins of proc?.code||[])if(ins.op==='dim'&&(ins.static||proc.static))for(const declaration of ins.decls){
       const {initial,...layout}=declaration;
       slots.set(declaration.name.toLowerCase(),json(layout));
+    }
+    // Declarative ReDim also allocates procedure-local storage. A Static
+    // procedure keeps those cells between calls even without an authored Dim.
+    // Prefer explicit Dim layouts already indexed above; do not compare the
+    // binder-only `static` annotation as part of a Cell's storage shape.
+    for(const declaration of proc?.redimDeclarations||[])if(declaration.static||proc.static){
+      const {initial,static:staticDeclaration,...layout}=declaration,key=declaration.name.toLowerCase();
+      if(!slots.has(key))slots.set(key,json(layout));
     }
     return slots;
   };

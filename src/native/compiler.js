@@ -66,6 +66,7 @@ class NativeCompiler {
     if (targetType && key(targetType) !== 'exe') this.fail('Freestanding AOT currently requires a Standard EXE project');
     this.program = compileProject(this.project);
     if (!this.program.valid) { const error = new NativeCompileError('Project contains compile errors'); error.diagnostics = this.program.diagnostics; error.message = error.diagnostics.map(d => `${d.source}:${d.line}: ${d.message}`).join('\n'); throw error; }
+    for(const module of this.program.modules.values())for(const proc of module.procedures.values())if(proc.returnArray)this.fail('Typed array procedure returns require the HTML or Electron runtime; native array-return ABI is not implemented', {module,proc});
     for (const module of this.program.modules.values()) this.externals.set(key(module.name),lowerNativeDeclarations(module));
     this.prepareNativeClassTypes();
     this.prepareNativeFormTypes();

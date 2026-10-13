@@ -1,4 +1,5 @@
 import {parseGraphicsStatement} from './graphics-statements.js';
+import {parseRedimDeclarations} from './redim-semantics.js';
 import {splitPrintList} from './print-list.js';
 import {parseDeclarations,parseParameters,parseProcedureHeader,parseTypeFields} from './declarations.js';
 import {parseModuleHeader,parseEnumMember} from './module-syntax.js';
@@ -22,21 +23,21 @@ export {parseDeclarations,parseParameters};
 const DEBUG_SOURCE_LINES=new WeakMap();
 const PROCEDURE_END={sub:/^End\s+Sub$/i,function:/^End\s+Function$/i,property:/^End\s+Property$/i};
 class ProcedureCompiler {
-  constructor(proc,module) { this.proc=proc;this.module=module;this.code=[];this.blocks=[];this.labels=new Map();this.patches=[];this.temp=0;this.debugStatement=null;this.statementDepth=0;this.debugColumns=new Map();if(!DEBUG_SOURCE_LINES.has(module))DEBUG_SOURCE_LINES.set(module,module.source.replace(/\r\n?/g,'\n').split('\n'));this.sourceLines=DEBUG_SOURCE_LINES.get(module); }
+  constructor(proc,module) { this.proc=proc;this.module=module;this.code=[];this.blocks=[];this.labels=new Map();this.patches=[];this.temp=0;this.withTemp=0;this.withContext=null;this.debugStatement=null;this.statementDepth=0;this.debugColumns=new Map();if(!DEBUG_SOURCE_LINES.has(module))DEBUG_SOURCE_LINES.set(module,module.source.replace(/\r\n?/g,'\n').split('\n'));this.sourceLines=DEBUG_SOURCE_LINES.get(module); }
   emit(op,data={},line=0){
     const index=this.code.length,statement=this.debugStatement;
     // A VB statement may lower to several instructions. Only its first visible
     // instruction is a sequence point; declarations and synthetic jumps are not.
     const sequencePoint=!!statement&&!statement.emitted&&!data.implicit&&op!=='dim'&&data.sequencePoint!==false;
     if(sequencePoint)statement.emitted=true;
-    this.code.push({op,...data,line,source:this.module.name,procedure:this.proc.name,sequencePoint,...(sequencePoint&&statement.column?{column:statement.column,endColumn:statement.endColumn}:{})});return index;
+    this.code.push({op,...data,...(this.withContext!==null?{withId:this.withContext}:{}),line,source:this.module.name,procedure:this.proc.name,sequencePoint,...(sequencePoint&&statement.column?{column:statement.column,endColumn:statement.endColumn}:{})});return index;
   }
   jump(target,line,hidden=false){return this.emit('jump',{target,...(hidden?{sequencePoint:false}:{})},line);}
   patch(index,target){this.code[index].target=target;}
   block(type,line){const b=this.blocks.at(-1);if(!b||b.type!==type)throw new VBError(`Expected matching ${type} block`,1002,this.module.name,line);return b;}
   compile(lines) {
-    for(const {text,line,label} of lines) {
-      try { if(label){this.label(text,line);continue;} this.statement(text,line); }
+    for(const {text,line,label,continuations} of lines) {
+      try { if(label){this.label(text,line);continue;} this.statement(text,line,null,continuations); }
       catch(error){if(error instanceof VBError){error.source ||= this.module.name;error.line ||= line;}throw error;}
     }
     if(this.blocks.length)throw new VBError(`Unclosed ${this.blocks.at(-1).type} block`,1002,this.module.name,lines.at(-1)?.line||1);
@@ -45,17 +46,19 @@ class ProcedureCompiler {
     return this.code;
   }
   label(name,line){const key=/^\d+$/.test(name)?String(Number(name)):lower(name);if(this.labels.has(key))throw new VBError(`Duplicate label: ${name}`,1002,this.module.name,line);this.labels.set(key,this.code.length);if(/^\d+$/.test(name)){const number=Number(name);if(number>65535)throw new VBError('Line number must be between 0 and 65535',1002,this.module.name,line);this.emit('lineNumber',{number,implicit:true},line);}}
-  statement(original,line,column=null) {
+  statement(original,line,column=null,continuations=null) {
     if(this.statementDepth>=128)throw new VBError('Statement nesting limit exceeded',1002,this.module.name,line);
     this.statementDepth++;
-    const previous=this.debugStatement,text=original.trim(),source=this.sourceLines[line-1]||'';
+    const previous=this.debugStatement,previousJoins=this.callContinuations,text=original.trim(),source=this.sourceLines[line-1]||'';
+    const leading=original.length-original.trimStart().length;
+    this.callContinuations=continuations?.map(at=>at-leading)||null;
     const offset=column===null?source.indexOf(text,this.debugColumns.get(line)||0):column-1;
     // Continued statements keep their physical starting line; do not invent a
     // single-line span when the logical statement is absent from that line.
     const found=offset>=0&&source.slice(offset,offset+text.length)===text;
     this.debugStatement={emitted:false,column:found?offset+1:null,endColumn:found?offset+text.length+1:null};
     if(column===null&&found)this.debugColumns.set(line,offset+text.length);
-    try{return this.compileStatement(original,line);}finally{this.debugStatement=previous;this.statementDepth--;}
+    try{return this.compileStatement(original,line);}finally{this.debugStatement=previous;this.callContinuations=previousJoins;this.statementDepth--;}
   }
   compileStatement(original,line) {
     let text=original.trim(),m;
@@ -68,7 +71,10 @@ class ProcedureCompiler {
         const yes=at<0?header.body:header.body.slice(0,at),no=at<0?'':header.body.slice(delimiter.end);
         const origin=this.debugStatement.column,bodyOffset=header.bodyStart;
         if(origin)this.code[index].endColumn=origin+bodyOffset;
-        const compileParts=(body,offset)=>{for(const part of statementParts(body))this.statement(part.text,line,origin===null?null:origin+offset+part.start);};
+        const compileParts=(body,offset)=>{for(const part of statementParts(body)){
+          const start=offset+part.start,joins=this.callContinuations?.filter(at=>at>start&&at<=start+part.text.length).map(at=>at-start);
+          this.statement(part.text,line,origin===null?null:origin+start,joins);
+        }};
         const blocks=this.blocks.length;
         compileParts(yes,bodyOffset);
         if(at>=0){const end=this.jump(null,line,true);this.patch(index,this.code.length);compileParts(no,bodyOffset+delimiter.end);this.patch(end,this.code.length);}else this.patch(index,this.code.length);
@@ -82,7 +88,7 @@ class ProcedureCompiler {
     if(/^For\s+/i.test(text)){
       const header=parseForHeader(text);if(this.blocks.some(b=>b.type==='For'&&b.identity===header.identity))throw new VBError('For control variable already in use',1002);
       const {kind,identity,...data}=header,id=`$${kind==='each'?'each':'for'}${this.temp++}`;
-      const index=this.emit(kind==='each'?'eachInit':'forInit',{...data,id,target:null},line);
+      const index=this.emit(kind==='each'?'eachInit':'forInit',{...data,variable:E(header.name),id,target:null},line);
       this.blocks.push({type:'For',kind,id,index,start:this.code.length,name:header.name,identity,exits:[]});return;
     }
     if((m=text.match(/^Next(?:\s+(.+))?$/i))){const names=m[1]?splitTop(m[1]):[''];for(const name of names){const b=this.block('For',line);if(name&&loopVariable(name).identity!==b.identity)throw new VBError('Next control variable does not match For',1002);this.emit(b.kind==='each'?'eachNext':'forNext',{id:b.id,target:b.start},line);this.patch(b.index,this.code.length);for(const i of b.exits)this.patch(i,this.code.length);this.blocks.pop();}return;}
@@ -93,12 +99,12 @@ class ProcedureCompiler {
     if((m=text.match(/^Select\s+Case\s+(.+)$/i))){const id=`$select${this.temp++}`;this.emit('temp',{id,expr:E(m[1])},line);this.blocks.push({type:'Select',id,pending:null,ends:[],hasCase:false});return;}
     if((m=text.match(/^Case\s+(.+)$/i))){const b=this.block('Select',line);if(b.hadElse)throw new VBError('Case cannot follow Case Else',1002);if(b.hasCase)b.ends.push(this.jump(null,line,true));if(b.pending!=null)this.patch(b.pending,this.code.length);b.hasCase=true;if(/^Else$/i.test(m[1])){b.pending=null;b.hadElse=true;}else {const cases=splitTop(m[1]).map(s=>{const to=findKeyword(s,'to'),r=to?[s,s.slice(0,to.start),s.slice(to.end)]:null,c=s.match(/^Is\s*(<=|>=|<>|=|<|>)\s*(.+)$/i);return r?{kind:'range',low:E(r[1]),high:E(r[2])}:c?{kind:'compare',op:c[1],expr:E(c[2])}:{kind:'value',expr:E(s)};});b.pending=this.emit('case',{id:b.id,cases,target:null},line);}return;}
     if(/^End\s+Select$/i.test(text)){const b=this.block('Select',line);if(b.pending!=null)this.patch(b.pending,this.code.length);for(const i of b.ends)this.patch(i,this.code.length);this.blocks.pop();return;}
-    if((m=text.match(/^With\s+(.+)$/i))){this.emit('withPush',{expr:E(m[1])},line);this.blocks.push({type:'With'});return;}
-    if(/^End\s+With$/i.test(text)){this.block('With',line);this.emit('withPop',{},line);this.blocks.pop();return;}
+    if((m=text.match(/^With\s+(.+)$/i))){const id='$with'+this.withTemp++,index=this.emit('withPush',{expr:E(m[1]),id,target:null},line);this.blocks.push({type:'With',id,index,parent:this.withContext});this.withContext=id;return;}
+    if(/^End\s+With$/i.test(text)){const b=this.block('With',line);this.emit('withPop',{id:b.id},line);this.patch(b.index,this.code.length);this.blocks.pop();this.withContext=b.parent;return;}
     if((m=text.match(/^Exit\s+(Sub|Function|Property|For|Do)$/i))){if(/^(Sub|Function|Property)$/i.test(m[1])){if(lower(m[1])!==this.proc.kind)throw new VBError('Exit '+m[1]+' does not match enclosing procedure',1002);this.emit('return',{},line);}else{const type=m[1].toLowerCase()==='for'?'For':'Do',b=[...this.blocks].reverse().find(b=>b.type===type);if(!b)throw new VBError(`Exit ${m[1]} outside block`,1002);const inner=this.blocks.slice(this.blocks.indexOf(b)+1).filter(x=>x.type==='With').length;if(inner)this.emit('withUnwind',{count:inner},line);b.exits.push(this.jump(null,line));}return;}
     if((m=text.match(/^(Dim|Static|Private|Public)\s+(.+)$/i))){this.emit('dim',{decls:parseDeclarations(m[2],false,this.module.defaultTypes).map(d=>{if(d.withEvents)throw new VBError('WithEvents is valid only at class or form module level',1002);return d;}),static:/static/i.test(m[1])},line);return;}
     if((m=text.match(/^Const\s+(.+)$/i))){this.emit('dim',{decls:parseDeclarations(m[1],true,this.module.defaultTypes)},line);return;}
-    if((m=text.match(/^ReDim\s+(Preserve\s+)?(.+)$/i))){this.emit('redim',{decls:parseDeclarations(m[2],false,this.module.defaultTypes),preserve:!!m[1]},line);return;}
+    if((m=text.match(/^ReDim\s+(Preserve\s+)?(.+)$/i))){this.emit('redim',{decls:parseRedimDeclarations(m[2],false,this.module.defaultTypes),preserve:!!m[1]},line);return;}
     if((m=text.match(/^Erase\s+(.+)$/i))){this.emit('erase',{exprs:splitTop(m[1]).map(E)},line);return;}
     if((m=text.match(/^On\s+Error\s+(.+)$/i))){
       if(/^Resume\s+Next$/i.test(m[1]))this.emit('onError',{mode:'next'},line);
@@ -134,13 +140,13 @@ class ProcedureCompiler {
     for(const t of ts){if(t.value==='(')depth++;else if(t.value===')')depth--;else if(t.value==='='&&depth===0){eq=t;break;}}
     if(eq){const target=E(text.slice(0,eq.start));if(!['id','member','call'].includes(target.kind))throw new VBError('Invalid assignment target',1002);this.emit('assign',{target,expr:E(text.slice(eq.end)),objectSet:/^Set\s/i.test(original)},line);return;}
     if(/^Call\s+/i.test(text)){this.emit('expr',{expr:parseCall(text.replace(/^Call\s+/i,''),{explicit:true})},line);return;}
-    this.emit('expr',{expr:parseCall(text)},line);
+    this.emit('expr',{expr:parseCall(text,this.callContinuations?{continuations:this.callContinuations}:undefined)},line);
   }
 }
 
 export function compileModule(input) {
   const module={name:input.name,kind:input.kind||'module',interfaces:[],defaultTypes:{},defaultMember:null,attributes:[...(input.attributes||[])],optionExplicit:false,optionBase:0,optionCompare:'binary',declarations:[],procedures:new Map(),enums:Object.create(null),types:Object.create(null),diagnostics:[],source:input.code||'',form:input.form||null,layoutBindings:input.layoutBindings||layoutBindingSnapshot(input)};
-  const allLines=logicalLines(preprocess(module.source,input.conditionalConstants||{},module.name));
+  const allLines=logicalLines(preprocess(module.source,input.conditionalConstants||{},module.name),{preserveContinuations:true});
   const lines=allLines.filter(e=>{if(/^Attribute\s+/i.test(e.text)){module.attributes.push(e.text);return false;}return true;});let current=null,body=[],enumState=null,typeState=null;
   const typeNames=new Set();
   for(const entry of lines){let {text,line}=entry,m;
