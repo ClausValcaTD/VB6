@@ -1,0 +1,4 @@
+Type=Exe
+Form=Main.frm
+Startup="Main"
+Name="DesignerTabs"
