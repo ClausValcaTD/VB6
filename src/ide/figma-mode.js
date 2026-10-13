@@ -17,7 +17,8 @@ export function installFigmaMode(ide){
   const document=ide.root.ownerDocument,view=document.defaultView,media=view.matchMedia?.('(prefers-color-scheme: dark)'),profileKey=FIGMA_SETTINGS_KEY+'.layouts';
   let storage;try{storage=view.localStorage;}catch{}
   let profiles={};try{const text=storage?.getItem(profileKey);if(text&&text.length<200000){const value=JSON.parse(text);if(value&&typeof value==='object'&&!Array.isArray(value))profiles={classic:value.classic,figma:value.figma};}}catch{}
-  const workspace={ide,settings:loadFigmaSettings(storage),enabled:false,switching:false,viewports:new Map(),ui:null,frame:0};ide.figmaMode=workspace;
+  const workspace={ide,settings:loadFigmaSettings(storage),enabled:false,switching:false,viewports:new Map(),ui:null,frame:0,presentationReady:Promise.resolve()};ide.figmaMode=workspace;
+  workspace.publishPresentation=(documents=uiDocuments())=>(workspace.presentationReady=commitWorkspacePresentation(documents,rendererForDocument));
   workspace.currentDesigner=()=>ide.activeModule?.form&&ide.activeDoc?.view==='form'&&ide.documents.mdi.active===ide.activeDoc.key&&ide.designer?.module===ide.activeModule?ide.designer:null;
   workspace.writable=()=>!!workspace.currentDesigner()&&ide.runState==='design'&&!ide.designer.locked;
   workspace.report=error=>{ide.status('Figma workspace: '+(error.message||error));};
@@ -30,7 +31,7 @@ export function installFigmaMode(ide){
       if(value===null){if(root.hasAttribute(name)){root.removeAttribute(name);changed=true;}}
       else if(root.getAttribute(name)!==value){root.setAttribute(name,value);changed=true;}
     }}
-    if(changed&&publish&&!workspace.switching)commitWorkspacePresentation(documents,rendererForDocument);
+    if(changed&&publish&&!workspace.switching)return workspace.publishPresentation(documents);
   };
   const saveProfiles=()=>{if(workspace.enabled)profiles.figma=ide.docking.snapshot();try{storage?.setItem(profileKey,JSON.stringify(profiles));}catch{workspace.report(new Error('Workspace layout applies to this session; browser storage is unavailable.'));}};
   const attach=designer=>{
@@ -94,10 +95,10 @@ export function installFigmaMode(ide){
     ui.layers.sync();ui.inspector.sync();decorateToolbox();for(const group of ide.docking.model.groups.values())if(['left','right'].includes(group.edge)&&ide.docking.model.visible(group).length){const tabs=ide.docking.views.get(group.id)?._tabs;if(tabs)tabs.hidden=false;}workspace.appearance(false);
     // Publish after all inspector, layer and viewport DOM edits, not before the
     // MutationObserver callback. This also keeps native holes aligned in WebKit.
-    commitWorkspacePresentation(uiDocuments(),rendererForDocument);
+    return workspace.publishPresentation();
   };
   workspace.configure=(value,{persist=true}={})=>{
-    const settings=normalizeFigmaSettings(value),enabled=settings.mode==='figma';
+    const settings=normalizeFigmaSettings(value),enabled=settings.mode==='figma',wasEnabled=workspace.enabled;
     if(workspace.switching)return false;workspace.switching=true;
     try{
       if(enabled!==workspace.enabled){
@@ -122,7 +123,8 @@ export function installFigmaMode(ide){
       workspace.settings=settings;workspace.appearance();
       if(persist){try{saveFigmaSettings(storage,settings);}catch{workspace.report(new Error('Options apply to this session; browser storage is unavailable.'));}saveProfiles();ide.autosave();}
     }finally{workspace.switching=false;}
-    workspace.sync();if(!workspace.enabled)commitWorkspacePresentation(uiDocuments(),rendererForDocument);return true;
+    const published=workspace.enabled?workspace.sync():wasEnabled?workspace.publishPresentation():workspace.presentationReady;
+    return Promise.resolve(published).then(()=>true);
   };
   const menu=ide.menu.bind(ide),command=ide.command.bind(ide),snapshot=ide.layoutSnapshot.bind(ide),factory=ide.documents.designer.bind(ide.documents);
   ide.menu=name=>{const items=menu(name);if(name==='Window'&&workspace.enabled)items.unshift({id:'figmaSingleCanvas',label:'Single design canvas',checked:ide.root.dataset.figmaWindowMode!=='windows'},null);if(name==='Tools')items.push(null,{id:'figmaWorkspaceOptions',label:'Figma Workspace Options…'});if(name==='View')items.push(null,{id:'figmaWorkspaceToggle',label:'Figma Workspace',checked:workspace.enabled},...(workspace.enabled?[{id:'figmaLayers',label:'Layers'},{id:'figmaFit',label:'Zoom to Fit',shortcut:'Shift+1'}]:[]));return items;};

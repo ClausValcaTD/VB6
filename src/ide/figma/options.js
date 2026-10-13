@@ -14,7 +14,7 @@ export function installFigmaOptions(workspace){
   const unregister=registerModalContribution('Options',({content,buttons})=>{
     const general=content?.querySelector('[data-tab-page="general"]');if(!general)return;
     const fields=optionsFields(workspace);general.prepend(fields.group);
-    for(const button of buttons)if(button.value===true){const original=button.action;button.action=async()=>{const result=await original?.();if(result!==false)workspace.configure(fields.read());return result;};}
+    for(const button of buttons)if(button.value===true){const original=button.action;button.action=async()=>{const result=await original?.();if(result!==false)await workspace.configure(fields.read());return result;};}
   });
   workspace.options=()=>{const fields=optionsFields(workspace);return modal('Figma Workspace Options',{width:540,content:fields.group,buttons:[{label:'OK',value:true,primary:true,action:()=>workspace.configure(fields.read())},{label:'Cancel',value:false}]});};
   return unregister;

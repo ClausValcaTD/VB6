@@ -6,15 +6,42 @@ that DOM. Workspace transactions must publish both together: native inputs and
 text must not show a new theme or location while the covering canvas still
 contains the previous backgrounds and native-hole geometry.
 
-`src/ide/figma/presentation.js` submits fresh styles and geometry through each
+`src/ide/figma/presentation.js` publishes fresh styles and geometry through each
 live document's existing renderer after the coalesced workspace synchronization.
 It also runs after leaving Figma mode and on actual system-scheme changes. It
 retains the driver, atlas, user policy and application data rather than restarting
 or replacing the renderer. Paint errors enter the existing ordered fallback.
 Hidden, printing, disposed and native-HTML documents schedule no paint work.
 
-Publication runs at mutation/transaction boundaries, not on a polling timer. The
-renderer retains its existing demand scheduling and ResizeObserver registration
+## Asynchronous publication boundary
+
+Workspace DOM changes are immediate, but `configure()` returns a Promise. Await
+it when a host needs the completed presentation rather than just new DOM styles:
+
+```js
+await vb6Studio.figmaMode.configure({mode: 'figma', scheme: 'dark', units: 'px'});
+// For a system-scheme event or another already requested workspace transaction:
+await vb6Studio.figmaMode.presentationReady;
+```
+
+The transaction transfers the renderer's pending frame into a coalesced
+publication task. At the next animation-frame opportunity it submits one forced
+publication draw, even when retained commands already match an earlier synchronous
+draw. The Promise resolves at the following rendering opportunity. This gives the
+browser a presentation boundary; it is not a hardware scan-out or GPU-completion
+fence. A synchronous `renderNow()` or `gl.flush()` alone cannot provide that
+boundary, as demonstrated by the WebKit retained-pixel regression.
+
+A WeakMap owns at most one task per renderer. Concurrent requests share its work.
+Requests arriving during settlement advance a revision, which must be painted
+before any waiter completes. Reentrant changes during painting cannot be marked
+as already published. Each frame handle, including handle zero, is cancelled and
+all temporary listeners are released on completion, visibility loss, pagehide or
+printing. Late fallback completion cannot resurrect a cancelled task. Every live
+detached document has its own publication opportunity.
+
+Publication occurs at transaction boundaries, not on a polling timer. The
+renderer retains its normal demand scheduling and ResizeObserver registration
 rules. Tests require idle painting to stop after the transaction settles.
 
 ## WebGL command submission
@@ -46,8 +73,8 @@ The visual checks sample actual composited screenshot pixels for the header,
 layers, canvas and inspector during repeated light/dark transitions and System
 scheme changes. One case qualifies the actual shipped rendering policy and keeps
 its selected WebGPU, WebGL2 or Canvas2D backend throughout; the other cases
-explicitly exercise Canvas2D. Tests do not force a paint to satisfy a probe or
-accept native HTML fallback. They also verify project isolation, classic
+explicitly exercise Canvas2D. Tests await the public publication boundary; they do not call renderer paint
+methods to satisfy a probe or accept native HTML fallback. They also verify project isolation, classic
 restoration and absence of a perpetual idle paint loop.
 
 Each capture retains expected colors, measured colors, sample positions and
@@ -68,8 +95,9 @@ VB6_BROWSER=webkit VB6_TEST_TRANSPORT=file python tools/figma-presentation-brows
 
 The Figma workflow executes 27 workspace cases per browser/origin (22 authoring,
 three paint-publication and two navigation cases), separately from the classic
-auto-layout regressions. Four pure presentation tests cover call ordering, retained resource
-identity, detached documents, idle exclusions and failure propagation. Six WebGL
+auto-layout regressions. Eleven pure presentation tests cover frame ordering,
+coalescing, reentrancy, retained resource identity, detached documents, idle
+exclusions, cancellation and fallback propagation. Six WebGL
 submission tests cover ordered batches, retained geometry, empty clears, color
 changes, lost/disposed contexts and submission failures. Memory transport remains
 a labelled local-only fallback, not origin-persistence or WebKit GPU evidence.
