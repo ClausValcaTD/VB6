@@ -1,3 +1,4 @@
+import {isNativeInputBox,nativeInputBoxCall} from './inputbox.js';
 import {nativeBooleanType,nativeBooleanText} from './boolean-text.js';
 /** Native compiler expressions lowering. Kept separate from PE linkage and runtime kernels. */
 import {REAL_TYPES} from './numeric.js';
@@ -8,6 +9,7 @@ export const nativeCompilerExpressionMethods={
     const type=this.computeNativeType(node);this.typeCache?.set(node,type);return type;
   },
   computeNativeType(node) {
+    if(isNativeInputBox(this,node))return 'string';
     if(node.kind==='nativeKernelValue')return node.valueType;
     if(node.kind==='nativeKernelStorage')return key(node.storage.type);
     const variantType=this.variantType(node);if(variantType)return variantType;
@@ -127,7 +129,7 @@ export const nativeCompilerExpressionMethods={
     if(this.variantBuiltin(node,name))return;
     if(this.nativePictureBuiltin(node,name))return;
     if(this.layoutHostCall(node,name))return;
-    if(this.errorCall(node))return;
+    if(this.errorCall(node)||nativeInputBoxCall(this,node))return;
     if(this.dateIntervalBuiltin(node,name))return;
     if(this.dateBuiltin(node,name))return;
     if(this.currencyBuiltin(node,name))return;

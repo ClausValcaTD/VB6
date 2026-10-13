@@ -1,3 +1,4 @@
+import {emitNativeInputBox} from './inputbox.js';
 import {nativeFormInstanceMethods} from './form-instances.js';
 import {emitFormInterface} from './form-instance-abi.js';
 import {emitNativeCheckBoxHelpers} from './control-checkbox.js';
@@ -101,7 +102,7 @@ class NativeCompiler {
     x.label(positive).local(-2).emit(0x89,0xc6,0x89,0xd8,0x85,0xc0); const magnitude = x.unique(); x.branch('ns',magnitude).emit(0xf7,0xd8).label(magnitude).emit(0x31,0xdb);
     x.label(digits).emit(0x31,0xd2,0xb9).imm(10).emit(0xf7,0xf1,0x80,0xc2,48,0x66,0x89,0x16,0x83,0xee,2,0x43,0x85,0xc0).branch('ne',digits);
     x.label(copy).emit(0x83,0xc6,2,0x66,0x8b,0x06,0x66,0x89,0x07,0x83,0xc7,2,0x4b).branch('ne',copy).emit(0x66,0xc7,0x07,0,0).value({argument:12}).leave(8);
-    emitNativeErrorHelpers(this);emitPrivateErrorScopes(this);
+    emitNativeErrorHelpers(this);emitPrivateErrorScopes(this);emitNativeInputBox(this);
   }
   build() {
     this.prepareNativeSurfaceDemand();
