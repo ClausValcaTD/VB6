@@ -1,11 +1,12 @@
 import {VBArray,NOTHING,Cell,cloneValue,defaultValue,makeRecord} from './values.js';
 import {VBError} from '../language/errors.js';
 const lower=value=>String(value).toLowerCase();
+const objectType=(vm,type)=>vm.program.modules.get(lower(type))?.kind==='class'||!!vm.program.modules.get(lower(type))?.form||vm.data?.isObjectType(type)||['collection','dictionary','scripting.dictionary'].includes(lower(type));
 
 export async function createRuntimeArray(vm,bounds,type,frame,fixedLength=null,depth=0) {
   const definition=vm.recordDefinition(type,frame.module);
   const record=definition?await createRuntimeRecord(vm,type,frame,depth+1):null;
-  const object=vm.program.modules.get(lower(type))?.kind==='class'||vm.program.modules.get(lower(type))?.form||vm.data?.isObjectType(type)||['collection','dictionary','scripting.dictionary'].includes(lower(type));
+  const object=objectType(vm,type);
   const array=new VBArray(bounds,type,record?()=>cloneValue(record):object?()=>NOTHING:null,fixedLength);
   if(definition)array.elementIdentity=definition.identity;
   return array;
@@ -19,9 +20,9 @@ export async function createRuntimeRecord(vm,name,frame,depth=0) {
   const context={...frame,module:definition.owner},fields=new Map();
   for(const member of definition.fields){
     const type=member.storageType||member.type;let value;
-    if(member.bounds!==null){value=await createRuntimeArray(vm,await vm.evalBounds(member.bounds,context),type,context,member.fixedLength,depth+1);value.dynamic=!member.bounds.length;}
+    if(member.bounds!==null){value=await createRuntimeArray(vm,member.boundValues||await vm.evalBounds(member.bounds,context),type,context,member.fixedLength,depth+1);value.dynamic=!member.bounds.length;}
     else if(vm.recordDefinition(type,context.module))value=await createRuntimeRecord(vm,type,context,depth+1);
-    else value=member.initial?await vm.evaluateScalar(member.initial,context):defaultValue(type);
+    else value=member.initial?await vm.evaluateScalar(member.initial,context):objectType(vm,type)?NOTHING:defaultValue(type);
     const cell=new Cell(member.bounds!==null?'Variant':type,value,false,member.fixedLength);
     cell.isArray=member.bounds!==null;cell.elementType=type;cell.elementIdentity=value?.elementIdentity;
     fields.set(member.name,cell);
