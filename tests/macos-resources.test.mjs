@@ -82,3 +82,33 @@ test('signed resource catalog cannot be replaced by custom packaging or modified
  const files={...result.files,[name]:result.files[name].slice()};files[name][100]^=1;
  await assert.rejects(verifyMacOSAOTArchive(writeMacOSAppZip(files,p.name+'.app/Contents/MacOS/'+p.name),result.options),/seal/);
 });
+
+test('cursor resource fixture follows doubled Windows bitmap height, not CUR file height',async()=>{
+ const {resourceModel,iconBytes}=await import('../packages/macos-native/tests/resources.mjs');
+ const {fromBase64}=await import('../src/project/frx.js');
+ const group=fromBase64(resourceModel().entries.find(e=>e.type===12).data);
+ assert.equal(new DataView(group.buffer).getUint16(8,true),2*iconBytes(true)[7]);
+});
+
+test('source-kit resource report retains catalog counts independently of file counts',async()=>{
+ const {createMacOSBuildKit}=await import('../packages/macos-native/src/build-kit.js');
+ const {resourceFormProject}=await import('../packages/macos-native/tests/resources.mjs');
+ const kit=createMacOSBuildKit(resourceFormProject()),manifest=JSON.parse(kit.files['build.json']);
+ assert.equal(kit.report.resources.entries,13);assert.equal(kit.report.resources.pictures,5);
+ assert.equal(kit.report.resourceFiles,1);assert.deepEqual(manifest.resources,['resources/vb6-assets.bin']);
+ assert.deepEqual(manifest.report.resources,kit.report.resources);
+});
+
+test('source build-kit writer preserves binary resource bytes and manifest independently',async()=>{
+ const fs=await import('node:fs/promises'),os=await import('node:os'),path=await import('node:path');
+ const {createMacOSBuildKit}=await import('../packages/macos-native/src/build-kit.js');
+ const {writeBuildKit}=await import('../packages/macos-native/src/build-driver.mjs');
+ const {resourceFormProject}=await import('../packages/macos-native/tests/resources.mjs');
+ const kit=createMacOSBuildKit(resourceFormProject()),tmp=await fs.mkdtemp(path.join(os.tmpdir(),'native-resource-kit-'));
+ try{
+  const out=path.join(tmp,'kit');await writeBuildKit(out,kit.files);
+  const bytes=new Uint8Array(await fs.readFile(path.join(out,'resources','vb6-assets.bin')));
+  assert.deepEqual(bytes,kit.files['resources/vb6-assets.bin']);
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(out,'build.json'),'utf8')).resources,['resources/vb6-assets.bin']);
+ }finally{await fs.rm(tmp,{recursive:true,force:true});}
+});
