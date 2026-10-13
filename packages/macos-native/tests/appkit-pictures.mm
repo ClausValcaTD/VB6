@@ -1,5 +1,6 @@
 // Genuine native image decoding, pixels, control ownership and cursor hotspots.
 #include "appkit-pictures.hpp"
+#include "appkit-pixels.hpp"
 #include <cassert>
 #include <iostream>
 using namespace vb6;
@@ -22,19 +23,22 @@ void checkNativePictures(Runtime& rt,MacHost& host,const std::shared_ptr<Instanc
   assert(image&&image->get(rt,"Type").integral()==1&&image->get(rt,"Width").integral()==53&&image->get(rt,"Height").integral()==53);
   auto cg=[image->image CGImageForProposedRect:nullptr context:nil hints:nil];
   auto pixels=[[NSBitmapImageRep alloc]initWithCGImage:cg];assert(pixels.pixelsWide==2&&pixels.pixelsHigh==2);
-  // Image codec must retain the actual colors, not only nominal dimensions.
-  std::set<int32_t> colors;for(int y=0;y<2;y++)for(int x=0;x<2;x++)colors.insert(colorValue([pixels colorAtX:x y:y]));
-  if(colors!=std::set<int32_t>({0xff0000,0x00ff00,0x0000ff,0xffffff})){
-    std::cerr<<"PICTURE_PIXEL_DIAGNOSTICS space="<<pixels.colorSpace.description.UTF8String
-      <<" bps="<<pixels.bitsPerSample<<" bpp="<<pixels.bitsPerPixel<<" row="<<pixels.bytesPerRow<<" colors=";
-    for(auto value:colors)std::cerr<<std::hex<<value<<" ";
-    std::cerr<<std::dec<<"\n";
-    for(int y=0;y<2;y++)for(int x=0;x<2;x++){NSUInteger components[5]={};
-      [pixels getPixel:components atX:x y:y];
-      std::cerr<<x<<","<<y<<": "<<components[0]<<","<<components[1]<<","<<components[2]<<","<<components[3]<<"\n";
-    }
+  // Raw decoded RGB samples and profile-aware readback are separate oracles.
+  // colorAtX:y: produced a calibrated NSColor on the macOS 14 runner despite
+  // the bitmap's sRGB profile, so converting that object again changed colors.
+  assert(pixels.bitsPerSample==8&&pixels.samplesPerPixel>=3);
+  const uint32_t expected[]={0x0000ff,0x00ff00,0xff0000,0xffffff};
+  std::set<int32_t> colors;
+  for(int y=0;y<2;y++)for(int x=0;x<2;x++){
+    NSUInteger components[5]={};[pixels getPixel:components atX:x y:y];
+    const uint32_t raw=uint32_t(components[0])|(uint32_t(components[1])<<8)|(uint32_t(components[2])<<16);
+    assert(raw==expected[y*2+x]);
+    const auto sampled=nativeBitmapColor(pixels,x,y);
+    assert(uint32_t(sampled)==expected[y*2+x]);colors.insert(sampled);
   }
   assert(colors==std::set<int32_t>({0xff0000,0x00ff00,0x0000ff,0xffffff}));
+  expectError(5,[&]{(void)nativeBitmapColor(pixels,-1,0);});
+  expectError(5,[&]{(void)nativeBitmapColor(pixels,2,0);});
   auto control=ctl(form,"c7"),box=ctl(form,"c6"),button=ctl(form,"c0");
   control->set(rt,"stretch",Value::boolean(false));control->set(rt,"picture",picture,true);
   assert(control->view.frame.size.width==2&&control->view.frame.size.height==2);
@@ -46,8 +50,8 @@ void checkNativePictures(Runtime& rt,MacHost& host,const std::shared_ptr<Instanc
   box->set(rt,"autosize",Value::boolean(false));box->set(rt,"width",Value::integer(600));box->set(rt,"height",Value::integer(450));
   NSBitmapImageRep* surface=[[NSBitmapImageRep alloc]initWithBitmapDataPlanes:nullptr pixelsWide:40 pixelsHigh:30 bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO colorSpaceName:NSCalibratedRGBColorSpace bytesPerRow:0 bitsPerPixel:0];
   [NSGraphicsContext saveGraphicsState];NSGraphicsContext.currentContext=[NSGraphicsContext graphicsContextWithBitmapImageRep:surface];drawControl(*box,box->view.bounds);[NSGraphicsContext restoreGraphicsState];
-  assert(colorValue([surface colorAtX:20 y:15])==0xffffff); // canvas picture is not stretched to fill
-  bool hasImage=false;for(int y=0;y<30;y++)for(int x=0;x<40;x++)if(colorValue([surface colorAtX:x y:y])!=0xffffff)hasImage=true;assert(hasImage);
+  assert(nativeBitmapColor(surface,20,15)==0xffffff); // canvas picture is not stretched to fill
+  bool hasImage=false;for(int y=0;y<30;y++)for(int x=0;x<40;x++)if(nativeBitmapColor(surface,x,y)!=0xffffff)hasImage=true;assert(hasImage);
   button->set(rt,"picture",picture,true);button->set(rt,"downpicture",picture,true);button->set(rt,"disabledpicture",picture,true);
   assert(((NSButton*)button->widget).image==image->image&&((NSButton*)button->widget).alternateImage==image->image);
   auto saved=control->get(rt,"picture");control->set(rt,"picture",Value::object(nullptr),true);assert(!native.image);
