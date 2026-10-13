@@ -92,6 +92,7 @@ Ref Frame::ref(const std::string&raw){
   if(module.kind=="form"){
     if(name=="caption"||name=="left"||name=="top"||name=="width"||name=="height"||name=="visible"||name=="enabled"||name=="backcolor"||name=="forecolor")return self->reference(runtime,name);
   }
+  if(auto found=runtime.modules.find(name);found!=runtime.modules.end()&&found->second.kind=="form")return runtime.defaultFormRef(name);
   if(module.optionExplicit)fail(5,"Variable not defined: "+raw);
   std::string type="variant";if(!raw.empty()){auto suffix=raw.back();type=suffix=='$'?"string":suffix=='%'?"integer":suffix=='&'?"long":suffix=='!'?"single":suffix=='#'?"double":suffix=='@'?"currency":module.defaultTypes.count(name.substr(0,1))?module.defaultTypes.at(name.substr(0,1)):"variant";}declare(raw,type);return locals.at(name);
 }
@@ -102,11 +103,11 @@ Value Frame::get(const std::string&raw){
   if(auto it=runtime.constants.find(name);it!=runtime.constants.end())return it->second;
   if(module.procedures.count(name+":get"))return runtime.invoke(self,name+":get",{},true);
   if(module.procedures.count(name))return runtime.invoke(self,name,{},true);
-  if(module.kind=="form"){runtime.load(self);if(auto it=self->controls.find(name);it!=self->controls.end())return Value::object(it->second);}
+  if(module.kind=="form"&&self->hasControl(name)){runtime.load(self);if(auto it=self->controls.find(name);it!=self->controls.end())return Value::object(it->second);}
   if(runtime.modules.count(name))return Value::object(runtime.instance(name));
   for(auto&entry:runtime.modules)if(entry.second.kind=="module"&&entry.second.publicFields.count(name))return ref(name).get();
   if(runtime.builtins.count(name))return call(name);
-  if(module.kind=="form"){try{return runtime.host->formGet(self,name);}catch(const Error&e){if(e.number!=438)throw;}}
+  if(module.kind=="form"){runtime.load(self);try{return runtime.host->formGet(self,name);}catch(const Error&e){if(e.number!=438)throw;}}
   return ref(raw).get();
 }
 Value Frame::call(const std::string&raw,Args args){
@@ -119,14 +120,14 @@ Value Frame::call(const std::string&raw,Args args){
   if(module.procedures.count(name+":get"))return runtime.invoke(self,name+":get",std::move(args),true);
   if(auto it=locals.find(name);it!=locals.end())return callValue(runtime,it->second.get(),std::move(args));
   if(auto it=self->fields.find(name);it!=self->fields.end())return callValue(runtime,it->second->get(),std::move(args));
-  if(module.kind=="form"){runtime.load(self);if(self->controls.count(name))return callValue(runtime,Value::object(self->controls.at(name)),std::move(args));}
+  if(module.kind=="form"&&self->hasControl(name)){runtime.load(self);if(self->controls.count(name))return callValue(runtime,Value::object(self->controls.at(name)),std::move(args));}
   std::shared_ptr<Instance> owner;
   for(auto&entry:runtime.modules){auto&m=entry.second;if(m.kind=="module"&&m.procedures.count(name)&&m.procedures.at(name).scope!="private"){
     if(owner)fail(5,"Ambiguous procedure: "+raw);owner=runtime.instance(entry.first);
   }}
   if(owner)return runtime.invoke(owner,name,std::move(args));
   auto builtin=runtime.builtins.find(name);if(builtin!=runtime.builtins.end())return builtin->second(*this,std::move(args));
-  if(module.kind=="form")return runtime.host->formCall(self,name,std::move(args));
+  if(module.kind=="form"){runtime.load(self);return runtime.host->formCall(self,name,std::move(args));}
   fail(453,"Unknown procedure: "+raw);
 }
 Value Frame::create(const std::string&type){return runtime.create(type);}

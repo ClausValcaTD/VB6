@@ -44,13 +44,13 @@ Value callValue(Runtime& rt,Value receiver,Args args){
 Value Instance::get(Runtime& rt,const std::string& raw){
   auto name=lower(raw.empty()?module->defaultMember:raw);
   if(auto it=fields.find(name);it!=fields.end()&&module->publicFields.count(name))return it->second->get();
-  if(module->kind=="form"){
+  if(module->kind=="form"&&hasControl(name)){
     rt.load(std::static_pointer_cast<Instance>(shared_from_this()));
     if(auto it=controls.find(name);it!=controls.end())return Value::object(it->second);
   }
   if(module->procedures.count(name+":get"))return rt.invoke(std::static_pointer_cast<Instance>(shared_from_this()),name+":get");
   if(module->procedures.count(name))return rt.invoke(std::static_pointer_cast<Instance>(shared_from_this()),name);
-  if(module->kind=="form")return rt.host->formGet(std::static_pointer_cast<Instance>(shared_from_this()),name);
+  if(module->kind=="form"){auto self=std::static_pointer_cast<Instance>(shared_from_this());rt.load(self);return rt.host->formGet(self,name);}
   fail(438,"Unknown public member: "+module->name+"."+raw);
 }
 void Instance::set(Runtime& rt,const std::string& raw,Value value,bool objectSet){

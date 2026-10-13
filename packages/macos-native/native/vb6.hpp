@@ -188,6 +188,7 @@ struct Instance : Object {
   Value invoke(Runtime&,const std::string&,Args) override;
   Ref reference(Runtime&,const std::string&,Args={}) override;
   bool supports(const std::string&) const override;
+  bool hasControl(const std::string&) const;
   ObjectPtr queryInterface(const std::string&) override;
   std::map<std::string,std::weak_ptr<Object>> interfaceViews;
 };
@@ -245,6 +246,7 @@ struct NativeHost {
   virtual void graphics(Frame&,Value,const std::string&,std::vector<Value>,Value,bool);
   virtual void log(const Text&,bool newline);
   virtual int run(Runtime&); virtual void pump(); virtual void shutdown();
+  virtual bool hasOpenForms() const noexcept { return false; }
 };
 struct FileState;
 struct Subscription { std::weak_ptr<Object> source; std::weak_ptr<Instance> sink; std::string field; };
@@ -264,7 +266,7 @@ struct Runtime {
   ErrorState error;
   size_t maxArrayElements=16777216,maxCallDepth=512,depth=0;
   std::string name="Application",startup;
-  uint32_t randomSeed=0x1234abcd; bool ending=false;
+  uint32_t randomSeed=0x1234abcd; bool ending=false,finished=false,finishing=false;
   explicit Runtime(std::unique_ptr<NativeHost> host);
   ~Runtime(); Runtime(const Runtime&)=delete; Runtime& operator=(const Runtime&)=delete;
   std::shared_ptr<Instance> instance(const std::string& name,bool fresh=false);
@@ -272,9 +274,14 @@ struct Runtime {
   Value defaultValue(const std::string& type,Frame* frame=nullptr);
   Value invoke(const std::shared_ptr<Instance>&,const std::string& name,Args={},bool internal=false);
   Value dispatch(const std::shared_ptr<Instance>&,const std::string&,Args={});
-  void load(const std::shared_ptr<Instance>&); void unload(const std::shared_ptr<Instance>&);
+  void load(const std::shared_ptr<Instance>&); void unload(const std::shared_ptr<Instance>&,int16_t mode=1);
   void bindEvents(std::shared_ptr<Instance>,const std::string&,Value);
   void raiseEvent(const std::shared_ptr<Instance>&,const std::string&,Args);
+  // Normal completion executes finalizers while module state/host/files are live.
+  // Returns false if a finalizer opens a window and the event loop must resume.
+  bool finish();
+  void stop() noexcept;
+  Ref defaultFormRef(const std::string&);
   void run();
 };
 Value scalar(Runtime&,Value);
