@@ -173,3 +173,55 @@ References: Microsoft MS-VBAL 5.2.3.1.3, [Array Dimensions and Bounds](https://l
 and [Declaring arrays](https://learn.microsoft.com/en-us/office/vba/language/concepts/getting-started/declaring-arrays).
 These references support this declaration increment; they are not certification
 against the licensed Microsoft VB6 compiler or every native/COM array ABI.
+
+## Scoped record declarations and nominal identity
+
+`RecordTypeIndex` resolves record declarations by module, visibility and qualified
+name. Each compiler pass and runtime owns its index; there is no global cache of
+project syntax. Local declarations shadow imported records, private types are
+visible only in their module, and ambiguous imports are diagnosed rather than
+resolved by module order. `typeScopes` retains the authored visibility without
+changing the public `types` field-list representation. Declared record variables,
+parameters, results, fields, events and ReDim types share these checks. Records
+cannot be instantiated with `As New`, used as `WithEvents` sources or declared as
+Optional/ByVal record parameters. This pass resolves project records, not every
+external type library or arbitrary undeclared object type.
+
+The VM uses the declaration index for schema lookup, including the common miss
+for scalar types, instead of scanning all modules for each declaration. Record
+construction resolves nested field types in their *declaring* module, consumes
+already-bound dimensions, and initializes typed object fields to Nothing. An
+imported record's private member type cannot be replaced by a caller-local type
+with the same spelling. Existing recursion and value-allocation limits remain.
+
+Records carry an internal symbol-keyed nominal identity; this metadata neither
+adds a reserved source-field name nor changes TypeName or binary file bytes.
+Value copies, typed array factories, grouped temporaries, procedure results and
+Binary/Random Get retain it. Equal field layouts and short type names do not make
+two modules' distinct private record declarations interchangeable. A mismatch
+raises Error 13 before overwriting a typed target. Qualified and unqualified names
+for the same accessible declaration are interchangeable in source calls, property
+and interface signatures, typed arrays and ReDim. Whole-array aliases keep the
+original declaration's identity even when a caller shadows its type name.
+
+Strict and versioned live editing include record visibility in the module storage
+contract; incompatible visibility edits require a restart before live state is
+changed. Background diagnostics rebind against edited record providers. The
+normal IDE/runtime browser suite includes qualified records, rejected private/New
+uses, nominal mismatch atomicity, nested provider schemas, typed results and file
+roundtrips. The existing native private-record regression now asserts the earlier
+frontend diagnostic's code, source and line instead of waiting for a generic
+native storage error.
+
+`tests/language-record-identity.test.mjs` covers the source-runtime behavior.
+`node tools/bench-record-types.mjs --root <checkout>` reports independent cold
+compilation, VM construction, and full execution of repeated scalar/record/record
+array declarations across many modules, checking outputs and instruction counts
+for every sample. Indexing benefits do not imply native ABI equivalence or a
+whole-compiler speedup. Native/COM record wire identity, complete recursive record
+rules, general type-library binding and cross-project identity remain separate
+work; no licensed Microsoft VB6 differential certification is claimed.
+
+Primary references: [MS-VBAL User Defined Type Declarations](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/a5fe374b-eddf-4808-9e73-477914940dba),
+[Member Access Expressions: type binding](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/af3a4059-3059-4e79-8aa5-685324fb266a),
+and [Entities and Declared Types](https://learn.microsoft.com/en-us/openspecs/microsoft_general_purpose_programming_languages/ms-vbal/aaee9b48-168f-4cfe-95d1-14c5cc427b69).
