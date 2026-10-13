@@ -94,6 +94,9 @@ The explicit Clang mode is a C++-lowering backend; the default direct mode uses 
 
 `Implements` lowering uses the shared frontend's member bindings, including public-field accessor contracts. Interface parameter names are translated to implementation parameter positions before ordinary call-frame binding. Interface views expose only their contract, support checked cross-casts and back-casts, preserve ByRef storage checks, and share object identity for `Is` and dictionary keys. A view strongly owns its instance; the reverse view cache is weak, avoiding an introduced target/view reference-count cycle. This does not implement arbitrary COM vtables or Windows type-library activation. Native class finalization and its remaining global/form-lifecycle boundaries are described in [lifetime and editing contracts](MACOS-LIFETIME-EDITING.md).
 
+[Native array contracts](MACOS-ARRAYS.md) describe typed Function/Property array results,
+per-call result storage, typed-array copies, Variant ReDim and ABI validation.
+
 AppKit provides native windows, editing controls, buttons, lists, outlines, tables, tabs, menus, timers, dialogs, retained drawing and printing adapters. Source-level `Declare` adapters translate explicitly supported kernel32/user32/gdi32/shell32-style contracts to native services. Windows DLL names do not cause DLL loading. Raw Windows pointers are not accepted as Cocoa objects.
 
 ## Reusable package
