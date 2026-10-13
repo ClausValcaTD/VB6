@@ -133,17 +133,11 @@ Value Frame::create(const std::string&type){return runtime.create(type);}
 Value Frame::callback(const std::string&module,const std::string&procedure){auto instance=runtime.instance(module);if(instance->module->kind!="module")fail(5,"AddressOf requires a standard module");auto found=instance->module->procedures.find(lower(procedure));if(found==instance->module->procedures.end()||found->second.external)fail(453,"Invalid callback procedure");return Value::object(std::make_shared<NativeCallback>(instance,lower(procedure)));}
 Value NativeCallback::invoke(Runtime&rt,const std::string&,Args args){auto instance=owner.lock();if(!instance)fail(91,"Native callback owner has been released");return rt.invoke(instance,procedure,std::move(args),true);}
 Ref Frame::propertyRef(const std::string&raw,Args args){auto name=lower(raw);auto object=self;auto*rt=&runtime;return {[object,rt,name,args]{return rt->invoke(object,name+":get",args,true);},[object,rt,name,args](Value value,bool set){auto all=args;all.emplace_back(value);rt->invoke(object,name+(set?":set":":let"),all,true);},"variant",false,false};}
-Value Frame::result(){drainNativeFinalizers(runtime);if(handlerActive)runtime.error.clear();return procedure&&procedure->isFunction?locals.at(lower(procedure->name)).get():Value{};}
-Value Frame::with()const{if(withValues.empty())fail(91);return withValues.back();}
+Value Frame::result(){clearScopes();drainNativeFinalizers(runtime);if(handlerActive)runtime.error.clear();return procedure&&procedure->isFunction?locals.at(lower(procedure->name)).get():Value{};}
 bool Frame::forStart(const std::string&id,Ref variable,Value start,Value end,Value step){
   start=scalar(runtime,start);end=scalar(runtime,end);step=scalar(runtime,step);variable.set(start);fors[id]={variable,end,step};return binary(step.number()>=0?"<=":">=",variable.get(),end,module.textCompare).truth();
 }
 bool Frame::forNext(const std::string&id){auto&state=fors.at(id);state.variable.set(binary("+",state.variable.get(),state.step,module.textCompare));return binary(state.step.number()>=0?"<=":">=",state.variable.get(),state.end,module.textCompare).truth();}
-bool Frame::eachStart(const std::string&id,Ref variable,Value iterable){
-  std::vector<Value> values;if(iterable.type==Type::Array)values=iterable.asArray()->values;else values=iterable.asObject()->enumerate(runtime);
-  each[id]={variable,values,0};return eachNext(id);
-}
-bool Frame::eachNext(const std::string&id){auto&state=each.at(id);if(state.position==state.values.size())return false;auto v=state.values[state.position++];state.variable.set(v,v.type==Type::Object);return true;}
 void Frame::redim(Ref ref,Bounds bounds,bool preserve,const std::string&explicitType){
   auto old=ref.get();
   const auto type=explicitType.empty()?(old.type==Type::Array?old.asArray()->elementType:ref.array?ref.type:"variant"):lower(explicitType);
@@ -163,14 +157,14 @@ void Frame::redim(Ref ref,Bounds bounds,bool preserve,const std::string&explicit
   auto prototype=runtime.defaultValue(type,this);auto init=[prototype]{return prototype.copy();};
   ref.set(Value::array(std::make_shared<Array>(type,std::move(bounds),true,runtime.maxArrayElements,0,init)));
 }
-void Frame::mark(int current,int nextInstruction,int sourceLine){drainNativeFinalizers(runtime);site=current;next=nextInstruction;line=sourceLine;}
+void Frame::mark(int current,int nextInstruction,int sourceLine){site=current;next=nextInstruction;line=sourceLine;reconcileScopes(current);drainNativeFinalizers(runtime);}
 bool Frame::handle(const Error& e){
   if(handlerActive||(!errorResumeNext&&errorHandler<0))return false;
   runtime.error.number=e.number;runtime.error.description=e.description;runtime.error.source=fromUTF8(e.source.empty()?module.name:e.source);runtime.error.erl=labelLine;
-  errorSite=site;errorNext=next;errorWithDepth=withValues.size();
+  errorSite=site;errorNext=next;
   if(errorResumeNext){pc=next;return true;}handlerActive=true;pc=errorHandler;return true;
 }
 void Frame::onError(const std::string&mode,int target){errorResumeNext=mode=="next";errorHandler=mode=="goto"?target:-1;handlerActive=false;errorSite=-1;}
-void Frame::resume(const std::string&mode,int target){if(errorSite<0||!handlerActive)fail(20);pc=mode=="retry"?errorSite:mode=="next"?errorNext:target;handlerActive=false;errorSite=-1;runtime.error.clear();if(withValues.size()>errorWithDepth)withValues.resize(errorWithDepth);}
+void Frame::resume(const std::string&mode,int target){if(errorSite<0||!handlerActive)fail(20);pc=mode=="retry"?errorSite:mode=="next"?errorNext:target;handlerActive=false;errorSite=-1;runtime.error.clear();}
 
 } // namespace vb6

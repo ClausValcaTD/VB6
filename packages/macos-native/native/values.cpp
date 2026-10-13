@@ -1,4 +1,5 @@
 #include "vb6.hpp"
+#include "array-ownership.hpp"
 #include "calendar.hpp"
 #include <cctype>
 #include <cwctype>
@@ -144,7 +145,7 @@ Value Value::record(std::shared_ptr<Record> r){Value out;out.type=Type::Record;o
 Value Value::null(){Value out;out.type=Type::Null;out.variant=true;return out;}
 Value Value::missing(){Value out;out.type=Type::Missing;out.variant=true;return out;}
 Value Value::boolean(bool b){return integer(b?-1:0,Type::Boolean);}
-Value Value::copy()const{Value out=*this;if(type==Type::Array)out.payload=asArray()->copy();if(type==Type::Record)out.payload=asRecord()->copy();return out;}
+Value Value::copy()const{Value out=*this;out.arrayOwners.reset();if(type==Type::Array)out.payload=asArray()->copy();if(type==Type::Record)out.payload=asRecord()->copy();return out;}
 long double Value::number()const{
   switch(type){case Type::Empty:return 0;case Type::Null:fail(94);case Type::Missing:fail(449);case Type::Currency:return static_cast<long double>(std::get<int64_t>(payload))/10000;case Type::Decimal:return std::get<Decimal>(payload).number();case Type::Byte:case Type::Integer:case Type::Long:case Type::Boolean:return std::get<int64_t>(payload);case Type::Single:case Type::Double:case Type::Date:return std::get<double>(payload);case Type::String:{const auto text=trimmed(string());if(text.empty())fail(13);std::string s=toUTF8(text);if(s.size()>2&&s[0]=='&'&&(s[1]=='h'||s[1]=='H'||s[1]=='o'||s[1]=='O')){size_t pos=0;try{auto n=std::stoull(s.substr(2),&pos,s[1]=='h'||s[1]=='H'?16:8);if(pos!=s.size()-2||n>UINT32_MAX)fail(13);return n>INT32_MAX?static_cast<int64_t>(n)-4294967296LL:static_cast<int64_t>(n);}catch(const std::exception&){fail(13);}}std::replace(s.begin(),s.end(),'D','E');std::replace(s.begin(),s.end(),'d','e');std::istringstream in(s);in.imbue(std::locale::classic());long double n;in>>std::noskipws>>n;if(!in||!in.eof())fail(13);if(!std::isfinite(n))fail(6);return n;}default:fail(13);}
 }
@@ -220,7 +221,7 @@ void Cell::set(Value v,bool){
     // A value copy must not import the source array's fixed-storage policy.
     // Validate and allocate before replacing the old value (failure atomicity).
     auto copy=v.asArray()->copy();copy->dynamic=true;value=Value::array(std::move(copy));
-  }else {if(value.type==Type::Array&&value.asArray()->borrowedElements)fail(10,"This array is temporarily locked");value=coerce(std::move(v),type,fixedLength);}
+  }else {if(value.type==Type::Array&&value.asArray()->borrowedElements)fail(10,"This array is temporarily locked");storeNativeValue(value,coerce(std::move(v),type,fixedLength));}
   if(changed)changed(value);
 }
 Ref cellRef(CellPtr cell){return {[cell]{return cell->get();},[cell](Value v,bool set){cell->set(std::move(v),set);},cell->type,cell->arrayStorage,true,cell->fixedLength};}
@@ -228,19 +229,11 @@ Array::Array(std::string type,Bounds dimensions,bool dyn,size_t maxElements,size
   if(bounds.size()>60)fail(9);size_t count=allocated?1:0;for(auto b:bounds){int64_t width=int64_t(b.second)-b.first+1;if(width<=0||static_cast<uint64_t>(width)>maxElements||count>maxElements/static_cast<size_t>(width))fail(width<=0?9:7);count*=static_cast<size_t>(width);}values.reserve(count);for(size_t i=0;i<count;i++)values.push_back(coerce(initializer?initializer():Value(),elementType,fixedLength));
 }
 size_t Array::offset(const std::vector<Value>& indices)const{if(!allocated||indices.size()!=bounds.size())fail(9);size_t index=0,stride=1;for(size_t i=0;i<bounds.size();i++){int64_t n=indices[i].integral();if(n<bounds[i].first||n>bounds[i].second)fail(9);index+=static_cast<size_t>(n-bounds[i].first)*stride;stride*=static_cast<size_t>(int64_t(bounds[i].second)-bounds[i].first+1);}if(index>=values.size())fail(9);return index;}
-namespace {
-// Copies of a reference share one lease. Destruction releases it on every call,
-// error and temporary-cleanup path; whole-array aliases do not acquire a lease.
-struct ArrayElementBorrow {
-  std::shared_ptr<Array> owner;
-  explicit ArrayElementBorrow(std::shared_ptr<Array> array):owner(std::move(array)){++owner->borrowedElements;}
-  ~ArrayElementBorrow(){--owner->borrowedElements;}
-};
-}
 Ref Array::at(const std::vector<Value>& indices){
-  const size_t index=offset(indices);auto lease=std::make_shared<ArrayElementBorrow>(shared_from_this());
-  return {[lease,index]{return lease->owner->values.at(index);},
-    [lease,index](Value v,bool){auto& array=*lease->owner;array.values.at(index)=coerce(std::move(v),array.elementType,array.fixedLength);},elementType,false,true,fixedLength};
+  const size_t index=offset(indices);auto self=shared_from_this();
+  auto borrow=borrowArrayValue(Value::array(self),true);
+  return {[self,borrow,index]{return addArrayOwner(self->values.at(index),self);},
+    [self,borrow,index](Value v,bool){storeNativeValue(self->values.at(index),coerce(std::move(v),self->elementType,self->fixedLength));},elementType,false,true,fixedLength};
 }
 std::shared_ptr<Array> Array::resized(Bounds dimensions,bool preserve,size_t maxElements)const{if(!dynamic||borrowedElements)fail(10,"This array is fixed or temporarily locked");if(preserve&&allocated){if(dimensions.size()!=bounds.size())fail(9);for(size_t i=0;i<bounds.size();i++)if(dimensions[i].first!=bounds[i].first||(i+1<bounds.size()&&dimensions[i].second!=bounds[i].second))fail(9);}auto out=std::make_shared<Array>(elementType,std::move(dimensions),true,maxElements,fixedLength,initializer);if(preserve&&allocated)for(size_t i=0;i<std::min(values.size(),out->values.size());i++)out->values[i]=values[i].copy();return out;}
 std::shared_ptr<Array> Array::copy()const{auto out=std::make_shared<Array>(elementType,Bounds{},dynamic,1,fixedLength,initializer);out->allocated=allocated;out->bounds=bounds;out->values.reserve(values.size());for(const auto& v:values)out->values.push_back(v.copy());return out;}

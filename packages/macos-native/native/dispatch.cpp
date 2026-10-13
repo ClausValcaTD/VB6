@@ -1,5 +1,6 @@
 // Native value/member dispatch and VB object visibility. MIT.
 #include "vb6.hpp"
+#include "array-ownership.hpp"
 namespace vb6 {
 Value scalar(Runtime& runtime,Value value) {
   for(int i=0;i<32 && value.type==Type::Object;i++) value=value.asObject()->get(runtime,"");
@@ -16,27 +17,27 @@ void assign(Runtime& rt,Ref ref,Value value,bool objectSet){
   else ref.set(std::move(value),false);
 }
 Value getMember(Runtime& rt,Value value,const std::string& name){
-  if(value.type==Type::Record)return value.asRecord()->member(name).get();
+  if(value.type==Type::Record)return inheritArrayOwners(value,value.asRecord()->member(name).get());
   return value.asObject()->get(rt,name);
 }
 Ref objectReference(Runtime& rt,Value value,const std::string& name,Args args){
-  if(value.type==Type::Record){std::vector<Value> indices;for(auto&a:args)indices.push_back(a.value);return indexedRef(rt,value.asRecord()->member(name).get(),indices);}
+  if(value.type==Type::Record){std::vector<Value> indices;for(auto&a:args)indices.push_back(a.value);return indexedRef(rt,inheritArrayOwners(value,value.asRecord()->member(name).get()),indices);}
   return value.asObject()->reference(rt,name,std::move(args));
 }
 Ref memberRef(Runtime& rt,Value value,const std::string& name){
-  if(value.type==Type::Record)return value.asRecord()->member(name);
+  if(value.type==Type::Record)return retainReferenceOwners(value,value.asRecord()->member(name));
   return value.asObject()->reference(rt,name);
 }
 Ref indexedRef(Runtime& rt,Value value,std::vector<Value> indices){
-  if(value.type==Type::Array)return value.asArray()->at(indices);
+  if(value.type==Type::Array)return retainReferenceOwners(value,value.asArray()->at(indices));
   Args args;for(auto&v:indices)args.emplace_back(v);return value.asObject()->reference(rt,"",std::move(args));
 }
 Value callMember(Runtime& rt,Value receiver,const std::string& name,Args args){
-  if(receiver.type==Type::Record){auto value=receiver.asRecord()->member(name).get();return callValue(rt,value,std::move(args));}
+  if(receiver.type==Type::Record){auto value=inheritArrayOwners(receiver,receiver.asRecord()->member(name).get());return callValue(rt,value,std::move(args));}
   return receiver.asObject()->invoke(rt,name,std::move(args));
 }
 Value callValue(Runtime& rt,Value receiver,Args args){
-  if(receiver.type==Type::Array){std::vector<Value> indices;for(auto&a:args)indices.push_back(scalar(rt,a.value));return receiver.asArray()->at(indices).get();}
+  if(receiver.type==Type::Array){std::vector<Value> indices;for(auto&a:args)indices.push_back(scalar(rt,a.value));return inheritArrayOwners(receiver,receiver.asArray()->at(indices).get());}
   return receiver.asObject()->invoke(rt,"",std::move(args));
 }
 
