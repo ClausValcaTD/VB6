@@ -22,11 +22,16 @@ export function controlParents(form) {
   }
   return parents;
 }
+export function tabCount(control) {
+  const p = control.properties || {}, array = Array.isArray(p.Tabs) ? p.Tabs : null;
+  const count = array?.length ?? Number(p.Tabs ?? Object.entries(p).find(([key]) => lower(key) === 'tabs.count')?.[1] ?? 3);
+  if (!Number.isInteger(count) || count < (control.type === 'SSTab' ? 1 : 0) || count > 32767) throw new RangeError('Tabs must be between 1 and 32767.');
+  return count;
+}
 export function tabEntries(control) {
   const p = control.properties || {}, saved = new Map(Object.entries(p).map(([k, v]) => [lower(k), v]));
   const array = Array.isArray(p.Tabs) ? p.Tabs : null;
-  const count = array?.length ?? Number(p.Tabs ?? saved.get('tabs.count') ?? 3);
-  if (!Number.isInteger(count) || count < (control.type === 'SSTab' ? 1 : 0) || count > 32767) throw new RangeError('Tabs must be between 1 and 32767.');
+  const count = tabCount(control);
   return Array.from({length: count}, (_, i) => {
     const item = array?.[i] || {}, group = `tabs.tab${i + 1}.`;
     return {...item, Key: item.Key ?? saved.get(group + 'key') ?? '',
@@ -38,11 +43,11 @@ export function tabEntries(control) {
   });
 }
 export function activeTab(control) {
-  const count = tabEntries(control).length, value = Number(control.properties?.Tab ?? 0);
+  const count = tabCount(control), value = Number(control.properties?.Tab ?? 0);
   return count ? Math.max(0, Math.min(count - 1, Number.isInteger(value) ? value : 0)) : -1;
 }
 export function checkedTab(control, value) {
-  const n = Number(value), count = tabEntries(control).length;
+  const n = Number(value), count = tabCount(control);
   if (!Number.isInteger(n) || n < 0 || n >= count) throw new RangeError(`Tab must be between 0 and ${count - 1}.`);
   return n;
 }
@@ -127,9 +132,16 @@ export function setTabEntry(owner, page, key, value) {
  */
 export function formWithSavedTabs(form) {
   const output = structuredClone(form), plan = tabPagePlan(output, {strict: true});
+  const byOwner = new Map();
+  for (const binding of plan.bindings.values()) {
+    let pages = byOwner.get(binding.owner.id); if (!pages) byOwner.set(binding.owner.id, pages = new Map());
+    let children = pages.get(binding.page); if (!children) pages.set(binding.page, children = []);
+    children.push(binding);
+  }
   for (const {owner, entries} of plan.owners.values()) {
     if (owner.type !== 'SSTab') continue;
-    const canonical = Array.isArray(owner.properties.Tabs) || [...plan.bindings.values()].some(b => b.owner.id === owner.id && b.child.properties.TabPage !== undefined);
+    const pages = byOwner.get(owner.id) || new Map();
+    const canonical = Array.isArray(owner.properties.Tabs) || [...pages.values()].some(children => children.some(b => b.child.properties.TabPage !== undefined));
     if (!canonical) continue;
     for (const key of Object.keys(owner.properties)) if (ownedKey.test(key)) delete owner.properties[key];
     owner.properties.Tabs = entries.length;
@@ -139,7 +151,7 @@ export function formWithSavedTabs(form) {
       owner.properties[`TabEnabled(${page})`] = entry.Enabled ? -1 : 0;
       owner.properties[`TabVisible(${page})`] = entry.Visible ? -1 : 0;
       if (entry.Picture) owner.properties[`TabPicture(${page})`] = entry.Picture;
-      const pageChildren = [...plan.bindings.values()].filter(b => b.owner.id === owner.id && b.page === page);
+      const pageChildren = pages.get(page) || [];
       owner.properties[`Tab(${page}).ControlEnabled`] = page === activeTab(owner) ? -1 : 0;
       pageChildren.forEach((b, i) => {
         owner.properties[`Tab(${page}).Control(${i})`] = controlReference(b.child);
