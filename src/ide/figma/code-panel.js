@@ -21,7 +21,19 @@ export function createFigmaCodePanel(workspace) {
     if(surface)surface.setSplit(surface.views.length===1);
     else ide.editor.toggleSplit();
   });
-  const mode=el('select',{'aria-label':'Code view mode'},
+  const editAction=(label,command)=>action(label,()=>{
+    if(!workspace.currentCodeEditor()?.readOnly)return ide.command(command);
+  });
+  const format=editAction('Format module','formatCode');
+  const comment=editAction('Comment selection','comment');
+  const uncomment=editAction('Uncomment selection','uncomment');
+  const bookmark=action('Toggle code bookmark',()=>{
+    if(ide.runState==='design')return ide.command('toggleBookmark');
+  });
+  const nextBookmark=action('Next code bookmark',()=>ide.command('nextBookmark'));
+  const previousBookmark=action('Previous code bookmark',()=>ide.command('previousBookmark'));
+  const breakpoint=action('Toggle code breakpoint',()=>ide.command('breakpoint'));
+  const mode=el('select' ,{'aria-label':'Code view mode'},
     el('option',{value:'module'},'Full module'),el('option',{value:'procedure'},'Current procedure'));
   mode.addEventListener('change',()=>workspace.safe(()=>{
     const editor=workspace.currentCodeEditor();if(editor&&!ide.advancedEditor?.runtime?.active()){
@@ -39,6 +51,8 @@ export function createFigmaCodePanel(workspace) {
   line.addEventListener('keydown',event=>{event.stopPropagation();if(event.key==='Enter'){event.preventDefault();go.click();}});
   root.append(el('div',{class:'figma-section-title'},title,position),status,openDesign,
     el('div',{class:'figma-code-actions'},find,replace,split),
+    el('div',{class:'figma-code-actions'},comment,uncomment,format),
+    el('div',{class:'figma-code-actions'},bookmark,previousBookmark,nextBookmark,breakpoint),
     el('div',{class:'figma-code-options'},mode,el('label',{},numbers,' Line numbers')),
     el('div',{class:'figma-code-goto'},line,go),
     el('div',{class:'figma-section-title'},el('strong',{},'Outline')),search,list);
@@ -88,6 +102,13 @@ export function createFigmaCodePanel(workspace) {
     status.textContent=(ide.activeModule.form?'Form code':ide.activeModule.kind||'Module')+' · '+
       editor.index.lines.length+' lines · '+editor.procedureIndex.length+' procedures'+(editor.readOnly?' · Read only':'');
     openDesign.hidden=!ide.activeModule.form;replace.disabled=!!editor.readOnly;
+    for(const button of [comment,uncomment,format])button.disabled=!!editor.readOnly;
+    bookmark.disabled=ide.runState!=='design';
+    bookmark.setAttribute('aria-pressed',String(!!ide.activeModule.bookmarks?.includes(cursor.line)));
+    breakpoint.setAttribute('aria-pressed',String(ide.breakpoints.some(bp=>
+      bp.module.toLowerCase()===ide.activeModule.name.toLowerCase()&&bp.line===cursor.line)));
+    const hasBookmarks=ide.project.modules.some(module=>module.bookmarks?.length);
+    nextBookmark.disabled=previousBookmark.disabled=!hasBookmarks;
     split.setAttribute('aria-pressed',String(surface?surface.views.length>1:!!editor.secondary));
     mode.disabled=!!surface;mode.title=surface?'Advanced editor uses its native folding and navigation':'';
     mode.value=surface?'module':editor.activePane.mode;numbers.checked=!!ide.project.settings.lineNumbers;
