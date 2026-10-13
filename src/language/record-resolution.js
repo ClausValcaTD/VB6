@@ -5,9 +5,9 @@ const lower=value=>String(value).toLowerCase();
  * globally: unchanged parsed modules may be rebound against edited providers. */
 export class RecordTypeIndex {
   constructor(modules) {
-    this.modules=modules;this.local=new Map();this.public=new Map();this.hidden=new Set();
+    this.modules=modules;this.local=new Map();this.enums=new Map();this.public=new Map();this.hidden=new Set();
     for(const owner of modules.values()){
-      const names=new Map();this.local.set(owner,names);
+      const names=new Map();this.local.set(owner,names);this.enums.set(owner,new Set(Object.keys(owner.enums||{}).map(lower)));
       for(const [name,fields] of Object.entries(owner.types||{})){
         const key=lower(name),scope=owner.typeScopes?.[key]||'public';
         const definition=Object.freeze({owner,name,fields,identity:lower(owner.name)+'.'+key,scope});names.set(key,definition);
@@ -20,15 +20,22 @@ export class RecordTypeIndex {
     const key=lower(name),dot=key.indexOf('.');
     if(dot>=0){const owner=this.modules.get(key.slice(0,dot)),definition=this.local.get(owner)?.get(key.slice(dot+1));return definition&&(owner===from||definition.scope!=='private')?definition:null;}
     const own=this.local.get(from)?.get(key);if(own)return own;
-    // A project class is not an unrelated module's private record.
-    if(this.modules.get(key)?.kind==='class')return null;
+    // The enclosing enum namespace and project module namespace precede
+    // imported UDTs. Form modules participate just like other class modules.
+    if(this.enums.get(from)?.has(key)||this.modules.has(key))return null;
     return this.public.get(key)||null;
   }
   problem(name,from) {
     if(this.resolve(name,from))return null;
     const key=lower(name),dot=key.indexOf('.');
-    if(dot>=0){const owner=this.modules.get(key.slice(0,dot)),definition=this.local.get(owner)?.get(key.slice(dot+1));return definition?'User-defined type is not accessible: '+name:null;}
-    if(this.modules.get(key)?.kind==='class')return null;
+    if(dot>=0){
+      const owner=this.modules.get(key.slice(0,dot)),member=key.slice(dot+1),definition=this.local.get(owner)?.get(member);
+      if(definition)return 'User-defined type is not accessible: '+name;
+      return owner&&!this.enums.get(owner)?.has(member)?'User-defined type not defined: '+name:null;
+    }
+    if(this.enums.get(from)?.has(key))return null;
+    const module=this.modules.get(key);
+    if(module)return module.kind==='class'||module.kind==='form'||module.form?null:'Module name cannot be used as a type: '+name;
     if(this.public.has(key))return 'Ambiguous user-defined type: '+name;
     return this.hidden.has(key)?'User-defined type is not accessible: '+name:null;
   }
