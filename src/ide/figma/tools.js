@@ -125,6 +125,13 @@ export function createFigmaTools(workspace){
         const close=el('span',{class:'tab-close',role:'button',tabindex:0,'aria-label':'Close '+t.title},'×');
         const closeTool=e=>{e.preventDefault();e.stopPropagation();ide.closeDocument(t.key);};close.onclick=closeTool;close.onkeydown=e=>{if(e.key==='Enter'||e.key===' ')closeTool(e);};tab.append(close);ide.documentTabs.append(tab);}
     }
+    // A tool document can be active while activeDoc retains the last VB6
+    // document. Both visual and accessible selection follow the actual MDI owner.
+    for(const tab of ide.documentTabs.querySelectorAll('.document-tab')){
+      const selected=(tab.dataset.figmaToolTab||tab.dataset.document)===docs.mdi.active;
+      if(tab.classList.contains('active')!==selected)tab.classList.toggle('active',selected);
+      if(tab.getAttribute('aria-selected')!==String(selected))tab.setAttribute('aria-selected',String(selected));
+    }
     for(const [id,{panel}]of dock.panels)if(!['toolbox','properties','project','figma-layers','auto-layout','layout'].includes(id))panel.classList.add('figma-utility-panel');
   }
   for(const subscribe of [ide.codingAgents?.onChange,ide.mcp?.onChange,ide.mcp?.adapter.onChange?.bind(ide.mcp.adapter)])if(subscribe)disposers.push(subscribe(workspace.scheduleSync));
@@ -139,6 +146,7 @@ export function createFigmaTools(workspace){
       dock.unregister(record.id);
     }
     restoreDocument(active);for(const tool of docs.tools.values())tool.root.classList.remove('figma-tool-surface');for(const n of ide.documentTabs.querySelectorAll('[data-figma-tool-tab]'))n.remove();
+    docs.tabs(); // Restore the Classic document-tab owner's presentation.
     for(const {panel}of dock.panels.values())panel.classList.remove('figma-utility-panel');nav.remove();
   }};
 }

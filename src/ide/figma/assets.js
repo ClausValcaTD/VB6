@@ -119,6 +119,7 @@ export function createFigmaAssets(workspace){
     const proposed=insertDesignerAsset(session.form,session.type,hit,{registry:ide.controlRegistry,layout:layoutEnabled(ide.project),snap:!event.altKey&&session.designer.settings.snapToGrid!==false,gridSize:session.designer.settings.gridSize||120});
     const before=clone(ide.project);cancel(false);session.module.form=proposed.form;
     ide.record(before,'Insert '+session.type+' from Assets');
+    workspace.viewports.get(session.designer)?.setHand(false);
     session.designer.select(proposed.selection);session.designer.setTool('Pointer');session.designer.root.focus({preventScroll:true});
     status.textContent='Inserted '+session.type+' into '+(hit.parent?.name||session.form.name)+'. Undo removes this insertion.';
     workspace.scheduleSync();
@@ -145,7 +146,9 @@ export function createFigmaAssets(workspace){
     if(event.dataTransfer?.getData(FIGMA_ASSET_MIME)!==drag.nonce){cancel();return;}
     workspace.safe(()=>{try{drop(event);}finally{cancel(false);}});
   },{capture:true});
-  listen(doc,'dragend',()=>cancel(false),{capture:true});
+  // Native Escape may deliver dragend without a key event to the document.
+  // A successful drop already released its session; remaining sessions cancel.
+  listen(doc,'dragend',()=>cancel(),{capture:true});
   listen(ide.toolboxGrid,'pointerdown',event=>{
     const grip=event.target.closest('[data-asset-grip]');if(!grip||event.button!==0||event.isPrimary===false)return;
     if(!start(grip.dataset.assetGrip,'pointer',grip))return;
