@@ -4,6 +4,7 @@
 #include <cassert>
 #include <iostream>
 using namespace vb6;
+void checkNativePictureFramesAppKit(Runtime&,MacHost&,const std::shared_ptr<Instance>&);
 namespace {
 void put(std::vector<uint8_t>& b,size_t at,uint32_t v,size_t count){for(size_t i=0;i<count;i++)b.at(at+i)=uint8_t(v>>(i*8));}
 std::vector<uint8_t> bitmap(){
@@ -81,5 +82,6 @@ void checkNativePictures(Runtime& rt,MacHost& host,const std::shared_ptr<Instanc
   int32_t oldHandle;{auto temporary=loadNativeImage(host,bitmap());oldHandle=temporary.asObject()->get(rt,"handle").integral();assert(host.handles.find(oldHandle));}
   assert(!host.handles.find(oldHandle)); // dead picture cannot be resolved through a stale handle
   auto malformed=bitmap();malformed.resize(60);expectError(481,[&]{(void)loadNativeImage(host,malformed);});
+  checkNativePictureFramesAppKit(rt,host,form);
   std::cout<<"APPKIT_PICTURES_OK\n";
 }

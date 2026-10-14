@@ -229,6 +229,7 @@ NSEvent*MacHost::routeEvent(NSEvent*input){
     return input;
   }
   auto type=input.type;bool down=type==NSEventTypeLeftMouseDown||type==NSEventTypeRightMouseDown||type==NSEventTypeOtherMouseDown,up=type==NSEventTypeLeftMouseUp||type==NSEventTypeRightMouseUp||type==NSEventTypeOtherMouseUp;
+  if(c->number("mousepointer",0)==99)updateNativeCursor(*c);
   c->event(down?"mousedown":up?"mouseup":"mousemove",mouseArguments(*c,input));
   if(up&&![c->widget isKindOfClass:NSControl.class]&&![c->widget isKindOfClass:NSTextView.class])c->event(input.clickCount>1?"dblclick":"click");return input;
 }
@@ -277,8 +278,8 @@ Value MacHost::builtin(Frame&frame,const std::string&raw,Args args){
     auto image=std::dynamic_pointer_cast<MacImage>(argument(args,0).asObject());if(!image||!image->image)fail(5);auto path=stringArgument(args,1);if(path.find(u'\0')!=Text::npos)fail(52);auto extension=lower(std::filesystem::path(toUTF8(path)).extension().string());NSBitmapImageFileType type=extension==".jpg"||extension==".jpeg"?NSBitmapImageFileTypeJPEG:extension==".bmp"?NSBitmapImageFileTypeBMP:extension==".gif"?NSBitmapImageFileTypeGIF:extension==".tiff"||extension==".tif"?NSBitmapImageFileTypeTIFF:NSBitmapImageFileTypePNG;
     NSData*data=nil;
     if(image->pictureType==3&&!image->encoded.empty()){
-      auto bytes=image->encoded;
-      if(image->isCursor){bytes.at(2)=2;bytes.at(10)=uint8_t(image->hotspot.x);bytes.at(11)=uint8_t(uint32_t(image->hotspot.x)>>8);bytes.at(12)=uint8_t(image->hotspot.y);bytes.at(13)=uint8_t(uint32_t(image->hotspot.y)>>8);}
+      // Preserve the complete validated directory, payloads and per-frame hotspots.
+      const auto& bytes=image->encoded;
       data=[NSData dataWithBytes:bytes.data() length:bytes.size()];
     }else {NSBitmapImageRep*rep=[NSBitmapImageRep imageRepWithData:image->image.TIFFRepresentation];data=[rep representationUsingType:type properties:@{}];}NSError*error=nil;if(!data||![data writeToFile:ns(path) options:NSDataWritingAtomic error:&error])fail(75,error?toUTF8(text(error.localizedDescription)):"Picture encoding failed");return {};
   }
@@ -334,6 +335,15 @@ std::unique_ptr<NativeHost>makeNativeHost(){return std::make_unique<MacHost>();}
 @implementation VB6WindowDelegate
 -(BOOL)windowShouldClose:(NSWindow*)window{(void)window;if(auto f=model.lock())host->event([thisHost=host,f]{thisHost->closeForm(f);});return NO;}
 -(void)windowDidResize:(NSNotification*)note{(void)note;if(auto f=model.lock())host->event([thisHost=host,f]{thisHost->resize(f);});}
+-(void)windowDidChangeBackingProperties:(NSNotification*)note{
+  (void)note;if(auto f=model.lock())host->event([thisHost=host,f]{
+    if(f->window!=NSApp.keyWindow||f->closing)return;
+    const auto point=[f->surface->view convertPoint:f->window.mouseLocationOutsideOfEventStream fromView:nil];
+    if(!NSPointInRect(point,f->surface->view.bounds))return;
+    auto control=thisHost->controlForView([f->surface->view hitTest:point]);
+    if(control&&control->number("mousepointer",0)==99)updateNativeCursor(*control);
+  });
+}
 -(void)windowDidBecomeKey:(NSNotification*)note{(void)note;if(auto f=model.lock())host->event([thisHost=host,f]{thisHost->activate(f,true);});}
 -(void)windowDidResignKey:(NSNotification*)note{(void)note;if(auto f=model.lock())host->event([thisHost=host,f]{thisHost->activate(f,false);});}
 @end

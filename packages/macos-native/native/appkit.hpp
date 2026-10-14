@@ -14,7 +14,8 @@ constexpr double TwipsPerLogicalPixel=15.0;
 struct MacHost;struct MacControl;struct MacForm;struct MacItems;struct MacItem;
 NSString*ns(const Text&);Text text(NSString*);NSColor*color(int64_t);int32_t colorValue(NSColor*);Text captionText(const Text&);
 struct GraphicCommand {std::string kind;std::vector<double>coordinates;int32_t color=0;bool fill=false;double width=1;Text text;NSImage*image=nil;Text fontName=u"Helvetica";double fontSize=11;bool bold=false,italic=false,underline=false,strikeout=false;int style=0;uint32_t flags=0;};
-struct MacImage final:Object {NSImage*image=nil;int32_t handle=0,pictureType=1;bool isCursor=false;NSPoint hotspot=NSZeroPoint;std::vector<uint8_t>encoded;std::weak_ptr<int>ownerLife;HandleRegistry*ownerHandles=nullptr;~MacImage()override;explicit MacImage(NSImage*value):image(value){}std::string className()const override{return "StdPicture";}Value get(Runtime&,const std::string&)override;};
+struct MacPictureFrames;
+struct MacImage final:Object {NSImage*image=nil;int32_t handle=0,pictureType=1;bool isCursor=false;NSPoint hotspot=NSZeroPoint;std::vector<uint8_t>encoded;std::shared_ptr<MacPictureFrames>frames;NSCursor*cachedCursor=nil;std::weak_ptr<int>ownerLife;HandleRegistry*ownerHandles=nullptr;~MacImage()override;explicit MacImage(NSImage*value):image(value){}std::string className()const override{return "StdPicture";}Value get(Runtime&,const std::string&)override;};
 struct MacItem:Object {
   std::weak_ptr<MacControl>owner;std::weak_ptr<MacItems>collection;std::weak_ptr<MacItem>parent;
   std::vector<std::shared_ptr<MacItem>>children;std::map<std::string,Value>properties;std::shared_ptr<MacItems>subitems;std::string kind;uint64_t identity=0;

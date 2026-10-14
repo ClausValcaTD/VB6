@@ -2,7 +2,20 @@
 // VB picture values own the image and retain checked source format/hotspot data.
 #include "appkit-pictures.hpp"
 namespace vb6 {
+struct MacPictureFrames {
+  std::vector<NativePictureFrame> entries;
+  NSArray<NSBitmapImageRep*>* decoded=nil;
+  std::map<size_t,NSCursor*> cursors;
+};
 namespace {
+NSImage* decodeImage(const std::vector<uint8_t>& bytes,uint32_t width,uint32_t height) {
+  NSData* encoded=[NSData dataWithBytes:bytes.data() length:bytes.size()];
+  NSImage* image=[[NSImage alloc]initWithData:encoded];if(!image||!image.valid)fail(481,"AppKit could not decode picture");
+  CGImageRef decoded=[image CGImageForProposedRect:nullptr context:nil hints:nil];
+  if(!decoded||CGImageGetWidth(decoded)!=width||CGImageGetHeight(decoded)!=height)fail(481,"Decoded picture dimensions disagree with checked header");
+  image.size=NSMakeSize(width,height);return image;
+}
+
 std::shared_ptr<MacImage> picture(Value value){
   if(value.type!=Type::Object)fail(13,"Picture assignment requires a picture object");
   auto object=std::get<ObjectPtr>(value.payload);if(!object)return nullptr;
@@ -18,14 +31,51 @@ std::shared_ptr<MacImage> controlPicture(MacControl& c,const std::string& name){
 MacImage::~MacImage(){if(ownerHandles&&!ownerLife.expired())ownerHandles->remove(handle);}
 Value loadNativeImage(MacHost& host,std::vector<uint8_t> bytes){
   auto data=decodeNativePicture(std::move(bytes));
-  NSData* encoded=[NSData dataWithBytes:data.bytes.data() length:data.bytes.size()];
-  NSImage* image=[[NSImage alloc]initWithData:encoded];if(!image||!image.valid)fail(481,"AppKit could not decode picture");
-  CGImageRef decoded=[image CGImageForProposedRect:nullptr context:nil hints:nil];
-  if(!decoded||CGImageGetWidth(decoded)!=data.width||CGImageGetHeight(decoded)!=data.height)fail(481,"Decoded picture dimensions disagree with checked header");
-  image.size=NSMakeSize(data.width,data.height);
+  const NSSize logical=NSMakeSize(data.width,data.height);
+  NSImage* image=nil;std::shared_ptr<MacPictureFrames> frames;
+  if(data.frames.empty())image=decodeImage(data.bytes,data.width,data.height);
+  else {
+    image=[[NSImage alloc]initWithSize:logical];image.prefersColorMatch=NO;
+    frames=std::make_shared<MacPictureFrames>();frames->entries=data.frames;
+    NSMutableArray<NSBitmapImageRep*>* decoded=[NSMutableArray arrayWithCapacity:data.frames.size()];
+    std::map<std::pair<uint32_t,uint32_t>,size_t> best;
+    for(size_t i=0;i<data.frames.size();++i){
+      const auto& frame=data.frames[i];
+      NSImage* single=decodeImage(nativePictureFrameBytes(data,i),frame.width,frame.height);
+      auto cg=[single CGImageForProposedRect:nullptr context:nil hints:nil];
+      NSBitmapImageRep* rep=[[NSBitmapImageRep alloc]initWithCGImage:cg];if(!rep)fail(7);
+      // All representations share logical point size; their pixel counts retain
+      // the original detail. Never flatten a multi-resolution NSImage to CGImage.
+      // https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html
+      rep.size=logical;[decoded addObject:rep];
+      auto key=std::make_pair(frame.width,frame.height);auto found=best.find(key);
+      if(found==best.end()||frame.bits>data.frames[found->second].bits)best[key]=i;
+    }
+    // Decode and retain every entry. For equal physical dimensions, materialize
+    // the highest source depth for drawing, with stable directory-order ties.
+    for(const auto& entry:best)[image addRepresentation:decoded[entry.second]];
+    frames->decoded=[decoded copy];
+  }
   auto value=std::make_shared<MacImage>(image);value->pictureType=data.type;value->isCursor=data.cursor;
-  value->hotspot=NSMakePoint(data.hotspotX,data.hotspotY);value->encoded=std::move(data.bytes);
+  value->hotspot=NSMakePoint(data.hotspotX,data.hotspotY);value->encoded=std::move(data.bytes);value->frames=std::move(frames);
   value->handle=host.handles.add(value,HandleKind::Image);value->ownerLife=host.life;value->ownerHandles=&host.handles;return Value::object(value);
+}
+NSCursor* nativePictureCursor(MacImage& picture,double scale){
+  if(!picture.image||!std::isfinite(scale)||scale<=0||scale>16)fail(5,"Invalid native cursor scale");
+  if(!picture.frames){
+    if(!picture.cachedCursor)picture.cachedCursor=[[NSCursor alloc]initWithImage:picture.image hotSpot:picture.hotspot];
+    return picture.cachedCursor;
+  }
+  auto& frames=*picture.frames;const auto size=picture.image.size;
+  const auto index=selectNativePictureFrame(frames.entries,uint32_t(std::ceil(size.width*scale)),uint32_t(std::ceil(size.height*scale)));
+  auto found=frames.cursors.find(index);if(found!=frames.cursors.end())return found->second;
+  const auto& frame=frames.entries[index];
+  NSImage* image=[[NSImage alloc]initWithSize:size];[image addRepresentation:frames.decoded[index]];
+  // CUR hotspots belong to each physical frame, not just the first directory
+  // entry. Convert the selected hotspot to AppKit's logical point coordinates.
+  const auto spot=NSMakePoint(frame.hotspotX*size.width/frame.width,frame.hotspotY*size.height/frame.height);
+  NSCursor* cursor=[[NSCursor alloc]initWithImage:image hotSpot:spot];if(!cursor)fail(7);
+  frames.cursors.emplace(index,cursor);return cursor;
 }
 bool nativePictureProperty(const std::string& name){return name=="picture"||name=="image"||name=="icon"||name=="mouseicon"||name=="disabledpicture"||name=="downpicture";}
 void initializeNativePictures(MacControl& c){
@@ -38,7 +88,7 @@ void initializeNativePictures(MacControl& c){
 }
 void updateNativeCursor(MacControl& c){
   if(c.disposed)return;const auto pointer=c.number("mousepointer",0);
-  if(pointer==99){auto image=controlPicture(c,"mouseicon");if(image&&image->image){NSCursor* cursor=[[NSCursor alloc]initWithImage:image->image hotSpot:image->hotspot];[cursor set];return;}}
+  if(pointer==99){auto image=controlPicture(c,"mouseicon");if(image&&image->image){const double scale=c.view.window?c.view.window.backingScaleFactor:1;[nativePictureCursor(*image,scale) set];return;}}
   if(pointer==0||pointer==99||pointer==1)[NSCursor.arrowCursor set];else if(pointer==2)[NSCursor.crosshairCursor set];else if(pointer==3)[NSCursor.IBeamCursor set];else if(pointer==11)[NSCursor.operationNotAllowedCursor set];else if(pointer==15)[NSCursor.pointingHandCursor set];
 }
 void refreshNativePictures(MacControl& c){

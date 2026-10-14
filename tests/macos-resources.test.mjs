@@ -59,7 +59,7 @@ test('both native compilers package identical resources outside executable metad
  const {resourceFormProject}=await import('../packages/macos-native/tests/resources.mjs');
  const p=resourceFormProject(),before=JSON.stringify(p),a=compileMacOS(p),b=compileMacOSAOT(p);
  assert.equal(JSON.stringify(p),before);assert.deepEqual(a.files['resources/vb6-assets.bin'],b.resourceFiles['resources/vb6-assets.bin']);
- assert.equal(a.report.resources.pictures,5);assert.equal(b.report.resources.entries,13);
+ assert.equal(a.report.resources.pictures,5);assert.equal(b.report.resources.entries,15);
  assert.ok(!JSON.stringify(b.metadata).includes('data:image/'));assert.ok(!JSON.stringify(b.metadata).includes('Form1.frx'));
  assert.equal(a.project.modules.find(m=>m.name==='Form1').form.controls.find(c=>c.name==='Text1').properties.Text,'Résumé\r\nResource text');
  const {cppText}=await import('../packages/macos-native/src/compiler.js');assert.ok(a.files['main.cpp'].includes(cppText('Résumé\r\nResource text')));
@@ -94,7 +94,7 @@ test('source-kit resource report retains catalog counts independently of file co
  const {createMacOSBuildKit}=await import('../packages/macos-native/src/build-kit.js');
  const {resourceFormProject}=await import('../packages/macos-native/tests/resources.mjs');
  const kit=createMacOSBuildKit(resourceFormProject()),manifest=JSON.parse(kit.files['build.json']);
- assert.equal(kit.report.resources.entries,13);assert.equal(kit.report.resources.pictures,5);
+ assert.equal(kit.report.resources.entries,15);assert.equal(kit.report.resources.pictures,5);
  assert.equal(kit.report.resourceFiles,1);assert.deepEqual(manifest.resources,['resources/vb6-assets.bin']);
  assert.deepEqual(manifest.report.resources,kit.report.resources);
 });
