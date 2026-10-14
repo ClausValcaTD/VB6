@@ -77,6 +77,9 @@ export function winuiThemeTokens(theme) {
   const values=theme.family==='fluent'?resources(theme):null;
   return WINUI_TOKEN_NAMES.map(name=>`  --winui-${name}: ${values?values[name]:'initial'};\n`).join('');
 }
-export function winuiLicenseCss() {
-  return '/*! Microsoft WinUI resource adaptation.\n'+fs.readFileSync(new URL('../LICENSES/WinUI.txt',import.meta.url),'utf8')+'*/\n';
+export function winuiLicenseCss(license=fs.readFileSync(new URL('../LICENSES/WinUI.txt',import.meta.url),'utf8')) {
+  if(typeof license!=='string')throw new TypeError('Expected WinUI license text');
+  // Git pins this input to LF; also support CRLF/lone-CR text from non-Git
+  // archives and editors without making bundled CSS/JS host-dependent.
+  return '/*! Microsoft WinUI resource adaptation.\n'+license.replace(/\r\n?/g,'\n')+'*/\n';
 }

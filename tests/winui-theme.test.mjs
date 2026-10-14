@@ -55,7 +55,7 @@ test('all nine application boundaries declare every token and non-Fluent boundar
 test('generated palettes are deterministic and include the complete Microsoft license in standalone CSS',()=>{
   assert.equal(read('src/theme/application-palettes.css'),renderApplicationThemeTokens());
   assert.equal(read('src/theme/ide-palettes.css'),renderIdeThemePalettes());
-  assert.ok(renderApplicationThemeTokens().includes(read('LICENSES/WinUI.txt')));
+  assert.ok(renderApplicationThemeTokens().includes(read('LICENSES/WinUI.txt').replace(/\r\n?/g,'\n')));
   assert.ok(winuiLicenseCss().includes('Copyright (c) Microsoft Corporation.'));
   assert.doesNotMatch(renderApplicationThemeTokens(),/data-ide-/);
 });
@@ -97,4 +97,18 @@ test('radio ink and two-layer focus resources are distinct, resettable contracts
     assert.ok(css.includes('--winui-FocusShadow: '+(theme.family==='fluent'?'0 0 0 1px var(--winui-FocusStrokeColorInner)':'initial')+';'));
     assert.ok(css.includes('--winui-RadioGlyph: '+(theme.family==='fluent'?'var(--winui-TextOnAccentFillColorPrimary)':'initial')+';'));
   }
+});
+
+// The notice is embedded in runtime CSS and therefore in every exported bundle.
+// Reproduce Windows/non-Git line endings without mutating shared test fixtures.
+test('WinUI license embedding is byte-identical for LF, CRLF and lone CR inputs',()=>{
+  const lf=read('LICENSES/WinUI.txt').replace(/\r\n?/g,'\n');
+  const expected=winuiLicenseCss(lf);
+  assert.equal(winuiLicenseCss(),expected);
+  assert.equal(winuiLicenseCss(lf.replace(/\n/g,'\r\n')),expected);
+  assert.equal(winuiLicenseCss(lf.replace(/\n/g,'\r')),expected);
+  assert.doesNotMatch(expected,/\r/);
+  assert.ok(expected.includes(lf),'Retain the complete notice, not only its header');
+  assert.match(read('.gitattributes'),/^\/LICENSES\/WinUI\.txt text eol=lf$/m);
+  for(const invalid of [null,0,{},[]])assert.throws(()=>winuiLicenseCss(invalid),TypeError);
 });
