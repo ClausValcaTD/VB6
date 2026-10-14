@@ -77,15 +77,17 @@ generated Clang procedures and direct ARM64 procedures; no runtime AST interpret
 is introduced by this scope tracking.
 
 These are source/storage contracts, not complete Microsoft VB6 array ABI
-certification. Native Declare does not expose raw SAFEARRAY pointers. Global
-shutdown, reference cycles and full native control lifecycle remain separate
-compatibility work.
+certification. Native Declare does not expose raw SAFEARRAY pointers. Remaining shutdown
+ordering, reference cycles and full native control lifecycle are separate
+compatibility work; normal root cleanup is described in the lifecycle guide.
 
 ## SDK and validation
 
-The helper ABI is **3**. The compiler, native loader and payload-provenance check
-must agree. ABI 1 and ABI 2 custom or embedded runtimes are rejected before linking,
-because their helper contracts cannot preserve the current result/scope behavior.
+The helper ABI is **4**; it preserves the array/scope contracts introduced in
+ABI 3 and adds [native resource support](MACOS-RESOURCES.md). The compiler, native
+loader and payload-provenance check must agree. ABI 1, ABI 2 and ABI 3 custom or
+embedded runtimes are rejected before linking because they do not satisfy the
+current combined runtime/resource contract.
 Applications already exported with an older SDK are not modified. Mach-O container/layout versions are independent of
 the helper ABI; reserved-section layout compatibility requires a matching ABI.
 

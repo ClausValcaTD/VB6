@@ -4,6 +4,7 @@
 #include <iostream>
 using namespace vb6;
 static int clicks=0;
+void checkNativePictures(Runtime&, MacHost&, const std::shared_ptr<Instance>&);
 void checkNativeEditing(Runtime&, MacHost&, const std::shared_ptr<Instance>&);
 int main(){@autoreleasepool {
   Runtime rt(makeNativeHost());auto&host=dynamic_cast<MacHost&>(*rt.host);
@@ -24,6 +25,7 @@ int main(){@autoreleasepool {
   auto grid=std::dynamic_pointer_cast<MacControl>(form->controls.at("c27"));grid->invoke(rt,"let:textmatrix",{Arg(Value::integer(1)),Arg(Value::integer(1)),Arg(Value::string(u"Cell"))});assert(grid->invoke(rt,"textmatrix",{Arg(Value::integer(1)),Arg(Value::integer(1))}).string()==u"Cell");
   auto tab=std::dynamic_pointer_cast<MacControl>(form->controls.at("c21"));tab->items("tabs")->invoke(rt,"add",{Arg(Value::missing()),Arg(Value::string(u"one")),Arg(Value::string(u"One"))});assert([(NSTabView*)tab->widget numberOfTabViewItems]==1);
   checkNativeEditing(rt,host,form);
+  checkNativePictures(rt,host,form);
   int32_t old=edit->handle;rt.unload(form);assert(!host.handles.find(old));
   std::cout<<"APPKIT_CONFORMANCE_OK controls="<<types.size()<<"\n";
 }}
