@@ -114,6 +114,16 @@ export function createFigmaAssets(workspace){
     if(old&&announce)status.textContent='Asset placement cancelled. No controls were added.';
     if(old?.kind==='keyboard'&&old.opener?.isConnected)old.opener.focus({preventScroll:true});
   }
+  /** Unwind the gesture before error reporting opens an inert modal. A failed
+   * validation/capture is cancellation, not a successful drop: restore its
+   * automatic viewport pan while the session still owns that offset. */
+  function runGesture(action,{settle=false}={}){
+    return workspace.safe(()=>{
+      try{return action();}
+      catch(error){cancel();throw error;}
+      finally{if(settle)cancel(false);}
+    });
+  }
   function drop(event){
     if(!valid()){cancel();return;}
     const hit=locate(event),session=drag;if(!hit){cancel();return;}
@@ -145,23 +155,28 @@ export function createFigmaAssets(workspace){
   }
   listen(ide.toolboxGrid,'dragstart',event=>{
     const b=event.target.closest('[data-control-type]');if(!b)return;
-    if(!event.dataTransfer||!start(b.dataset.controlType,'native',b)){event.preventDefault();return;}
-    event.dataTransfer.effectAllowed='copy';event.dataTransfer.setData(FIGMA_ASSET_MIME,drag.nonce);move(event);
+    const started=runGesture(()=>{
+      if(!event.dataTransfer||!start(b.dataset.controlType,'native',b))return false;
+      event.dataTransfer.effectAllowed='copy';event.dataTransfer.setData(FIGMA_ASSET_MIME,drag.nonce);move(event);return true;
+    });
+    if(!started)event.preventDefault();
   });
   listen(doc,'dragover',event=>{if(drag?.kind!=='native')return;event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect=locate(event)?'copy':'none';move(event);},{capture:true});
   listen(doc,'drop',event=>{
     if(drag?.kind!=='native')return;event.preventDefault();event.stopImmediatePropagation();
     if(event.dataTransfer?.getData(FIGMA_ASSET_MIME)!==drag.nonce){cancel();return;}
-    workspace.safe(()=>{try{drop(event);}finally{cancel(false);}});
+    runGesture(()=>drop(event),{settle:true});
   },{capture:true});
   // Native Escape may deliver dragend without a key event to the document.
   // A successful drop already released its session; remaining sessions cancel.
   listen(doc,'dragend',()=>cancel(),{capture:true});
   listen(ide.toolboxGrid,'pointerdown',event=>{
     const grip=event.target.closest('[data-asset-grip]');if(!grip||event.button!==0||event.isPrimary===false)return;
-    if(!start(grip.dataset.assetGrip,'pointer',grip))return;
-    event.preventDefault();event.stopPropagation();drag.pointerId=event.pointerId;drag.start={x:event.clientX,y:event.clientY};
-    ide.root.setPointerCapture(event.pointerId);
+    runGesture(()=>{
+      if(!start(grip.dataset.assetGrip,'pointer',grip))return;
+      event.preventDefault();event.stopPropagation();drag.pointerId=event.pointerId;drag.start={x:event.clientX,y:event.clientY};
+      ide.root.setPointerCapture(event.pointerId);
+    });
   });
   listen(doc,'pointermove',event=>{
     if(drag?.kind!=='pointer'||event.pointerId!==drag.pointerId)return;
@@ -173,18 +188,21 @@ export function createFigmaAssets(workspace){
   listen(doc,'pointerup',event=>{
     if(drag?.kind!=='pointer'||event.pointerId!==drag.pointerId)return;
     event.preventDefault();event.stopPropagation();
-    workspace.safe(()=>{try{if(drag.moved)drop(event);else workspace.chooseTool(drag.type);}finally{cancel(false);}});
+    runGesture(()=>{if(drag.moved)drop(event);else workspace.chooseTool(drag.type);},{settle:true});
   },{capture:true});
   listen(doc,'pointercancel',event=>{if(drag?.kind==='pointer'&&event.pointerId===drag.pointerId)cancel();},{capture:true});
   listen(ide.root,'lostpointercapture',event=>{if(drag?.kind==='pointer'&&event.pointerId===drag.pointerId)cancel();});
   listen(ide.toolboxGrid,'click',event=>{if(event.target.closest('[data-asset-grip]')){event.preventDefault();event.stopImmediatePropagation();}},{capture:true});
   listen(ide.toolboxGrid,'keydown',event=>{
     const grip=event.target.closest('[data-asset-grip]');if(!grip||!['Enter',' '].includes(event.key)||drag)return;
-    event.preventDefault();event.stopPropagation();if(!start(grip.dataset.assetGrip,'keyboard',grip))return;
-    delete ide.root.dataset.figmaSidebar;
-    const r=drag.designer.formView.content.getBoundingClientRect(),s=drag.designer.root.getBoundingClientRect();
-    move({clientX:(Math.max(r.left,s.left)+Math.min(r.right,s.right))/2,clientY:(Math.max(r.top,s.top)+Math.min(r.bottom,s.bottom))/2});
-    drag.designer.root.focus({preventScroll:true});
+    event.preventDefault();event.stopPropagation();
+    runGesture(()=>{
+      if(!start(grip.dataset.assetGrip,'keyboard',grip))return;
+      delete ide.root.dataset.figmaSidebar;
+      const r=drag.designer.formView.content.getBoundingClientRect(),s=drag.designer.root.getBoundingClientRect();
+      move({clientX:(Math.max(r.left,s.left)+Math.min(r.right,s.right))/2,clientY:(Math.max(r.top,s.top)+Math.min(r.bottom,s.bottom))/2});
+      drag.designer.root.focus({preventScroll:true});
+    });
   });
   listen(doc,'keydown',event=>{
     if(!drag)return;
@@ -194,7 +212,7 @@ export function createFigmaAssets(workspace){
     if(!['Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Alt'].includes(event.key))return;
     event.preventDefault();event.stopImmediatePropagation();
     const point={...latest,altKey:event.altKey};if(!Number.isFinite(point.clientX))return;
-    if(event.key==='Enter'){workspace.safe(()=>{try{drop(point);}finally{cancel(false);}});return;}
+    if(event.key==='Enter'){runGesture(()=>drop(point),{settle:true});return;}
     const step=(event.shiftKey?10:1)*(Number(drag.designer.settings.gridSize)||120)/15*drag.designer.zoom;
     point.clientX+=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0;
     point.clientY+=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;move(point);

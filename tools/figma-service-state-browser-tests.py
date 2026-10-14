@@ -122,6 +122,82 @@ class ServiceState(base.ServicesAssets):
         self.done()
 
 
+
+    def test_rejected_native_drop_restores_pan_and_releases_session(self):
+        self.assert_rejected_drop_cleanup('native')
+
+    def test_rejected_pointer_drop_restores_pan_and_releases_session(self):
+        self.assert_rejected_drop_cleanup('pointer')
+
+    def assert_rejected_drop_cleanup(self,kind):
+        self.enable()
+        source=self.asset('Label')
+        if kind=='pointer':source=self.page.get_by_role('button',name='Place Label on designer',exact=True)
+        source.hover();r=source.bounding_box()
+        viewport=self.page.locator('.designer-scroll[data-figma-viewport]').bounding_box()
+        before=self.snapshot();history=self.page.evaluate('vb6Studio.history.undoStack.length')
+        state=self.page.evaluate('vb6Studio.figmaMode.viewports.get(vb6Studio.designer).state')
+        # A registered component validator is allowed to reject insertion.
+        # Inject that failure, not synthetic application drag/drop events.
+        self.page.evaluate("""()=>{
+          const registry=vb6Studio.controlRegistry;
+          window.originalAssetValidation=registry.validateProperties;
+          registry.validateProperties=function(type,values){
+            if(type==='Label')throw new Error('Test component rejected insertion');
+            return window.originalAssetValidation.call(this,type,values);
+          };
+        }""")
+        self.page.mouse.move(r['x']+r['width']/2,r['y']+20);self.page.mouse.down()
+        self.page.mouse.move(r['x']+r['width']/2+10,r['y']+30,steps=3)
+        self.page.mouse.move(viewport['x']+viewport['width']-8,viewport['y']+viewport['height']/2,steps=10)
+        self.page.mouse.move(viewport['x']+viewport['width']-7,viewport['y']+viewport['height']/2)
+        self.page.wait_for_function('x=>vb6Studio.figmaMode.viewports.get(vb6Studio.designer).state.x<x-20',arg=state['x'])
+        target=self.page.locator('.mdi-active .vb-form-content').bounding_box()
+        x,y=target['x']+30,target['y']+target['height']-30
+        self.page.mouse.move(x,y,steps=5);self.page.mouse.move(x+1,y);self.page.mouse.up()
+        dialog=self.page.get_by_role('dialog',name='Figma workspace',exact=True)
+        expect(dialog).to_be_visible();expect(dialog).to_contain_text('Test component rejected insertion')
+        self.assertFalse(self.page.evaluate('vb6Studio.figmaMode.ui.assets.active'))
+        expect(self.page.locator('.figma-asset-ghost')).not_to_be_visible()
+        restored=self.page.evaluate('vb6Studio.figmaMode.viewports.get(vb6Studio.designer).state')
+        self.assertAlmostEqual(restored['x'],state['x'],places=4)
+        self.assertAlmostEqual(restored['y'],state['y'],places=4)
+        self.assertEqual(self.snapshot(),before)
+        self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),history)
+        self.page.wait_for_timeout(150)
+        self.assertEqual(self.page.evaluate('vb6Studio.figmaMode.viewports.get(vb6Studio.designer).state'),restored)
+        self.page.evaluate('void (vb6Studio.controlRegistry.validateProperties=window.originalAssetValidation)')
+        dialog.get_by_role('button',name='OK',exact=True).click()
+        self.drop_asset('Label','.mdi-active .vb-form-content',450,5400)
+        self.assertEqual(self.inserted()['type'],'Label')
+        self.page.evaluate('void vb6Studio.command("undo")');self.assertEqual(self.snapshot(),before)
+        self.done()
+
+    def test_failed_pointer_capture_reports_error_and_allows_next_placement(self):
+        self.enable();self.asset('TextBox')
+        before=self.snapshot();history=self.page.evaluate('vb6Studio.history.undoStack.length')
+        self.page.evaluate("""()=>{
+          const root=vb6Studio.root;window.originalAssetCapture=root.setPointerCapture;
+          root.setPointerCapture=function(){throw new DOMException('Test pointer is no longer active','NotFoundError');};
+        }""")
+        grip=self.page.get_by_role('button',name='Place TextBox on designer',exact=True)
+        r=grip.bounding_box();self.page.mouse.move(r['x']+r['width']/2,r['y']+20);self.page.mouse.down();self.page.mouse.up()
+        dialog=self.page.get_by_role('dialog',name='Figma workspace',exact=True)
+        expect(dialog).to_be_visible();expect(dialog).to_contain_text('Test pointer is no longer active')
+        self.assertFalse(self.page.evaluate('vb6Studio.figmaMode.ui.assets.active'))
+        expect(self.page.locator('.figma-asset-ghost')).not_to_be_visible()
+        self.assertEqual(self.snapshot(),before)
+        self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),history)
+        self.page.evaluate('void (vb6Studio.root.setPointerCapture=window.originalAssetCapture)')
+        dialog.get_by_role('button',name='OK',exact=True).click()
+        r=grip.bounding_box();target=self.page.locator('.mdi-active .vb-form-content').bounding_box()
+        self.page.mouse.move(r['x']+r['width']/2,r['y']+20);self.page.mouse.down()
+        self.page.mouse.move(target['x']+30,target['y']+target['height']-30,steps=10);self.page.mouse.up()
+        self.assertEqual(self.inserted()['type'],'TextBox')
+        self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),history+1)
+        self.done()
+
+
 def load_tests(loader,standard,pattern):
     return unittest.TestSuite(ServiceState(name) for name in sorted(ServiceState.__dict__) if name.startswith('test_'))
 if __name__=='__main__':unittest.main(verbosity=2)
