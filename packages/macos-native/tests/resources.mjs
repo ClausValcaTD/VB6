@@ -1,4 +1,5 @@
 /** Portable RES/FRX fixtures; no platform image generation or proprietary assets. */
+import {multiPictureBytes} from './picture-frames.mjs';
 import {setResource,setResourceString} from '../../../src/project/res.js';
 import {toBase64,writeFRXRecord} from '../../../src/project/frx.js';
 export function bitmapBytes(){
@@ -76,8 +77,8 @@ export function resourceFormProject(){
   p.assets={'Forms/Form1.frx':{encoding:'base64',data:toBase64(frx)}};
   const rectangle={Left:0,Top:0,Width:1800,Height:900,Visible:true,Enabled:true};
   const model=(name,type,properties)=>({name,type,properties:{...rectangle,...properties}});
-  p.modules.push({name:'Form1',kind:'form',sourcePath:'Forms/Form1.frm',form:{name:'Form1',type:'Form',properties:{Caption:'Native resource fidelity',ClientWidth:4500,ClientHeight:3000,Icon:'data:image/x-icon;base64,'+toBase64(iconBytes())},controls:[
-    model('Image1','Image',{Stretch:true,Picture:{resource:'Form1.frx',offset:'0000'},MousePointer:99,MouseIcon:'data:image/x-cursor;base64,'+toBase64(iconBytes(true))}),
+  p.modules.push({name:'Form1',kind:'form',sourcePath:'Forms/Form1.frm',form:{name:'Form1',type:'Form',properties:{Caption:'Native resource fidelity',ClientWidth:4500,ClientHeight:3000,Icon:'data:image/x-icon;base64,'+toBase64(multiPictureBytes())},controls:[
+    model('Image1','Image',{Stretch:true,Picture:{resource:'Form1.frx',offset:'0000'},MousePointer:99,MouseIcon:'data:image/x-cursor;base64,'+toBase64(multiPictureBytes(true))}),
     model('Picture1','PictureBox',{Picture:{resource:'Form1.frx',offset:'0000'}}),
     model('Button1','CommandButton',{Caption:'Picture button',Picture:{resource:'Form1.frx',offset:'0000'},Style:1}),
     model('Text1','TextBox',{MultiLine:true,Text:{resource:'Form1.frx',offset:pic.length,text:true}}),
@@ -89,6 +90,12 @@ export function resourceFormProject(){
   Debug.Assert Button1.Picture.Handle <> 0
   Debug.Assert Me.Icon.Type = 3
   Debug.Assert Image1.MouseIcon.Type = 3
+  SavePicture Me.Icon, "native-all-icon-frames.ico"
+  Debug.Assert FileLen("native-all-icon-frames.ico") = ${multiPictureBytes().length}
+  Kill "native-all-icon-frames.ico"
+  SavePicture Image1.MouseIcon, "native-all-cursor-frames.cur"
+  Debug.Assert FileLen("native-all-cursor-frames.cur") = ${multiPictureBytes(true).length}
+  Kill "native-all-cursor-frames.cur"
   Debug.Assert Text1.Text = "Résumé" & vbCrLf & "Resource text"
   Debug.Assert List1.ListCount = 2
   Debug.Assert List1.List(1) = "Bêta"

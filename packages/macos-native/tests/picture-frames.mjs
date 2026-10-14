@@ -1,4 +1,21 @@
 /** Deterministic multi-resolution ICO/CUR fixture, independent of native codecs. */
+import {fromBase64} from '../../../src/project/frx.js';
+// Opaque white RGBA PNG, 256x256, independently encoded with zlib.
+const png256=[
+  'iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAACWUlEQVR42u3UMQEAAAzCMPyb',
+  'BgNzsERCj6bAW5EADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAA',
+  'AAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMAAwAMADAAwAAAAwAMADAA',
+  'wAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAA',
+  'wAAAAwAMADAAwAAAAwADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwA',
+  'MADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAMADAAwAMAAAAMA',
+  'DAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMA',
+  'DAAwAMAAAAMADAAwAMAAAAMAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAA',
+  'AwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwAMADAAwAAAAwADAAwAMADA',
+  'AAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADAAAADAAwAMADA',
+  'AAADAAwAMADAAAADAAwAMADAAAADAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAw',
+  'AMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMADAAwAMAAAAMALgPmUDvF0QYlBwAA',
+  'AABJRU5ErkJggg==',
+].join('');
 export function multiPictureBytes(cursor = false) {
   const sizes = [16, 32, 64, 256], entries = [];
   for (const [i, size] of sizes.entries()) {
@@ -8,7 +25,7 @@ export function multiPictureBytes(cursor = false) {
     view.setUint16(12, 1, true); view.setUint16(14, 32, true);
     const rgb = [[255, 0, 0], [0, 255, 0], [0, 0, 255], [255, 255, 255]][i];
     for (let j = 0; j < size * size; j++) bytes.set([rgb[2], rgb[1], rgb[0], 255], 40 + j * 4);
-    entries.push({size, bytes, x: i + 1, y: i + 3});
+    entries.push({size, bytes: size === 256 ? fromBase64(png256) : bytes, x: i + 1, y: i + 3});
   }
   const dataStart = 6 + 16 * entries.length;
   const out = new Uint8Array(dataStart + entries.reduce((sum, entry) => sum + entry.bytes.length, 0));
