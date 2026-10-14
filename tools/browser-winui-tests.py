@@ -5,7 +5,11 @@ Default transport is real HTTP. VB6_TEST_TRANSPORT=memory permits restricted
 local runs and labels that limitation explicitly. Existing application-theme
 suites retain their independent HTTP persistence and file-launch requirements.
 """
+import base64
 import functools
+import re
+from io import BytesIO
+from PIL import Image
 import http.server
 import json
 import os
@@ -14,7 +18,7 @@ import shutil
 import subprocess
 import threading
 import unittest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = os.environ.get('VB6_BROWSER', 'chromium')
@@ -72,13 +76,73 @@ class WinUI(unittest.TestCase):
   self.page.evaluate('async ([n,k,v])=>{vb6Application.forms[0].controls.find(c=>c.model.name===n).set(k,v);await new Promise(requestAnimationFrame);}',[name,key,value])
  def color(self,value):return self.page.evaluate('v=>{const n=document.createElement("span");n.style.color=v;document.body.append(n);const c=getComputedStyle(n).color;n.remove();return c;}',value)
  def css(self,node,key):return node.evaluate('(n,k)=>getComputedStyle(n)[k]',key)
- def expect_color(self,node,key,value):self.assertEqual(self.css(node,key),self.color(value))
+ def expect_color(self,node,key,value):
+  # Pointer/style/compositor updates are asynchronous in WebKit. Keep exact
+  # channel values and the existing timeout, but observe the requested state
+  # instead of sampling one arbitrary frame (including an in-flight transition).
+  property_name=re.sub(r'[A-Z]',lambda m:'-'+m[0].lower(),key)
+  expect(node).to_have_css(property_name,self.color(value),timeout=10000)
  def record(self,**values):self.results.append({'test':self._testMethodName,**values})
+ def pixel(self,node,x,y):
+  image=Image.open(BytesIO(node.screenshot(animations='disabled'))).convert('RGBA')
+  return image.getpixel((x,y))
+ def test_late_form_and_picture_drawing_remain_below_controls_after_zorder(self):
+  # A DOM-visible/clickable control can still be completely painted over by a
+  # pointer-events:none canvas. Check the actual composited screenshot pixels.
+  self.page.evaluate("""async()=>{
+   const f=vb6Application.forms[0],find=n=>f.controls.find(c=>c.model.name===n);
+   const c=find('CommandButton1'),p=find('PictureBox1'),t=f.Controls.Add('TextBox','PaintText',p);
+   c.set('BackColor',0x336699);c.set('Default',0);t.set('BackColor',0x563412);
+   // Exercise the real PictureBox container API, not only a reparented DOM node.
+   t.set('Visible',-1);t.Move(300,300,1800,420);
+   await new Promise(requestAnimationFrame);
+   globalThis.paintControls={f,c,p,t};globalThis.paintBounds=[c,p,t].map(x=>[x.props.Left,x.props.Top,x.props.Width,x.props.Height]);
+   f.draw('rect',[0,0,100000,100000],0x00ff00,true);
+   p.draw('rect',[0,0,100000,100000],0x0000ff,true);
+   await new Promise(requestAnimationFrame);
+  }""")
+  command=self.node('CommandButton1');picture=self.node('PictureBox1');text=self.node('PaintText')
+  self.assertEqual(text.evaluate('n=>n.parentNode.dataset.control'),'PictureBox1')
+  for theme in ['classic','standard','contrast','fluent','fluent-dark','macos26','macos26-dark','x11','x11-dark']:
+   self.theme(theme)
+   for z in [1,0,1]:
+    self.page.evaluate('z=>{paintControls.c.ZOrder(z);paintControls.t.ZOrder(z);}',z)
+    self.assertEqual(self.pixel(command,15,12),(153,102,51,255),f'{theme}: command covered at ZOrder {z}')
+    self.assertEqual(self.pixel(text,90,12),(18,52,86,255),f'{theme}: nested text covered at ZOrder {z}')
+    self.assertEqual(self.pixel(picture,240,90),(255,0,0,255),f'{theme}: PictureBox drawing hidden')
+    self.assertEqual(self.pixel(self.page.locator('.vb-form-content').first,1180,1540),(0,255,0,255),f'{theme}: form drawing hidden')
+   self.assertTrue(self.page.evaluate('JSON.stringify(paintBounds)===JSON.stringify([paintControls.c,paintControls.p,paintControls.t].map(x=>[x.props.Left,x.props.Top,x.props.Width,x.props.Height]))'))
+   self.record(theme=theme,lateFormAndPictureDrawing=True,zOrders=[1,0,1],compositedPixels=True)
+  command.click()
+  self.page.wait_for_function('vb6Application.forms[0].controls.find(c=>c.model.name==="Label1").get("Caption")==="Clicked"')
+  self.page.screenshot(path=str(REPORT/'drawing-behind-controls.png'))
+ def test_gpu_overlay_dom_order_is_retained_inside_isolated_drawing_hosts(self):
+  # Synthetic two-plane composition tests the CSS contract, not GPU execution.
+  # Real WebGPU/WebGL2 execution stays in the separate required CI matrix.
+  self.page.evaluate("""()=>{
+   const host=document.createElement('div');host.id='paint-planes';host.className='vb-picture';
+   host.style.cssText='position:fixed;left:20px;top:20px;width:120px;height:100px;border:0;border-radius:0;background:#ffff00;z-index:9999';
+   const control=document.createElement('div');control.className='vb-control';control.style.cssText='left:10px;top:10px;width:20px;height:20px;background:#0000ff';host.append(control);
+   const gpu=document.createElement('canvas'),overlay=document.createElement('canvas');
+   for(const c of [gpu,overlay]){c.width=120;c.height=100;c.className='graphics-surface';c.style.cssText='position:absolute;inset:0;width:120px;height:100px;pointer-events:none';}
+   gpu.getContext('2d').fillStyle='#00ff00';gpu.getContext('2d').fillRect(0,0,120,100);
+   overlay.style.zIndex='1';overlay.getContext('2d').fillStyle='#ff0000';overlay.getContext('2d').fillRect(60,0,60,100);
+   host.append(gpu,overlay);document.body.append(host);
+   // Simulate the same operation as VB ZOrder-to-back after both planes exist.
+   host.prepend(control);
+  }""")
+  host=self.page.locator('#paint-planes')
+  self.assertEqual(self.pixel(host,20,20),(0,0,255,255))
+  self.assertEqual(self.pixel(host,40,50),(0,255,0,255))
+  self.assertEqual(self.pixel(host,80,50),(255,0,0,255))
+  self.assertEqual(host.locator('canvas').evaluate_all('nodes=>nodes.map(n=>getComputedStyle(n).zIndex)'),['-1','-1'])
+  self.record(simulatedGpuOverlay=True,transparentOverlayPreservesBase=True,controlPaintsAboveBoth=True)
  def test_standard_and_accent_command_state_brushes(self):
   button=self.node('CommandButton1')
   for theme,r in RESOURCE.items():
    for accent in [False,True]:
     self.theme(theme);self.set('CommandButton1','Default',-1 if accent else 0);self.set('CommandButton1','Enabled',-1)
+    self.page.wait_for_function("!document.querySelector('[data-control=CommandButton1]').matches(':hover')")
     self.expect_color(button,'backgroundColor',r['accent' if accent else 'fill']);self.expect_color(button,'color',r['accentInk' if accent else 'ink'])
     self.assertEqual(self.css(button,'borderTopWidth'),'1px');self.assertEqual(self.css(button,'padding'),'5px 11px 6px')
     button.hover();self.expect_color(button,'backgroundColor',f'color-mix(in srgb, {r["accent"]} 90%, transparent)' if accent else r['hover'])
@@ -273,6 +337,43 @@ class WinUI(unittest.TestCase):
    self.assertEqual(root.get_attribute('data-vb-theme'),'classic')
    self.assertEqual(root.evaluate('e=>getComputedStyle(e).getPropertyValue("--winui-CheckSize").trim()'),'')
    self.record(theme=theme,ideCheckSize=20,nestedClassicReset=True)
+ def test_native_capture_samples_actual_png_at_fractional_display_scales(self):
+  # Exercise the exact Electron smoke sampler in a browser, without Electron
+  # IPC privileges. This tests PNG decoding/coordinate mapping, NOT WinUI goldens.
+  functions=json.loads(subprocess.check_output(['node','-e',
+   'const h=require("./desktop/smoke.cjs");console.log(JSON.stringify({oracle:h.nativePaintOracle.toString(),sample:h.sampleCapturedPng.toString()}))'],cwd=ROOT))
+  for dpr in [1,1.25,2]:
+   context=self.browser.new_context(viewport={'width':1440,'height':1700},device_scale_factor=dpr,reduced_motion='reduce')
+   try:
+    page=context.new_page();page.on('pageerror',lambda e:self.errors.append(str(e)))
+    self.load(page,FIXTURE);page.wait_for_function('typeof vb6Application === "object"')
+    # The smoke fixture names its TextBox Text1; reuse the real gallery control.
+    page.locator('[data-control="TextBox1"]').evaluate('e=>e.dataset.control="Text1"')
+    prior=None
+    for theme in ['classic','standard','contrast','fluent','fluent-dark','macos26','macos26-dark','x11','x11-dark']:
+     face=page.evaluate("""async t=>{
+      vb6Application.setTheme(t,{reduceMotion:true});
+      vb6Application.forms[0].draw('rect',[5,5,60,40],255,true);
+      await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+      return VB6Runtime.RuntimeAPI.THEMES[t].colors.face;
+     }""",theme)
+     oracle=page.evaluate(functions['oracle'],face)
+     sample='args=>('+functions['sample']+')(args[0],args[1])'
+     png=page.screenshot(animations='disabled');encoded=base64.b64encode(png).decode('ascii')
+     points=page.evaluate(sample,[encoded,oracle])
+     self.assertTrue(points);self.assertTrue(all(p['expected']==p['actual'] for p in points),str(points))
+     if theme=='fluent-dark':
+      # Negative proof: a previous Light frame must not pass the Dark oracle.
+      stale=page.evaluate(sample,[prior,oracle])
+      self.assertTrue(any(p['expected']!=p['actual'] for p in stale),'stale frame accepted')
+      # A canvas can hide controls without changing their computed styles.
+      page.locator('[data-control="Text1"]').evaluate('e=>{const c=document.createElement("div");c.id="occlude-input";c.style.cssText="position:absolute;inset:0;background:#ff00ff;z-index:99;pointer-events:none";e.append(c)}')
+      covered=page.evaluate(sample,[base64.b64encode(page.screenshot(animations='disabled')).decode('ascii'),oracle])
+      self.assertTrue(any(p['name']=='unobscured text control' and p['expected']!=p['actual'] for p in covered),'occluded input accepted')
+      page.locator('#occlude-input').evaluate('e=>e.remove()')
+     prior=encoded
+     self.record(theme=theme,dpr=dpr,nativeSamplerExactPixels=True,nativeReference=False)
+   finally:context.close()
  def test_fractional_dpi_border_captures_are_repeatable(self):
   for dpr in [1,1.25,1.5,2]:
    context=self.browser.new_context(viewport={'width':1440,'height':1700},device_scale_factor=dpr,reduced_motion='reduce')

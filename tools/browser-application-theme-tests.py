@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import threading
 import unittest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE=os.environ.get('VB6_BROWSER','chromium')
 MEMORY=os.environ.get('VB6_TEST_TRANSPORT')=='memory'
@@ -69,7 +69,9 @@ class ApplicationThemes(unittest.TestCase):
    self.theme(theme);self.assertEqual(self.page.evaluate(BOUNDS),baseline,theme)
    self.assertTrue(self.page.evaluate('savedControls.every((n,i)=>n===document.querySelectorAll("#app .vb-control")[i])'))
    self.assertEqual(self.page.evaluate('JSON.stringify(vb6Application.project)'),project)
-   self.assertEqual(self.css('[data-control="TextBox1"] input','backgroundColor'),{'fluent':'rgba(255, 255, 255, 0.7)','fluent-dark':'rgba(255, 255, 255, 0.06)'}.get(theme,self.rgb(self.palettes[theme]['colors']['window'])))
+   # A fixed sleep can sample an in-flight WebKit transition under CI load.
+   # Await the same exact endpoint rather than accepting intermediate alpha.
+   expect(self.page.locator('[data-control="TextBox1"] input')).to_have_css('background-color',{'fluent':'rgba(255, 255, 255, 0.7)','fluent-dark':'rgba(255, 255, 255, 0.06)'}.get(theme,self.rgb(self.palettes[theme]['colors']['window'])),timeout=10000)
    self.assertEqual(self.css('[data-control="cmdRGB"]','backgroundColor'),'rgb(153, 102, 51)')
    self.assertEqual(self.css('[data-control="cmdRGB"]','color'),'rgb(255, 255, 255)')
    self.assertEqual(self.css('[data-control="OptionButton1"] input','borderRadius'),'0px' if theme.startswith('x11') else '50%')

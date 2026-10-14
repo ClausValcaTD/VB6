@@ -156,3 +156,33 @@ Microsoft documents the secondary focus border and its one-DIP default in
 [FocusVisualSecondaryThickness](https://learn.microsoft.com/en-us/windows/windows-app-sdk/api/winrt/microsoft.ui.xaml.frameworkelement.focusvisualsecondarythickness).
 The pinned RadioButton resource above maps normal, hover, pressed, and disabled
 glyph fill to `TextOnAccentFillColorPrimary`; no platform font is redistributed.
+
+
+## Painted-frame and drawing-layer regressions
+
+Form and PictureBox graphics can be allocated after their child controls. Their
+Canvas2D and WebGPU/overlay planes now share a negative stacking level inside an
+isolated drawing host, below controls but above the host background. This preserves
+GPU-before-overlay DOM order, alpha composition, authored control dimensions and
+VB `ZOrder` behavior. No pointer-event interception or per-frame observer is added.
+A DOM-visible/clickable input is not sufficient evidence: an otherwise transparent
+to-input canvas can still cover every pixel of it.
+
+Browser tests therefore sample real composited PNG pixels across all nine themes,
+both Form/PictureBox containers and repeated ZOrder changes, and execute an actual
+VB Click afterwards. The two-plane synthetic fixture tests stacking and alpha
+composition only; required real WebGPU/WebGL2 jobs remain separate.
+
+The native Electron smoke harness now retains a screenshot only after sampling
+that exact PNG for the current form palette and unobscured TextBox. It waits for
+renderer frames with bounded capture/inspection deadlines, records every mismatch,
+and fails on persistent stale/occluded pixels. The portable PNG sampler is also
+exercised at 1x, 1.25x and 2x with negative proofs for a stale Light frame under a
+Dark oracle and an opaque input overlay. Native bitmap channel ordering is not
+assumed. These are implementation-state/visibility probes, not independent native
+WinUI reference pixels; native pixel certification remains false.
+
+The WebKit regression retains exact brush values and bounded assertions. It awaits
+the requested pointer/style state rather than accepting an intermediate animated
+alpha from an arbitrary frame. No color tolerance, skipped failure or relaxed
+fingerprint is used to make a browser pass.
