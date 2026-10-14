@@ -5,7 +5,7 @@ const key = value => String(value).toLowerCase();
 const mem = memory => ({memory});
 const arg = argument => ({argument});
 const E = 'native:error:';
-const DESCRIPTIONS = new Map([[52,'Bad file name or number'],[54,'Bad file mode'],[55,'File already open'],[58,'File already exists'],[61,'Disk full'],[67,'Too many files'],[75,'Path/File access error'],[76,'Path not found'],[32755,'Cancel was selected'],[94,'Invalid use of Null'],[449,'Argument not optional'],[380,'Invalid property value'],[381,'Invalid property array index'],[35601,'Element not found'],[35602,'Key is not unique in collection'],[481,'Invalid picture'],[53,'File not found'],[70,'Permission denied'],[326,'Resource not found'],[3,'Return without GoSub'],[28,'Out of stack space'],[91,'Object variable or With block variable not set'],[5,'Invalid procedure call or argument'],[6,'Overflow'],[7,'Out of memory'],[9,'Subscript out of range'],[10,'This array is fixed or temporarily locked'],[11,'Division by zero'],[13,'Type mismatch'],[20,'Resume without error'],[340,'Control array element does not exist']]);
+const DESCRIPTIONS = new Map([[457,'This key is already associated with an element of this collection'],[52,'Bad file name or number'],[54,'Bad file mode'],[55,'File already open'],[58,'File already exists'],[61,'Disk full'],[67,'Too many files'],[75,'Path/File access error'],[76,'Path not found'],[32755,'Cancel was selected'],[94,'Invalid use of Null'],[449,'Argument not optional'],[380,'Invalid property value'],[381,'Invalid property array index'],[35601,'Element not found'],[35602,'Key is not unique in collection'],[481,'Invalid picture'],[53,'File not found'],[70,'Permission denied'],[326,'Resource not found'],[3,'Return without GoSub'],[28,'Out of stack space'],[91,'Object variable or With block variable not set'],[5,'Invalid procedure call or argument'],[6,'Overflow'],[7,'Out of memory'],[9,'Subscript out of range'],[10,'This array is fixed or temporarily locked'],[11,'Division by zero'],[13,'Type mismatch'],[20,'Resume without error'],[340,'Control array element does not exist']]);
 // Metadata is relative to the native VB procedure's EBP, before its user locals.
 const F = {previous:-4,stack:-8,dispatch:-12,handler:-16,active:-20,current:-24,next:-28,fault:-32,resumeNext:-36,line:-40,erl:-44,source:-48};
 const localStore = (x, offset) => x.emit(0x89,0x85).imm(offset);
@@ -40,6 +40,7 @@ export const nativeErrorMethods = {
     this.fail('Native Err supports Clear() and Raise(number, source, description, helpfile, helpcontext)');
   },
   errorCheckpoint(context, index, instruction) {
+    if(context.privateSkipCheckpoints)return;
     const x=this.x;
     localImmediate(x,F.current,context.label+':'+index);
     localImmediate(x,F.next,context.label+':'+(index+1));
@@ -68,7 +69,7 @@ export const nativeErrorMethods = {
   },
   enterErrorFrame(context) {
     const x=this.x;
-    for(const offset of Object.values(F))localImmediate(x,offset,0);
+    if(!context.nativeFrameZeroed)for(const offset of Object.values(F))localImmediate(x,offset,0);
     x.value(mem(E+'frame'));localStore(x,F.previous);
     x.emit(0x89,0xe8).store(E+'frame');
     x.emit(0x89,0xe0);localStore(x,F.stack);
@@ -111,6 +112,7 @@ export const nativeErrorMethods = {
 };
 
 export function emitNativeErrorHelpers(compiler) {
+  const descriptions=new Map([...DESCRIPTIONS,...(compiler.nativeAdditionalErrors||[])]);
   const x=compiler.x, unknown=x.unique(),sourceDone=x.unique();
   x.label(E+'clear').enter();
   for(const name of NATIVE_ERROR_TEXT_FIELDS)x.api('oleaut32.dll','SysFreeString',[mem(E+name+'-owner')]);
@@ -122,9 +124,9 @@ export function emitNativeErrorHelpers(compiler) {
   const valid=x.unique();
   x.label(E+'validate-number').test().branch('s',valid).compare(1).branch('l','error:5').compare(65535).branch('g','error:5').label(valid).emit(0xc3);
   x.label(E+'description-for');
-  for(const [number,text]of DESCRIPTIONS){const next=x.unique();x.compare(number).branch('ne',next).value(compiler.string(text)).emit(0xc3).label(next);}
+  for(const [number,text]of descriptions){const next=x.unique();x.compare(number).branch('ne',next).value(compiler.string(text)).emit(0xc3).label(next);}
   x.value(compiler.string('Application-defined or object-defined error')).emit(0xc3);
-  for(const number of DESCRIPTIONS.keys())x.label('error:'+number).value(number).jump(E+'raise');
+  for(const number of descriptions.keys())x.label('error:'+number).value(number).jump(E+'raise');
   x.label(E+'raise');
   const ordinary=x.unique();x.test().branch('s',ordinary).compare(1).branch('l',unknown).compare(65535).branch('le',ordinary).label(unknown).value(5).label(ordinary);
   x.push().call(E+'clear').emit(0x58).store(E+'number').call(E+'description-for').store(E+'description');
@@ -137,7 +139,7 @@ export function emitNativeErrorHelpers(compiler) {
   // Disable non-local transfers before constructing the final diagnostic itself.
   x.value(0).store(E+'frame');
   const fatalReady=x.unique();
-  for(const number of DESCRIPTIONS.keys()){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string('Run-time error '+number)).jump(fatalReady).label(next);}
+  for(const number of descriptions.keys()){const next=x.unique();x.value(mem(E+'number')).compare(number).branch('ne',next).value(compiler.string('Run-time error '+number)).jump(fatalReady).label(next);}
   x.value(compiler.string('Run-time error (application-defined)'));
   x.label(fatalReady).emit(0x89,0xc3).push(16).push(compiler.errorTitle).emit(0x53).push(0).invoke('user32.dll','MessageBoxW').api('kernel32.dll','ExitProcess',[mem(E+'number')]);
 }

@@ -40,13 +40,17 @@ for(const [type,event,itemType] of [['TreeView','NodeClick','Node'],['ListView',
     assert.throws(()=>compileWin32(source(type,event,'ByVal Item As Object',body)),/Borrowed|read-only|not lowered|not available|object/i);
   });
 }
-test('recognition does not mutate shared source declarations or silently accept arbitrary Object variables',()=>{
+test('borrowed item recognition does not mutate declarations or replace external Automation activation',()=>{
   const decl={name:'Item',parameter:true,type:'Object',byRef:false},module={form:{controls:[{name:'Tree',type:'TreeView',properties:{}}]}},proc={name:'Tree_NodeClick',params:[decl]};
   const result=nativeEventItemStorage({fail:m=>{throw new Error(m);}},decl,module,proc);
   assert.equal(decl.type,'Object');assert.equal(result.nativeItem.kind,'node');
   assert.equal(nativeEventItemStorage({},decl,module,{...proc,name:'Unrelated'}),null);
   const p=newProject('UnknownObject');p.modules[0].code='Private value As Object';
-  assert.throws(()=>compileWin32(p),/Native storage/);
+  assert.ok(compileWin32(p).bytes.length,'null Object slots may now own intrinsic control references');
+  p.modules[0].code+='\nSub Form_Load()\nSet value=CreateObject("Unknown.Component")\nEnd Sub';
+  const before=JSON.stringify(p),external=compileWin32(p);
+  assert.equal(JSON.stringify(p),before);
+  assert.ok(external.report.imports.some(i=>i.dll==='ole32.dll'&&i.symbol==='CoCreateInstance'),'external activation has its own real COM path, not a borrowed item alias');
 });
 test('With SelectedItem is lowered and selected item access is not an HWND caption read',()=>{
   const p=gallery();p.modules[0].code='Private Sub Form_Load()\nDim s As String\nWith TabStrip1.SelectedItem\n s=.Caption\nEnd With\nEnd Sub';
