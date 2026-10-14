@@ -40,3 +40,19 @@ export function multiPictureBytes(cursor = false) {
   }
   return out;
 }
+
+/** Compare every byte from the exported application's real Binary Get path.
+ * File length alone cannot detect a rewritten directory or corrupted hotspot. */
+export function pictureRoundTripCode(){return `Private Sub CheckPictureBytes(ByVal path As String, ByVal resourceName As String)
+  Dim expected() As Byte, actual() As Byte, file As Integer, i As Long
+  expected = LoadResData(resourceName, 10)
+  Debug.Assert FileLen(path) = UBound(expected) + 1
+  ReDim actual(0 To UBound(expected))
+  file = FreeFile
+  Open path For Binary As #file
+  Get #file, , actual
+  Close #file
+  For i = 0 To UBound(expected)
+    Debug.Assert actual(i) = expected(i)
+  Next i
+End Sub`;}
