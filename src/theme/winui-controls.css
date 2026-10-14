@@ -21,7 +21,7 @@
   --winui-control-background:var(--winui-AccentButtonBackground);
   --winui-control-foreground:var(--winui-AccentButtonForeground);
   --winui-control-elevation:var(--winui-AccentButtonElevation);
-  outline:var(--winui-DefaultOutline,1px solid var(--detail-focus-color,var(--vb-text)));
+  outline:var(--winui-DefaultOutline,1px var(--detail-default-outline-style,solid) var(--detail-focus-color,var(--vb-text)));
  }
  .vb-command.default-button:hover:not(.disabled):not(:disabled):not([aria-disabled=true]),.vb-dialog-actions .vb-default-button:hover:not(:disabled) {
   --winui-control-background:var(--winui-AccentButtonBackgroundPointerOver);
@@ -99,7 +99,7 @@
  }
  .vb-control :is(.vb-text-input,.vb-date-input) {padding:var(--winui-TextControlPadding,4px 5px);}
  .vb-control :is(.vb-text-input,.vb-combo-field,.vb-date-input):focus-visible,.vb-dialog input:not([type=checkbox]):not([type=radio]):focus-visible {
-  box-shadow:var(--winui-input-shadow,var(--app-hover-shadow,var(--vb-bevel-sunken)));
+  box-shadow:var(--winui-input-shadow,var(--app-input-focus-shadow,var(--vb-bevel-sunken)));
  }
  .vb-dialog input:not([type=checkbox]):not([type=radio]) {background:var(--winui-control-background,var(--vb-window));color:var(--winui-control-foreground,var(--vb-text));}
  .vb-control :is(.vb-text-input,.vb-combo-field,.vb-date-input)::placeholder,.vb-dialog input::placeholder {color:var(--winui-TextControlPlaceholderForeground,var(--vb-gray));opacity:1;}
@@ -109,11 +109,11 @@
   --winui-check-fill:var(--winui-CheckBackground);--winui-check-stroke:var(--winui-CheckBorder);
   --winui-check-glyph:var(--winui-CheckGlyph);
   width:var(--winui-CheckSize,13px);height:var(--winui-CheckSize,13px);
-  background-color:var(--winui-check-fill,var(--vb-window));
-  border-color:var(--winui-check-stroke,var(--vb-shadow) var(--vb-light) var(--vb-light) var(--vb-shadow));
-  box-shadow:var(--winui-CheckShadow,inset 1px 1px var(--vb-text));
+  background-color:var(--winui-check-fill,var(--app-check-rest-background,var(--vb-window)));
+  border-color:var(--winui-check-stroke,var(--app-check-rest-border,var(--vb-shadow) var(--vb-light) var(--vb-light) var(--vb-shadow)));
+  box-shadow:var(--winui-CheckShadow,var(--app-check-rest-shadow,inset 1px 1px var(--vb-text)));
  }
- .vb-check input[type=checkbox] {background-image:var(--winui-ScrollTrackImage,var(--vb-bevel-sunken-image));border-color:var(--winui-check-stroke,transparent);box-shadow:none;}
+ .vb-check input[type=checkbox] {background-image:var(--winui-ScrollTrackImage,var(--app-check-rest-image,var(--vb-bevel-sunken-image)));border-color:var(--winui-check-stroke,var(--app-check-rest-border,transparent));box-shadow:var(--winui-CheckShadow,var(--app-check-rest-shadow,none));}
  .vb-check input[type=checkbox]:is(:checked,:indeterminate,:disabled) {background-image:none;}
  .vb-check input:hover:not(:disabled) {--winui-check-fill:var(--winui-CheckBackgroundPointerOver);}
  .vb-check input:active:not(:disabled) {--winui-check-fill:var(--winui-CheckBackgroundPressed);--winui-check-stroke:var(--winui-CheckBorderPressed);}
@@ -125,27 +125,27 @@
  .vb-check input:disabled {--winui-check-fill:var(--winui-CheckBackgroundDisabled);--winui-check-stroke:var(--winui-CheckBorderDisabled);--winui-check-glyph:var(--winui-CheckGlyphDisabled);background-color:var(--winui-check-fill,var(--vb-face));}
  .vb-check input:is(:checked,:indeterminate):disabled {--winui-check-fill:var(--winui-AccentFillColorDisabled);--winui-check-stroke:var(--winui-CheckBorderDisabled);}
  .vb-check input[type=checkbox]:checked:not(:indeterminate)::after {
-  left:var(--winui-CheckGlyphInset,2px);top:var(--winui-CheckGlyphInset,2px);
-  width:var(--winui-CheckGlyphWidth,8px);height:var(--winui-CheckGlyphHeight,8px);
+  inset:var(--winui-CheckGlyphInset,var(--detail-check-mark-inset,2px auto auto 2px));
+  width:var(--winui-CheckGlyphWidth,var(--detail-check-mark-width,8px));height:var(--winui-CheckGlyphHeight,var(--detail-check-mark-height,8px));
   background:var(--winui-check-glyph,var(--app-check-mark,var(--vb-window-text)));
  }
  .vb-check input[type=checkbox]:indeterminate::after {
   left:var(--winui-CheckGlyphInset,3px);top:var(--winui-CheckMixedTop,3px);
   width:var(--winui-CheckGlyphWidth,5px);height:var(--winui-CheckMixedHeight,5px);
-  background:var(--winui-check-glyph,var(--app-check-mark,var(--vb-gray)));clip-path:none;
+  background:var(--winui-check-glyph,var(--detail-indeterminate-fill,var(--app-check-mark,var(--vb-gray))));clip-path:none;
  }
- .vb-check input[type=radio]:checked::after {inset:var(--winui-RadioInset,3px);background:var(--winui-RadioGlyph,var(--app-check-mark,var(--vb-window-text)));}
- .vb-check input[type=radio]:checked:hover:not(:disabled)::after {inset:var(--winui-RadioHoverInset,3px);}
- .vb-check input[type=radio]:checked:active:not(:disabled)::after {inset:var(--winui-RadioPressedInset,3px);}
+ .vb-check input[type=radio]:checked::after {inset:var(--winui-RadioInset,var(--detail-radio-mark-inset,3px));background:var(--winui-RadioGlyph,var(--app-check-mark,var(--vb-window-text)));}
+ .vb-check input[type=radio]:checked:hover:not(:disabled)::after {inset:var(--winui-RadioHoverInset,var(--detail-radio-mark-inset,3px));}
+ .vb-check input[type=radio]:checked:active:not(:disabled)::after {inset:var(--winui-RadioPressedInset,var(--detail-radio-mark-inset,3px));}
  .vb-check input:disabled::after {background:var(--winui-check-glyph,var(--vb-gray));}
  .vb-check input[type=checkbox]:checked:not(:indeterminate):disabled::after {background:var(--winui-check-glyph,var(--app-check-mark,var(--vb-window-text)));}
  .vb-check input[type=radio]:checked:disabled::after {background:var(--winui-RadioGlyph,var(--app-check-mark,var(--vb-window-text)));}
- .vb-check input[type=checkbox]:indeterminate:disabled::after {background:var(--winui-check-glyph,var(--app-check-mark,var(--vb-gray)));}
+ .vb-check input[type=checkbox]:indeterminate:disabled::after {background:var(--winui-check-glyph,var(--vb-gray));}
 
  .vb-popup-menu.classic-menu {padding:var(--winui-MenuPadding,2px);background-color:var(--winui-MenuBackground,var(--vb-face));font-size:var(--winui-MenuFontSize,11px);}
  .vb-popup-menu.classic-menu .popup-menu-item {height:var(--winui-MenuItemHeight,21px);min-height:var(--winui-MenuItemHeight,21px);padding:var(--winui-MenuItemPadding,1px 5px 1px 0);}
- .vb-popup-menu.classic-menu .popup-menu-item.menu-selected:not([aria-disabled=true]) {background:var(--winui-MenuHoverBackground,var(--vb-selection));color:var(--winui-MenuForeground,var(--vb-selection-text));}
- .vb-popup-menu.classic-menu .popup-menu-item.menu-selected:active:not([aria-disabled=true]) {background:var(--winui-MenuPressedBackground,var(--vb-selection));}
+ .vb-popup-menu.classic-menu .popup-menu-item.menu-selected:not([aria-disabled=true]) {background:var(--winui-MenuHoverBackground,var(--detail-menu-active-background,var(--vb-selection)));color:var(--winui-MenuForeground,var(--detail-menu-active-ink,var(--vb-selection-text)));}
+ .vb-popup-menu.classic-menu .popup-menu-item.menu-selected:active:not([aria-disabled=true]) {background:var(--winui-MenuPressedBackground,var(--detail-menu-active-background,var(--vb-selection)));}
  .vb-popup-menu.classic-menu .popup-menu-item[aria-disabled=true] {color:var(--winui-TextFillColorDisabled,var(--vb-gray));}
  .vb-combo-option.selected,.vb-lv-row.selected,.vb-tree-row.selected .vb-tree-label {
   background:var(--winui-SelectionBackground,var(--vb-selection));color:var(--winui-SelectionForeground,var(--vb-selection-text));
@@ -157,9 +157,11 @@
  .vb-progress {border-width:var(--winui-ProgressBorder,2px);padding:var(--winui-ProgressPadding,2px);border-radius:var(--winui-ProgressRadius,var(--app-radius,0));}
  .vb-progress-fill {border-radius:var(--winui-ProgressRadius,var(--app-radius,0));}
  .vb-range::-webkit-slider-runnable-track {height:var(--winui-RangeTrackHeight,4px);border-width:var(--winui-ProgressBorder,1px);border-radius:var(--winui-ProgressRadius,var(--app-radius,0));}
- .vb-range::-webkit-slider-thumb {width:var(--winui-RangeThumbSize,11px);height:var(--winui-RangeThumbSize,21px);margin-top:var(--winui-RangeThumbMargin,-10px);border-width:var(--winui-RangeThumbBorderWidth,1px);border-style:solid;border-color:var(--winui-RangeThumbBorderColor,var(--vb-light) var(--vb-dark) var(--vb-dark) var(--vb-light));border-radius:var(--winui-RangeThumbRadius,var(--app-radius,0));box-shadow:var(--winui-RangeThumbShadow,inset -1px -1px var(--vb-shadow));}
- .vb-range::-moz-range-track {height:var(--winui-RangeTrackHeight,revert);border-radius:var(--winui-ProgressRadius,var(--app-radius,revert));}
- .vb-range::-moz-range-thumb {width:var(--winui-RangeThumbSize,revert);height:var(--winui-RangeThumbSize,revert);box-sizing:border-box;border:var(--winui-RangeThumbRing,revert);border-radius:var(--winui-RangeThumbRadius,var(--app-radius,revert));box-shadow:var(--winui-RangeThumbShadow,none);}
+ .vb-range::-webkit-slider-thumb {width:var(--winui-RangeThumbSize,11px);height:var(--winui-RangeThumbSize,21px);margin-top:var(--winui-RangeThumbMargin,-10px);border-width:var(--winui-RangeThumbBorderWidth,1px);border-style:solid;border-color:var(--winui-RangeThumbBorderColor,var(--vb-light) var(--vb-dark) var(--vb-dark) var(--vb-light));border-radius:var(--winui-RangeThumbRadius,var(--app-radius,0));box-shadow:var(--winui-RangeThumbShadow,var(--app-range-thumb-shadow,var(--vb-bevel-raised)));}
+ .vb-range::-moz-range-track {height:var(--winui-RangeTrackHeight,var(--x11-range-track-size,revert));border-radius:var(--winui-ProgressRadius,var(--app-radius,revert));}
+ .vb-range::-moz-range-thumb {width:var(--winui-RangeThumbSize,var(--x11-range-width,revert));height:var(--winui-RangeThumbSize,var(--x11-range-height,revert));box-sizing:border-box;border:var(--winui-RangeThumbRing,var(--x11-range-border,revert));border-radius:var(--winui-RangeThumbRadius,var(--app-radius,revert));box-shadow:var(--winui-RangeThumbShadow,var(--app-range-thumb-shadow,none));}
+ .vb-vrange::-moz-range-thumb {width:var(--winui-RangeThumbSize,var(--x11-range-height,revert));height:var(--winui-RangeThumbSize,var(--x11-range-width,revert));}
+ .vb-vrange::-moz-range-track {width:var(--winui-RangeTrackHeight,var(--x11-range-track-size,revert));height:100%;}
 }
 /* Effects reset independently at application/IDE boundaries. No animation loop. */
 [data-vb-reduce-motion=true] {--winui-Duration:0s;}

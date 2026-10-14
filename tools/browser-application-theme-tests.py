@@ -12,6 +12,7 @@ import subprocess
 import threading
 import unittest
 from playwright.sync_api import expect, sync_playwright
+from x11_theme_checks import X11ApplicationChecks
 ROOT=Path(__file__).resolve().parents[1]
 ENGINE=os.environ.get('VB6_BROWSER','chromium')
 MEMORY=os.environ.get('VB6_TEST_TRANSPORT')=='memory'
@@ -21,7 +22,7 @@ THEMES=['fluent','fluent-dark','macos26','macos26-dark','x11','x11-dark']
 BOUNDS='''()=>{const root=vb6Application.forms[0].node,r=root.getBoundingClientRect();return [...root.querySelectorAll('.vb-control')].map(e=>{const b=e.getBoundingClientRect(),s=getComputedStyle(e);return [e.dataset.control,...[b.x-r.x,b.y-r.y,b.width,b.height].map(n=>Math.round(n*100)/100),s.fontFamily,s.fontSize,s.fontWeight];});}'''
 class Handler(http.server.SimpleHTTPRequestHandler):
  def log_message(self,*args):pass
-class ApplicationThemes(unittest.TestCase):
+class ApplicationThemes(X11ApplicationChecks, unittest.TestCase):
  @classmethod
  def setUpClass(cls):
   subprocess.run(['node','tools/build-theme-fixtures.mjs'],cwd=ROOT,check=True)

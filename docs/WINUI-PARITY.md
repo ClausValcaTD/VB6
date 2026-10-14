@@ -186,3 +186,15 @@ The WebKit regression retains exact brush values and bounded assertions. It awai
 the requested pointer/style state rather than accepting an intermediate animated
 alpha from an arbitrary frame. No color tolerance, skipped failure or relaxed
 fingerprint is used to make a browser pass.
+
+## Integration with shared platform detail roles
+
+The merged X11 fidelity work on main (`d0814313`) adds shared indicator, menu,
+range and focus roles. WinUI overrides consume those roles as their non-Fluent
+fallbacks instead of restoring historical hard-coded Classic values. In
+particular, X11 retains its 9-pixel square check mark, diamond radio inset,
+stippled mixed state, disabled gray ink, neutral active menus and range relief.
+Default-command elevation reads the WinUI shadow slot first so an X11 shared
+rule cannot erase Fluent's independent inner keyboard-focus stroke. The
+existing X11 state/pixel suite and WinUI focus/disabled-glyph suite are both
+retained: integration does not replace one family's assertions with the other.
