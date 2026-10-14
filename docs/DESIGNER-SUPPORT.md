@@ -58,6 +58,12 @@ state. Fixed-size control dimensions and omitted native dimensions are handled
 through shared capabilities/defaults. TabIndex edits reorder eligible controls
 without duplicate indices.
 
+Optional workspace and auto-layout tools handle root-capture events before the
+base designer handles plane-capture gestures. A consumed gesture must not start
+a second base transaction. Keyboard tools likewise run before base key handling.
+Double-click navigation resolves the actual control hit after pointer capture,
+including selection handles; background double-clicks target the form event.
+
 Property rows must be activated before their ellipsis buttons become visible,
 as in the existing compact Properties UI. The built-in collection dialogs edit
 private drafts; Cancel does not change the project. Tree node parent references
@@ -150,8 +156,9 @@ npm run test:designer:browser
 python tools/browser-html-retention.py
 ```
 
-`test:designer:browser` uses normal HTTP navigation and runs on the existing
-Chromium/Firefox/WebKit CI matrix. `--origin inline` runs the actual generated
+`test:designer:browser` uses normal HTTP navigation. The dedicated
+`Designer controls` workflow runs the complete Chromium/Firefox/WebKit matrix
+independently of the parallel existing IDE and auto-layout qualification. `--origin inline` runs the actual generated
 standalone IDE in-memory for restricted local environments. `--case` is only a
 local diagnosis filter; reports identify partial runs and CI does not use it.
 All failures remain failures; no browser policy is changed to make a test pass.

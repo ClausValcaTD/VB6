@@ -39,7 +39,7 @@ def case(name, fn):
         detail = fn(); RESULTS.append({'name': name, 'passed': True, 'detail': detail, 'ms': round((time.perf_counter()-start)*1000, 2)})
         print('PASS', name, flush=True)
     except Exception as e:
-        RESULTS.append({'name': name, 'passed': False, 'error': str(e)})
+        RESULTS.append({'name': name, 'passed': False, 'error': str(e), 'traceback': traceback.format_exc()})
         print('FAIL', name, str(e), flush=True); traceback.print_exc(limit=3)
     finally:
         for context in list(browser.contexts): context.close()
@@ -85,7 +85,7 @@ try:
             page=studio();load_fixture(page);before=model(page)
             tab(page,0).click();select_type(page,'SSTab');page.evaluate('vb6Studio.inspector.render()')
             check(model(page)==before, 'Opening/selecting/rendering modified the form');check(history(page)==0)
-            check(tab(page,0).inner_text()=='General')
+            expect(tab(page,0).locator('span')).to_have_text('General');expect(tab(page,0)).to_have_attribute('aria-label','General')
             return {'tabs':page.locator('[data-designer-tab]').count(), 'noOpHistory':history(page)}
         case('Read-only import, selection and inspector preserve native page records', initial)
 
@@ -180,7 +180,7 @@ try:
             page.get_by_label('Number of tabs',exact=True).fill('4');page.get_by_role('button',name='Apply tab count to preview').click()
             page.get_by_label('SSTab pages',exact=True).select_option('3');page.get_by_label('Page caption',exact=True).fill('New page')
             page.get_by_label('Page enabled',exact=True).uncheck();page.get_by_label('Page visible',exact=True).uncheck();ok_dialog(page)
-            check(page.evaluate('vb6Studio.activeModule.form.controls[0].properties.Tab')==3);check(tab(page,3).inner_text()=='New page');check(not tab(page,3).is_disabled())
+            check(page.evaluate('vb6Studio.activeModule.form.controls[0].properties.Tab')==3);expect(tab(page,3).locator('span')).to_have_text('New page');expect(tab(page,3)).to_have_attribute('aria-label','New page');check(not tab(page,3).is_disabled())
             check(page.locator('input[data-property="Tabs"]').input_value()=='4');check(history(page)==2)
             page.screenshot(path=str(OUT/'sstab-page-properties.png'))
         case('Built-in property pages edit count/captions/flags atomically and Cancel is inert', pages_dialog)
