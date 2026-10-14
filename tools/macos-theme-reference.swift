@@ -4,6 +4,12 @@
 import AppKit
 import Foundation
 
+// Keep the atlas dimensions independent of the runner's desktop resolution.
+// This changes window placement only; AppKit still draws every native view.
+final class ReferenceWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
 final class ReferenceCanvas: NSView {
     override var isFlipped: Bool { true }
     override func draw(_ dirtyRect: NSRect) {
@@ -27,13 +33,24 @@ struct Specimen {
 }
 
 enum ReferenceError: Error {
-    case wrongOS(Int), image(String), invalidImage(String), invalidArguments
+    case wrongOS(Int), image(String), invalidImage(String), invalidArguments, activation, atlasBounds
 }
 
 func settle(_ window: NSWindow) {
+    // A Foundation RunLoop alone does not dispatch the application's activation
+    // events. Drive the actual AppKit event queue, as NSApplication.run would.
+    let app = NSApplication.shared
+    let deadline = Date(timeIntervalSinceNow: 0.12)
+    while Date() < deadline {
+        if let event = app.nextEvent(matching: .any,
+                                     until: min(deadline, Date(timeIntervalSinceNow: 0.01)),
+                                     inMode: .default, dequeue: true) {
+            app.sendEvent(event)
+        }
+        app.updateWindows()
+    }
     window.contentView?.layoutSubtreeIfNeeded()
     window.displayIfNeeded()
-    RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.12))
 }
 
 func rectJSON(_ rect: NSRect) -> [String: Double] {
@@ -95,6 +112,8 @@ func main() throws {
     UserDefaults.standard.register(defaults: ["AppleAccentColor": 4])
     let app = NSApplication.shared
     app.setActivationPolicy(.regular)
+    // This command-line capture owns its event loop instead of calling run().
+    app.finishLaunching()
     let tableDelegate = ReferenceTable()
     var images = [[String: Any]]()
     var palettes = [String: Any]()
@@ -103,7 +122,7 @@ func main() throws {
     for (scheme, appearanceName) in [("light", NSAppearance.Name.aqua), ("dark", NSAppearance.Name.darkAqua)] {
         guard let appearance = NSAppearance(named: appearanceName) else { throw ReferenceError.image(scheme) }
         app.appearance = appearance
-        let window = NSWindow(contentRect: NSRect(x: 40, y: 40, width: 980, height: 840),
+        let window = ReferenceWindow(contentRect: NSRect(x: 40, y: 40, width: 980, height: 840),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -227,7 +246,10 @@ func main() throws {
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
         window.makeFirstResponder(primary)
-        settle(window)
+        let activationDeadline = Date(timeIntervalSinceNow: 5)
+        repeat { settle(window) } while (!app.isActive || !window.isKeyWindow) && Date() < activationDeadline
+        guard app.isActive, window.isKeyWindow else { throw ReferenceError.activation }
+        guard canvas.bounds.size == NSSize(width: 980, height: 840) else { throw ReferenceError.atlasBounds }
         for scale in [1, 2] {
             images.append(try capture(canvas, name: "\(scheme)-gallery", scale: scale, directory: destination))
             // Frame-view capture includes AppKit-owned title controls, not the
