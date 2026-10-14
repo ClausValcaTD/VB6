@@ -1,50 +1,83 @@
 name: Validate
-on:
+'on':
   push:
-    branches: [main]
-  pull_request:
-  workflow_dispatch:
+    branches:
+      - main
+  pull_request: null
+  workflow_dispatch: null
 permissions:
   contents: read
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: validate-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
 jobs:
-  # Keep the existing required-check name, but require both independent groups.
-  test:
+  hygiene:
+    name: Workflow and coverage audit
     runs-on: ubuntu-latest
-    timeout-minutes: 2
-    if: ${{ always() }}
-    needs: [core, core-browser]
-    steps:
-      - name: Require all core validation jobs to succeed
-        env:
-          CORE_RESULT: ${{ needs.core.result }}
-          BROWSER_RESULT: ${{ needs['core-browser'].result }}
-        run: test "$CORE_RESULT" = success && test "$BROWSER_RESULT" = success
-  core:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: Archive exact source for reproducible validation
-        run: git archive --format=zip HEAD -o /tmp/vb6-source.zip
-      - uses: actions/upload-artifact@v4
         with:
-          name: source-${{ github.sha }}
-          path: /tmp/vb6-source.zip
-          retention-days: 7
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: npm run build
+          cache: pip
+          cache-dependency-path: tools/ci/requirements-*.txt
+      - name: Validate CI runner and coverage invariants
+        run: |
+          python -m pip install -r tools/ci/requirements-checks.txt
+          python tools/ci/check.py
+          python tools/ci/test_run.py
+          python tools/ci/test_check.py
+          node --test tests/ci-gate.test.mjs
+      - name: Check Actions expressions and workflow structure with verified actionlint
+        run: |
+          curl --fail --location --silent --show-error --retry 2 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color -shellcheck= -pyflakes=
+      - name: Archive exact source once for reproducible validation
+        run: |
+          git archive --format=zip HEAD -o "$RUNNER_TEMP/vb6-source.zip"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/revision.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: source-${{ github.sha }}
+          path: |-
+            ${{ runner.temp }}/vb6-source.zip
+            ${{ runner.temp }}/revision.txt
+          if-no-files-found: error
+          retention-days: 7
+  node:
+    name: Node tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        shard:
+          - 1
+          - 2
+          - 3
+          - 4
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build checked products
+        run: npm run build
       - name: Initialize installed .NET SDK before parallel conformance tests
-        # Concurrent first-use NuGet migrations can race creating /tmp/.dotnet/shm.
-        # Initialize once; do not skip, serialize or retry the actual assertions.
-        # https://learn.microsoft.com/dotnet/core/tools/dotnet-new
         env:
           DOTNET_CLI_TELEMETRY_OPTOUT: '1'
           DOTNET_NOLOGO: '1'
@@ -52,11 +85,40 @@ jobs:
           if command -v dotnet >/dev/null 2>&1; then
             dotnet new console --dry-run --no-restore --output "$RUNNER_TEMP/vb6-dotnet-init"
           fi
-      - name: Complete Node suite with preserved failure output
+      - name: Execute each discovered test file in exactly one shard
         run: |
-          set -o pipefail
           mkdir -p reports/core-validation
-          npm test 2>&1 | tee reports/core-validation/node-tests.log
+          node --test --test-concurrency=2 --test-shard="${SHARD}/4" tests/*.test.mjs 2>&1 | tee "reports/core-validation/node-${SHARD}.log"
+        env:
+          SHARD: ${{ matrix.shard }}
+      - name: Verify generated outputs remain reproducible
+        run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: node-${{ matrix.shard }}
+          path: reports
+          if-no-files-found: error
+          retention-days: 7
+  packages:
+    name: Packages, ABI and benchmark contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tools/ci/requirements-*.txt
+      - name: Build reviewed products
+        run: npm run build
       - name: Verify checked IA-32 encodings against GNU assembler
         run: |
           node tools/verify-x86-encodings.mjs
@@ -65,203 +127,361 @@ jobs:
       - name: Independently extracted Intelligent UI package
         run: npm run pack:intelligent-ui
       - name: Type-check standalone Intelligent UI declarations
-        run: npm exec --yes --package=typescript@5.8.3 -- tsc --noEmit --strict --lib ES2023,DOM --module NodeNext --moduleResolution NodeNext packages/intelligent-ui/src/index.d.ts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: intelligent-ui-package
-          path: dist/packages/vb6-intelligent-ui-*.tgz*
-          if-no-files-found: error
-          retention-days: 7
+        run: npm exec --yes --package=typescript@5.8.3 -- tsc --noEmit --strict --lib ES2023,DOM --module NodeNext --moduleResolution
+          NodeNext packages/intelligent-ui/src/index.d.ts
       - name: Independently installed COM and Automation packages
         run: node tools/test-com-ole-packages.mjs
-      - uses: actions/upload-artifact@v4
-        with:
-          name: com-ole-packages
-          path: artifacts/com-ole
-          retention-days: 7
       - name: Independently extracted layout package and labelled solver benchmarks
         run: |
           npm run pack:layout
           npm run bench:layout
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: auto-layout-package-and-benchmarks
-          path: |
-            release/vb6-auto-layout-*.tgz
-            reports/layout/benchmark.json
-            reports/auto-layout/benchmark.json
-          retention-days: 7
       - name: Report retention and packaging regressions
         run: |
           python tools/test-report-retention.py
           python tools/test-package-notices.py
-      - name: Verify reproducible generated bundles
+      - name: Independently installed XAML package consumer
+        run: node tools/test-xaml-package.mjs
+      - name: Checked Decimal baseline microbenchmarks
+        run: node tools/benchmark-decimal.mjs
+      - name: Report generated fingerprints for review, without updating expectations
+        if: always()
+        run: |
+          mkdir -p reports/decimal
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {createHash} from 'node:crypto';
+          import {GENERATED_ARTIFACTS} from './tools/ide-artifacts.mjs';
+          const files=Object.fromEntries(GENERATED_ARTIFACTS.map(name=>{
+            const data=fs.readFileSync(name);
+            return [name,{bytes:data.length,sha256:createHash('sha256').update(data).digest('hex')}];
+          }));
+          const report=JSON.stringify({version:2,files},null,2)+'\n';
+          fs.writeFileSync('reports/decimal/generated-fingerprints.json',report);
+          console.log('FINGERPRINT_REPORT_BEGIN\n'+report+'FINGERPRINT_REPORT_END');
+          JS
+      - name: Rendering harness regressions
+        run: |
+          python -m pip install -r tools/ci/requirements-rendering.txt
+          python tools/test_rendering_pixels.py
+          python tools/test_rendering_capture.py
+          python tools/test_rendering_browser.py
+      - name: Verify generated outputs remain reproducible
         run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: core-validation-reports
-          path: reports
-          if-no-files-found: ignore
+          name: packages-and-contracts
+          path: |-
+            reports
+            artifacts/com-ole
+            dist/packages
+            release/vb6-auto-layout-*.tgz
+          if-no-files-found: error
           retention-days: 7
-  # Browser suites no longer share the Node/package job's 15-minute budget.
-  # All original scripts and their assertion deadlines remain unchanged.
   core-browser:
-    name: Core browser (${{ matrix.group }})
+    name: Core browser (${{ matrix.suite }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - group: runtime
-            scripts: browser-tests.py browser-language-parity.py
-          - group: features
-            scripts: browser-parity-tests.py browser-features-04.py recovery-browser-tests.py
-          - group: lifecycle
-            scripts: browser-finalization-05.py browser-boundaries-06.py
-          - group: intelligent-ui
-            scripts: intelligent-ui-browser-tests.py
+        suite:
+          - core-runtime
+          - core-parity
+          - core-recovery
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
         with:
-          python-version: '3.12'
-      - run: npm run build
-      - run: python -m pip install playwright==1.57.0
-      - run: python -m playwright install --with-deps chromium
-      - name: Resolve browser executable
-        run: |
-          python - <<'PYTHON' >> "$GITHUB_ENV"
-          from playwright.sync_api import sync_playwright
-          with sync_playwright() as p:
-              print('CHROMIUM_PATH=' + p.chromium.executable_path)
-          PYTHON
-      - name: Run every assigned suite and preserve failures
+          browser: chromium
+          profile: authoring
+          mesa: 'false'
+      - name: Run each assigned suite and retain all failures
+        run: python tools/ci/run.py "$SUITE"
         env:
-          SCRIPTS: ${{ matrix.scripts }}
-        run: |
-          set -o pipefail
-          mkdir -p reports/core-browser
-          status=0
-          for script in $SCRIPTS; do
-            python "tools/$script" 2>&1 | tee "reports/core-browser/$script.log" || status=$?
-          done
-          exit "$status"
-      - name: Verify reproducible generated bundles
+          SUITE: ${{ matrix.suite }}
+      - name: Verify generated outputs remain reproducible
         run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: core-browser-${{ matrix.group }}
+          name: core-browser-${{ matrix.suite }}
           path: reports
           if-no-files-found: error
           retention-days: 7
-  browser-windows:
+  browser:
+    name: Browser (${{ matrix.suite }}, ${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        browser: [chromium, firefox, webkit]
+        browser:
+          - chromium
+          - firefox
+          - webkit
+        suite:
+          - integration-controls
+          - integration-authoring
+          - intelligent-ui
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
         with:
-          node-version: 22
-      - uses: actions/setup-python@v5
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
         with:
-          python-version: '3.12'
-      - run: npm run build
-      - run: python -m pip install playwright==1.57.0 Pillow
-      - run: python -m playwright install --with-deps ${{ matrix.browser }}
-      - name: HTML retention, selection batching and stable presentation
+          browser: ${{ matrix.browser }}
+          profile: authoring
+          mesa: 'false'
+      - name: Run owned browser suites
+        run: python tools/ci/run.py "$SUITE"
         env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-html-retention.py
-      - name: HTML5 WebBrowser source API, isolated DOM, designer and deployment origins
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-webbrowser-tests.py
-      - name: Microsoft runtime EXE dialog, downloads and cancellation (synthetic compiler)
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-classic-export-tests.py
-      - name: Portable COM/OLE source and bundled runtime contracts
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-com-ole-tests.py
-      - name: Common HTTP, XML, ADO streams and DataEnvironment end-to-end contracts
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-common-automation-tests.py
-      - name: Detached browser windows over HTTP and file origins
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: npm run test:windows
-      - name: Optional IDE themes, runtime isolation and appearance persistence
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: npm run test:themes:browser
-      - name: Resolve Chromium for the existing layout harness
-        if: matrix.browser == 'chromium'
-        run: |
-          python - <<'PYTHON' >> "$GITHUB_ENV"
-          from playwright.sync_api import sync_playwright
-          with sync_playwright() as p:
-              print('CHROMIUM_PATH=' + p.chromium.executable_path)
-          PYTHON
-      - name: Opt-in layout panel, canvas transactions and advanced runtime exports
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: |
-          set -o pipefail
-          mkdir -p "reports/auto-layout/${VB6_BROWSER}"
-          npm run test:layout:browser 2>&1 | tee "reports/auto-layout/${VB6_BROWSER}/anchoring-tests.log"
-          npm run test:layout:designer 2>&1 | tee "reports/auto-layout/${VB6_BROWSER}/designer-tests.log"
-      - name: Application themes, control state and complete matching icon packs
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: npm run test:application-themes:browser
-      - name: Application caption popups, OS-state bridge and themed dialog focus
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: python tools/browser-native-caption-tests.py
-      - name: Download every sample from the IDE and reopen exact HTML bytes
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: npm run test:sample-exports
-      - name: Modular deployment exports, startup failures, persistence and CSP
-        env:
-          VB6_BROWSER: ${{ matrix.browser }}
-        run: npm run test:exporter:browser
+          SUITE: ${{ matrix.suite }}
+      - name: Verify generated outputs remain reproducible
+        run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: browser-windows-${{ matrix.browser }}
-          path: |
-            reports/html-retention/${{ matrix.browser }}
-            reports/browser-windows
-            reports/ide-themes
-            reports/application-themes/${{ matrix.browser }}
-            reports/win32-exports
-            reports/layout
-            reports/auto-layout
-            reports/exporter
-            reports/com-ole
-            reports/classic-export
-            reports/webbrowser/${{ matrix.browser }}
-          if-no-files-found: ignore
+          name: browser-${{ matrix.suite }}-${{ matrix.browser }}
+          path: reports
+          if-no-files-found: error
+          retention-days: 7
+  figma:
+    name: Figma (${{ matrix.browser }}, ${{ matrix.transport }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
+        transport:
+          - http
+          - file
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
+        with:
+          browser: ${{ matrix.browser }}
+          profile: authoring
+          mesa: ${{ matrix.browser == 'firefox' }}
+      - name: Agent, Assets, Code, properties and presentation
+        run: python tools/ci/run.py figma
+        env:
+          VB6_TEST_TRANSPORT: ${{ matrix.transport }}
+      - name: Verify generated outputs remain reproducible
+        run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: figma-${{ matrix.browser }}-${{ matrix.transport }}
+          path: reports
+          if-no-files-found: error
+          retention-days: 7
+  authoring-exports:
+    name: Designer and exports (${{ matrix.browser }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
+        with:
+          browser: ${{ matrix.browser }}
+          profile: authoring
+          mesa: 'false'
+      - name: XAML, SSTab and direct/native macOS browser exports
+        run: python tools/ci/run.py authoring-exports
+      - name: Verify generated outputs remain reproducible
+        run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authoring-exports-${{ matrix.browser }}
+          path: reports
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-direct-browser-${{ matrix.browser }}
+          path: reports/macos-aot-browser
+          if-no-files-found: error
+          retention-days: 7
+  advanced-build:
+    name: Build optional editor once
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: packages/advanced-editor/package-lock.json
+      - name: Build IDE and pinned self-hosted/offline editor
+        run: |
+          npm run build
+          npm ci --prefix packages/advanced-editor --ignore-scripts --no-audit --no-fund
+          node tools/build-advanced-editor.mjs
+          node --test tests/advanced-editor*.test.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: advanced-editor-assets
+          path: |-
+            dist/advanced-editor
+            dist/VB6-Studio-Web-Advanced.html
+          if-no-files-found: error
+          retention-days: 7
+  advanced-editor:
+    name: Advanced editor (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
+    needs:
+      - advanced-build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
+        with:
+          browser: ${{ matrix.browser }}
+          profile: authoring
+          mesa: 'false'
+      - uses: actions/download-artifact@v4
+        with:
+          name: advanced-editor-assets
+          path: dist
+      - name: Actual Monaco and Figma integration on both origins
+        run: python tools/ci/run.py advanced-editor
+      - name: Verify generated outputs remain reproducible
+        run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: advanced-editor-${{ matrix.browser }}
+          path: |-
+            reports/advanced-editor
+            reports/ci
+          if-no-files-found: error
+          retention-days: 7
+  rendering-qualification:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        backend:
+          - webgpu
+          - webgl2
+        display:
+          - headless
+          - headed
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
+        with:
+          browser: chromium
+          profile: rendering
+          mesa: 'true'
+      - name: Verify and select the installed browser for this display mode
+        run: |
+          python tools/test_rendering_browser.py
+          python tools/rendering_browser.py --display ${{ matrix.display }} >> "$GITHUB_ENV"
+      - name: Actual GPU API execution and exact theme pixels
+        env:
+          DISPLAY_MODE: ${{ matrix.display }}
+          REQUIRED_BACKEND: ${{ matrix.backend }}
+          RENDERING_BROWSER_FLAGS: --enable-gpu --ignore-gpu-blocklist --enable-features=Vulkan --use-webgpu-adapter=swiftshader
+            --disable-vulkan-surface --disable-gpu-rasterization
+        run: |
+          args=()
+          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
+          xvfb-run -a python tools/browser-rendering-tests.py --require-"$REQUIRED_BACKEND" --software-gpu "${args[@]}"
+        if: '!cancelled()'
+      - name: GPU selection, explicit retry and live Options diagnostics
+        env:
+          DISPLAY_MODE: ${{ matrix.display }}
+          REQUIRED_BACKEND: ${{ matrix.backend }}
+          RENDERING_BROWSER_FLAGS: --enable-gpu --ignore-gpu-blocklist --enable-features=Vulkan --use-webgpu-adapter=swiftshader
+            --disable-vulkan-surface --disable-gpu-rasterization
+        run: |
+          args=()
+          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
+          xvfb-run -a python tools/browser-rendering-recovery.py --require-"$REQUIRED_BACKEND" --software-gpu "${args[@]}"
+        if: '!cancelled()'
+      - name: Browser-disabled graphics and exact Canvas2D fallback pixels
+        if: '!cancelled() && (matrix.backend == ''webgpu'')'
+        env:
+          DISPLAY_MODE: ${{ matrix.display }}
+        run: |
+          args=()
+          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
+          xvfb-run -a python tools/browser-disabled-graphics.py "${args[@]}"
+      - name: Require every case and reproducible outputs
+        run: |
+          python tools/verify-rendering-report.py reports/rendering/report.json --backend ${{ matrix.backend }}
+          git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
+        if: '!cancelled()'
+      - name: Actual GPU transcript, marker pixels and hidden-content invariants
+        env:
+          DISPLAY_MODE: ${{ matrix.display }}
+          REQUIRED_BACKEND: ${{ matrix.backend }}
+          RENDERING_BROWSER_FLAGS: --enable-gpu --ignore-gpu-blocklist --enable-features=Vulkan --use-webgpu-adapter=swiftshader
+            --disable-vulkan-surface --disable-gpu-rasterization
+        run: |
+          args=()
+          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
+          xvfb-run -a python tools/browser-rendering-agent-thread.py --require-"$REQUIRED_BACKEND" --software-gpu "${args[@]}"
+        if: '!cancelled()'
+      - name: Visible Code glyphs on required GPU (HTTP and file)
+        run: python tools/ci/run.py code-gpu
+        env:
+          VB6_FIGMA_CODE_GPU: ${{ matrix.backend }}
+        if: '!cancelled() && matrix.display == ''headless'''
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rendering-${{ matrix.backend }}-${{ matrix.display }}
+          path: |-
+            reports/rendering
+            reports/figma-workspace
+            reports/ci
+          if-no-files-found: error
           retention-days: 7
   win32-system-contracts:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -312,18 +532,24 @@ jobs:
             reports/win32-system
             reports/layout/native
           retention-days: 7
-
+    defaults:
+      run:
+        shell: pwsh
   native-com-ole:
     runs-on: windows-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
-        architecture: [x86, x64]
+        architecture:
+          - x86
+          - x64
     env:
       VB6_COM_ARCH: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -352,12 +578,39 @@ jobs:
           path: reports/native-interop
           if-no-files-found: warn
           retention-days: 7
-
+      - name: Generate deterministic exact input fixtures
+        run: node tools/check-decimal-automation.mjs --generate
+        if: '!cancelled()'
+      - name: Execute real Windows Automation arithmetic
+        shell: pwsh
+        env:
+          REFERENCE_ARCH: ${{ matrix.architecture }}
+        run: |
+          $folder = if ($env:REFERENCE_ARCH -eq 'x86') { 'SysWOW64' } else { 'System32' }
+          $executable = Join-Path $env:windir "$folder/WindowsPowerShell/v1.0/powershell.exe"
+          & $executable -NoProfile -NonInteractive -File tools/decimal-automation-reference.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if: '!cancelled()'
+      - name: Check exact numeric values and native error codes
+        run: node tools/check-decimal-automation.mjs --check
+        if: '!cancelled()'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: decimal-automation-${{ matrix.architecture }}
+          path: reports/decimal
+          if-no-files-found: error
+          retention-days: 14
+    defaults:
+      run:
+        shell: pwsh
   native-compiler:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -383,116 +636,179 @@ jobs:
           name: native-optimizer-execution
           path: reports/native-optimizer
           retention-days: 7
-  rendering-qualification:
-    # WebGPU is the default UI backend: keep its regressions in the existing
-    # read-only test workflow, without reintroducing separate workflow files.
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+  migration:
     strategy:
       fail-fast: false
       matrix:
-        backend: [webgpu, webgl2]
-        display: [headless, headed]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: npm run build && npm run test:rendering
-      # Use the current stable Chromium oracle, not a replacement reference image.
-      # Preserve the complete 40-case suite and exact pixel thresholds. Native
-      # HTML captures in Chromium 144 alternated before any renderer comparison.
-      # https://github.com/microsoft/playwright-python/releases/tag/v1.63.0
-      - run: python -m pip install playwright==1.63.0 Pillow
-      - run: python tools/test_rendering_pixels.py
-      - run: python tools/test_rendering_capture.py
-      - run: python -m playwright install --with-deps chromium
-      - run: sudo apt-get update && sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
-      - name: Verify and select the installed browser for this display mode
-        run: |
-          python tools/test_rendering_browser.py
-          python tools/rendering_browser.py --display ${{ matrix.display }} >> "$GITHUB_ENV"
-      - name: Actual GPU API execution and exact theme pixels
-        env:
-          DISPLAY_MODE: ${{ matrix.display }}
-          REQUIRED_BACKEND: ${{ matrix.backend }}
-          # Software-driver correctness profile: use Vulkan presentation with
-          # no native Vulkan surface. Raster native HTML tiles on the CPU to
-          # avoid unstable fractional native control edges; the WebGPU/WebGL2
-          # painters, framebuffer readback and exact pixel gates still execute.
-          # These flags never ship in the IDE or physical-device measurements.
-          # https://github.com/vercel-labs/vgpu/issues/109
-          RENDERING_BROWSER_FLAGS: --enable-gpu --ignore-gpu-blocklist --enable-features=Vulkan --use-webgpu-adapter=swiftshader --disable-vulkan-surface --disable-gpu-rasterization
-        run: |
-          args=()
-          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
-          xvfb-run -a python tools/browser-rendering-tests.py --require-$REQUIRED_BACKEND --software-gpu "${args[@]}"
-      - name: GPU selection, explicit retry and live Options diagnostics
-        env:
-          DISPLAY_MODE: ${{ matrix.display }}
-          REQUIRED_BACKEND: ${{ matrix.backend }}
-          RENDERING_BROWSER_FLAGS: --enable-gpu --ignore-gpu-blocklist --enable-features=Vulkan --use-webgpu-adapter=swiftshader --disable-vulkan-surface --disable-gpu-rasterization
-        run: |
-          args=()
-          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
-          xvfb-run -a python tools/browser-rendering-recovery.py --require-$REQUIRED_BACKEND --software-gpu "${args[@]}"
-      - name: Browser-disabled graphics and exact Canvas2D fallback pixels
-        if: matrix.backend == 'webgpu'
-        env:
-          DISPLAY_MODE: ${{ matrix.display }}
-        run: |
-          args=()
-          if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
-          xvfb-run -a python tools/browser-disabled-graphics.py "${args[@]}"
-      - name: Require every case and reproducible outputs
-        run: |
-          python tools/verify-rendering-report.py reports/rendering/report.json --backend ${{ matrix.backend }}
-          git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: rendering-themes-${{ matrix.backend }}-${{ matrix.display }}
-          path: reports/rendering
-          retention-days: 14
-
-  intelligent-ui-browser:
-    name: Intelligent UI (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-dotnet@v4
         with:
-          python-version: '3.12'
+          dotnet-version: 10.0.x
       - run: npm run build
-      - run: python -m pip install playwright==1.57.0
-      - run: python -m playwright install --with-deps ${{ matrix.browser }}
-      - name: Intelligent UI on HTTP, file and real separate-origin sandbox
+      - name: Initialize .NET before parallel conformance tests
         env:
-          VB6_BROWSER: ${{ matrix.browser }}
-          DEBUG: pw:browser
-        run: |
-          # Collect both transport suites even when one fails; either failure
-          # still fails this job. Keep the installed browser/version and assertions.
-          status=0
-          python tools/intelligent-ui-browser-tests.py || status=$?
-          python tools/intelligent-ui-host-browser-tests.py || status=$?
-          exit "$status"
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+          DOTNET_NOLOGO: '1'
+        run: dotnet new console --dry-run --no-restore --output "${{ runner.temp }}/vb6-dotnet-init"
+      - name: Require real .NET compilation and execution
+        run: npm run test:migration
+        env:
+          VB6_REQUIRE_DOTNET: '1'
+      - run: npm run pack:vbnet-migration
+      - run: node tools/test-vbnet-package.mjs
+      - uses: actions/setup-python@v5
+        if: runner.os == 'Linux'
+        with:
+          python-version: '3.12'
+      - if: runner.os == 'Linux'
+        run: python -m pip install playwright==1.57.0
+      - if: runner.os == 'Linux'
+        run: python -m playwright install --with-deps chromium
+      - name: Verify actual HTTP IDE export and downloads
+        if: runner.os == 'Linux'
+        run: npm run test:migration:browser
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: intelligent-ui-${{ matrix.browser }}
+          name: vbnet-migration-${{ matrix.os }}
           path: |
-            reports/intelligent-ui
-            reports/intelligent-ui-host
+            reports/vbnet-migration
+            artifacts/vbnet-migration
           retention-days: 7
+    defaults:
+      run:
+        shell: bash
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - macos-14
+          - macos-15
+          - macos-26
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Archive exact source revision
+        run: |
+          mkdir -p artifacts/macos-aot
+          git rev-parse HEAD > artifacts/macos-aot/exact-head.txt
+          git archive --format=zip -o artifacts/macos-aot/source.zip HEAD
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Portable and actual AppKit runtime conformance
+        run: node tools/test-macos-native.mjs
+        if: matrix.os == 'ubuntu-24.04' || matrix.os == 'macos-15'
+      - name: ARM64 encoding, app packaging and tamper rejection
+        run: node tools/build-macos-native.mjs
+      - run: node --test tests/macos-arm64.test.mjs tests/macos-aot.test.mjs tests/macos-aot-package.test.mjs tests/macos-aot-isolated-package.test.mjs
+          tests/macos-aot-capacity.test.mjs tests/macos-aot-resize.test.mjs tests/macos-aot-optimizer.test.mjs tests/macos-distribution.test.mjs
+          tests/macos-distribution-cli.test.mjs
+      - name: Execute sanitized helper oracle and genuine Apple Silicon export
+        run: node tools/test-macos-aot.mjs
+      - name: Verify trusted local distribution with actual Apple tools
+        if: runner.os == 'macOS'
+        run: node tools/test-macos-distribution.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-aot-${{ matrix.os }}
+          path: |
+            reports/macos-aot
+            reports/macos-aot-distribution
+            artifacts/macos-aot
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-native-${{ matrix.os }}
+          path: reports/macos-native
+          if-no-files-found: ignore
+          retention-days: 7
+  macos-browser-native:
+    needs:
+      - authoring-exports
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-14
+          - macos-15
+          - macos-26
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/build-macos-native.mjs
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: macos-direct-browser-*
+          path: browser-input
+      - name: Verify and execute all 24 browser-exported ARM64 applications
+        run: node tools/test-macos-browser-artifacts.mjs browser-input
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-direct-browser-native-execution-${{ matrix.os }}
+          path: reports/macos-aot-browser-native
+          retention-days: 14
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    needs:
+      - hygiene
+      - node
+      - packages
+      - core-browser
+      - browser
+      - figma
+      - authoring-exports
+      - advanced-build
+      - advanced-editor
+      - rendering-qualification
+      - win32-system-contracts
+      - native-com-ole
+      - native-compiler
+      - migration
+      - macos
+      - macos-browser-native
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require the entire validation graph to succeed
+        run: node tools/ci/gate.mjs
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+          CI_EXPECTED: hygiene,node,packages,core-browser,browser,figma,authoring-exports,advanced-build,advanced-editor,rendering-qualification,win32-system-contracts,native-com-ole,native-compiler,migration,macos,macos-browser-native

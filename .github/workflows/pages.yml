@@ -1,44 +1,89 @@
 name: Deploy to GitHub Pages
-
 on:
-  push:
+  workflow_run:
+    workflows: [Validate]
+    types: [completed]
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
 concurrency:
   group: pages
-  cancel-in-progress: true
-
+  cancel-in-progress: false
 jobs:
   build:
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      pages: read
+    outputs:
+      publish: ${{ steps.revision.outputs.publish }}
+      revision: ${{ steps.revision.outputs.revision }}
     steps:
+      - name: Resolve only a successful validation of current repository main
+        id: revision
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const current = (await github.rest.git.getRef({owner, repo, ref:'heads/main'})).data.object.sha;
+            let validated = context.payload.workflow_run;
+            if (context.eventName === 'workflow_dispatch') {
+              if (context.ref !== 'refs/heads/main' || context.sha !== current) throw new Error('Manual deployment requires current main');
+              const runs = (await github.rest.actions.listWorkflowRuns({owner, repo, workflow_id:'validate.yml', branch:'main', event:'push', status:'success', head_sha:current, per_page:1})).data.workflow_runs;
+              validated = runs[0];
+            }
+            if (!validated || validated.event !== 'push' || validated.conclusion !== 'success' || validated.head_branch !== 'main' || validated.head_repository?.full_name !== `${owner}/${repo}`) throw new Error('No trusted successful main validation');
+            if (validated.head_sha !== current) { core.notice('Main advanced; this older validation will not deploy'); core.setOutput('publish','false'); return; }
+            core.setOutput('revision',current);
+            core.setOutput('publish','true');
       - uses: actions/checkout@v4
+        if: steps.revision.outputs.publish == 'true'
+        with:
+          ref: ${{ steps.revision.outputs.revision }}
+          persist-credentials: false
       - uses: actions/setup-node@v4
+        if: steps.revision.outputs.publish == 'true'
         with:
           node-version: 22
-      - run: npm run build
-      - run: npm test
-      - name: Build opt-in editor assets beside the classic IDE
+          cache: npm
+          cache-dependency-path: packages/advanced-editor/package-lock.json
+      - name: Rebuild verified source and optional editor without repeating validation
+        if: steps.revision.outputs.publish == 'true'
         run: |
+          npm run build
           npm ci --prefix packages/advanced-editor --ignore-scripts --no-audit --no-fund
           node tools/build-advanced-editor.mjs
       - uses: actions/configure-pages@v5
+        if: steps.revision.outputs.publish == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.revision.outputs.publish == 'true'
         with:
           path: dist
-
   deploy:
     needs: build
+    if: needs.build.outputs.publish == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Reject an obsolete deployment
+        uses: actions/github-script@v7
+        env:
+          VALIDATED_SHA: ${{ needs.build.outputs.revision }}
+        with:
+          script: |
+            const {owner, repo} = context.repo;
+            const sha = (await github.rest.git.getRef({owner, repo, ref:'heads/main'})).data.object.sha;
+            if (sha !== process.env.VALIDATED_SHA) throw new Error('Main advanced before publication');
       - id: deployment
         uses: actions/deploy-pages@v4

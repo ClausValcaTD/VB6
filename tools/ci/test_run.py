@@ -1,0 +1,66 @@
+#!/usr/bin/env python3
+import contextlib
+import io
+import json
+from pathlib import Path
+import sys
+import tempfile
+import threading
+import unittest
+import run
+
+class RunnerTests(unittest.TestCase):
+    def task(self, code):
+        return {'script':'fixture.py','transport':'http','argv':[sys.executable,'-u','-c',code]}
+    def test_all_plans_are_finite_and_both_advanced_origins_are_owned(self):
+        for group in json.loads((run.ROOT/'tools/ci/suites.json').read_text()):
+            for engine in run.ENGINES:
+                tasks=run.plan(group,engine,'http');self.assertTrue(0<len(tasks)<=16)
+                if group in ('advanced-editor','code-gpu'):
+                    self.assertEqual({t['transport'] for t in tasks},{'http','file'})
+    def test_invalid_arguments_fail_closed(self):
+        for args in [('unknown','chromium','http'),('../figma','chromium','http'),('figma','chrome','http'),('figma','webkit','https://remote')]:
+            with self.assertRaises(ValueError):run.plan(*args)
+    def test_firefox_only_wraps_the_explicit_webgl_case(self):
+        for engine in run.ENGINES:
+            for t in run.plan('figma',engine,'file'):
+                self.assertEqual(t['argv'][0]=='xvfb-run',engine=='firefox' and t['script']=='figma-retained-webgl-browser-tests.py')
+    def test_all_designer_engines_pass_explicit_command_line_flags(self):
+        for engine in run.ENGINES:
+            t=next(t for t in run.plan('authoring-exports',engine,'http') if t['script']=='browser-designer-tests.py')
+            self.assertEqual(t['argv'][-4:],['--browser',engine,'--origin','http'])
+    def test_paths_duplicates_and_empty_groups_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            root=Path(d);(root/'tools/ci').mkdir(parents=True)
+            for scripts in [[],['missing.py'],['../../a.py'],['/tmp/a.py'],['a.py','a.py']]:
+                (root/'tools/ci/suites.json').write_text(json.dumps({'group':scripts}))
+                with self.assertRaises(ValueError):run.plan('group','chromium','http',root)
+    def test_failure_preserves_output_and_runs_independent_successor(self):
+        with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(io.StringIO()):
+            root=Path(d)
+            result=run.run_batch([self.task("print('primary failure');raise SystemExit(7)"),self.task("print('ok')")],root,'chromium',root/'report')
+            self.assertFalse(result['passed']);self.assertEqual([r['status'] for r in result['cases']],['failed','passed'])
+            self.assertEqual(result['cases'][0]['exitCode'],7)
+            self.assertIn('primary failure',(root/'report'/result['cases'][0]['log']).read_text())
+            self.assertEqual(json.loads((root/'report/timings.json').read_text()),result)
+    def test_timeout_and_cancellation_never_pass(self):
+        with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(io.StringIO()):
+            root=Path(d)
+            result=run.run_batch([self.task('import time;time.sleep(30)'),self.task('print("ok")')],root,'webkit',root/'timeout',timeout=2)
+            self.assertFalse(result['passed']);self.assertEqual([r['status'] for r in result['cases']],['timed_out','passed'])
+            event=threading.Event();timer=threading.Timer(.2,event.set);timer.start()
+            try:result=run.run_batch([self.task('import time;time.sleep(30)'),self.task('print("never")')],root,'firefox',root/'cancel',cancelled=event)
+            finally:timer.cancel();timer.join()
+            self.assertFalse(result['passed']);self.assertEqual([r['status'] for r in result['cases']],['cancelled','cancelled']);self.assertNotIn('log',result['cases'][1])
+    def test_startup_failure_and_interruption_retain_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(io.StringIO()):
+            root=Path(d);t={'script':'fixture.py','transport':'http','argv':[str(root/'missing')]}
+            result=run.run_batch([t],root,'chromium',root/'report');self.assertFalse(result['passed']);self.assertTrue(result['cases'][0]['error'])
+            def interrupt(*args):raise KeyboardInterrupt()
+            with self.assertRaises(KeyboardInterrupt):run.run_batch([t],root,'chromium',root/'interrupt',execute_fn=interrupt)
+            result=json.loads((root/'interrupt/timings.json').read_text());self.assertFalse(result['passed']);self.assertEqual(result['cases'][0]['status'],'running')
+    def test_success_requires_all_cases_and_empty_batch_is_invalid(self):
+        with tempfile.TemporaryDirectory() as d,contextlib.redirect_stdout(io.StringIO()):
+            root=Path(d);self.assertTrue(run.run_batch([self.task('print("ok")')],root,'chromium',root/'r')['passed'])
+            with self.assertRaises(ValueError):run.run_batch([],root,'chromium',root/'empty')
+if __name__=='__main__':unittest.main(verbosity=2)
