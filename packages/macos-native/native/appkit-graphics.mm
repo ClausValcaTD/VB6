@@ -64,7 +64,7 @@ void drawControl(MacControl&control,NSRect dirty){
   (void)dirty;[NSGraphicsContext saveGraphicsState];@try{
     NSRect bounds=control.view.bounds;[NSBezierPath clipRect:bounds];
     if(control.spec.type!="Shape"&&control.spec.type!="Line"){[color(int64_t(control.number("backcolor",0xffffff)))set];NSRectFill(bounds);}
-    auto picture=control.property("picture");if(picture.type==Type::Object)if(auto image=std::dynamic_pointer_cast<MacImage>(std::get<ObjectPtr>(picture.payload)))if(image->image)[image->image drawInRect:bounds fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
+    auto picture=control.property("picture");if(picture.type==Type::Object)if(auto image=std::dynamic_pointer_cast<MacImage>(std::get<ObjectPtr>(picture.payload)))if(image->image)[image->image drawInRect:NSMakeRect(0,0,image->image.size.width,image->image.size.height) fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:YES hints:nil];
     if(control.spec.type=="Shape"||control.spec.type=="Line"){
       auto command=nativeCommand(control,control.spec.type=="Line"?"line":int(control.number("shape",0))==2||int(control.number("shape",0))==3?"ellipse":"rect");command.color=int32_t(control.number("bordercolor",0));command.width=control.number("borderwidth",1);command.coordinates={0,0,bounds.size.width,bounds.size.height};
       if(control.spec.type=="Shape"&&int(control.number("fillstyle",1))==0){auto fill=command;fill.fill=true;fill.color=int32_t(control.number("fillcolor",0xffffff));drawCommands({fill});}drawCommands({command});

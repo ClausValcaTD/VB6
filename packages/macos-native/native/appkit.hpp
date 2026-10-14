@@ -14,7 +14,7 @@ constexpr double TwipsPerLogicalPixel=15.0;
 struct MacHost;struct MacControl;struct MacForm;struct MacItems;struct MacItem;
 NSString*ns(const Text&);Text text(NSString*);NSColor*color(int64_t);int32_t colorValue(NSColor*);Text captionText(const Text&);
 struct GraphicCommand {std::string kind;std::vector<double>coordinates;int32_t color=0;bool fill=false;double width=1;Text text;NSImage*image=nil;Text fontName=u"Helvetica";double fontSize=11;bool bold=false,italic=false,underline=false,strikeout=false;int style=0;uint32_t flags=0;};
-struct MacImage final:Object {NSImage*image=nil;int32_t handle=0;explicit MacImage(NSImage*value):image(value){}std::string className()const override{return "StdPicture";}Value get(Runtime&,const std::string&)override;};
+struct MacImage final:Object {NSImage*image=nil;int32_t handle=0,pictureType=1;bool isCursor=false;NSPoint hotspot=NSZeroPoint;std::vector<uint8_t>encoded;std::weak_ptr<int>ownerLife;HandleRegistry*ownerHandles=nullptr;~MacImage()override;explicit MacImage(NSImage*value):image(value){}std::string className()const override{return "StdPicture";}Value get(Runtime&,const std::string&)override;};
 struct MacItem:Object {
   std::weak_ptr<MacControl>owner;std::weak_ptr<MacItems>collection;std::weak_ptr<MacItem>parent;
   std::vector<std::shared_ptr<MacItem>>children;std::map<std::string,Value>properties;std::shared_ptr<MacItems>subitems;std::string kind;uint64_t identity=0;
@@ -28,7 +28,7 @@ struct MacItems:Object {
 };
 struct MacControl:Object {
   MacHost*host;std::weak_ptr<Instance>owner;ControlSpec spec;std::map<std::string,Value>properties;
-  NSView*view=nil;NSView*widget=nil;NSMenuItem*menu=nil;VB6ControlDelegate*delegate=nil;VB6TableDelegate*tableDelegate=nil;VB6OutlineDelegate*outlineDelegate=nil;NSTimer*timer=nil;
+  NSView*view=nil;NSView*widget=nil;NSMenuItem*menu=nil;VB6ControlDelegate*delegate=nil;VB6TableDelegate*tableDelegate=nil;VB6OutlineDelegate*outlineDelegate=nil;NSTimer*timer=nil;NSTrackingArea*cursorTracking=nil;
   int32_t handle=0;bool initialized=false,disposed=false,eventActive=false,editSelectionPending=false;std::vector<Text>list;std::vector<int32_t>itemData;std::set<size_t>selected;
   std::map<std::string,std::shared_ptr<MacItems>>collections;std::vector<std::vector<Text>>grid;std::map<int,double>columnWidths,rowHeights;std::vector<GraphicCommand>graphics;
   std::map<uint64_t,id>outlineTokens;double currentX=0,currentY=0;size_t suspendLayout=0,eventSuppression=0;NSSize originalParentSize=NSZeroSize;NSRect originalFrame=NSZeroRect;

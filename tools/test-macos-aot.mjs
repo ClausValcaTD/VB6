@@ -8,6 +8,7 @@ import {execFileSync} from 'node:child_process';
 import {runTool} from '../packages/macos-native/src/build-driver.mjs';
 import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-native/src/aot-compiler.js';
 import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
+import {resourceFormProject} from '../packages/macos-native/tests/resources.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
 import {richTextProject} from '../packages/macos-native/tests/richtext.mjs';
@@ -18,7 +19,8 @@ const artifacts=path.join(root,'artifacts/macos-aot'),reports=path.join(root,'re
 let transcript='';const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.length>16*1024*1024)transcript=transcript.slice(-16*1024*1024);};
 const report={platform:process.platform,arch:process.arch,portableOracleVerified:false,arm64ExecutionVerified:false,nativeSignatureVerified:false,checks:[]};
 const run=(exe,args,options={})=>runTool(exe,args,{cwd:work,timeout:180000,log,...options});
-const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
+const markersForResource=output=>{for(const marker of ['NATIVE_RESOURCES_OK','NATIVE_RESOURCE_FORM_OK'])assert.ok(output.includes(marker),marker);};
+const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
 try{
   await fs.mkdir(artifacts,{recursive:true});
   const mac=process.platform==='darwin';if(mac)assert.equal(process.arch,'arm64','Native test requires actual Apple Silicon, not Rosetta');
@@ -60,13 +62,19 @@ try{
   abruptMarkers(await run(abruptOracle,[]));
   assert.equal(await fs.readFile(path.join(work,'native-program-lifetime.txt'),'utf8'),'');
   report.programRootOracleVerified=true;report.abruptExitOracleVerified=true;
-  const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'oracle');
+  const project=conformanceProject(),compiled=compileMacOSAOT(project),source=path.join(work,'oracle.cpp'),oracle=path.join(work,'portable.app/Contents/MacOS/oracle');
+  await fs.mkdir(path.dirname(oracle),{recursive:true});await fs.mkdir(path.join(work,'portable.app/Contents/Resources'));
+  const catalog=compiled.resourceFiles['resources/vb6-assets.bin'];assert.ok(catalog?.length);
+  const catalogPath=path.join(work,'portable.app/Contents/Resources/vb6-assets.bin');await fs.writeFile(catalogPath,catalog);
+  const resourceTest=path.join(work,'resource-contracts');
+  await run(compiler,[...flags,path.join(sdk,'tests/resources.cpp'),...objects,'-o',resourceTest]);
+  assert.match(await run(resourceTest,[catalogPath]),/NATIVE_RESOURCE_PARSER_OK/);report.resourceParserVerified=true;
   await fs.writeFile(source,emitAOTPortableTestSource(compiled));await run(compiler,[...flags,source,...objects,'-o',oracle]);markers(await run(oracle,[]));
   // A faulty expected error must fail the native test, not be swallowed by
   // the VB Resume Next statement used to provoke the error under test.
   const broken=structuredClone(project),arrayModule=broken.modules.find(m=>m.name==='NativeArrayChecks');
   arrayModule.code=arrayModule.code.replace('Debug.Assert Err.Number = 10','Debug.Assert Err.Number = 999');
-  const badSource=path.join(work,'negative-oracle.cpp'),badOracle=path.join(work,'negative-oracle');
+  const badSource=path.join(work,'negative-oracle.cpp'),badOracle=path.join(path.dirname(oracle),'negative-oracle');
   await fs.writeFile(badSource,emitAOTPortableTestSource(compileMacOSAOT(broken)));
   await run(compiler,[...flags,badSource,...objects,'-o',badOracle]);
   await assert.rejects(run(badOracle,[]),error=>/VB6 error 5: Debug.Assert failed/.test(error.output||''));
@@ -74,7 +82,16 @@ try{
   if(mac){
     const runtime=await buildAOTTemplate({out:path.join(artifacts,'runtime'),cache:path.join(work,'cache'),log});
     report.runtime=runtime.manifest;
-    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))]]){
+    // Qualify decoded pixels and real controls against the exact SDK archive
+    // that supplied this template, not only generated image-property getters.
+    const ui=path.join(work,'appkit-resource-controls');
+    const uiSources=(await fs.readdir(path.join(sdk,'tests'))).filter(name=>/^appkit(?:-[a-z-]+)?\.mm$/.test(name)).sort().map(name=>path.join(sdk,'tests',name));
+    await run(compiler,['-std=c++17','-arch','arm64','-isysroot',await run('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-path']),'-mmacosx-version-min=11.0','-fobjc-arc','-I',path.join(sdk,'native'),...uiSources,path.join(work,'cache',runtime.manifest.provenance.nativeRuntimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-o',ui]);
+    await run('/usr/bin/codesign',['--sign','-','--timestamp=none',ui]);
+    const uiOutput=await run(ui,[]);
+    for(const marker of ['APPKIT_PICTURES_OK','APPKIT_CONFORMANCE_OK','APPKIT_EDIT_SELECTION_LIST_OK','APPKIT_RICH_SELECTION_OK'])assert.ok(uiOutput.includes(marker),marker);
+    report.pictureControlsVerified=true;
+    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))],['resources',resourceFormProject(),output=>{markersForResource(output);}]] ){
       const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
       const result=await exportMacOSAOT(p,runtime,options);
       if(label==='large'){assert.ok(result.report.codeBytes>2097152,'Native large program must exceed old code cap');assert.ok(result.report.metadataBytes>2097152,'Native large program must exceed old metadata cap');}
@@ -91,7 +108,7 @@ try{
       report[key]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes,metadataBytes:result.report.metadataBytes,optimization:result.report.projectOptimization};
       if(optimization===2)report[label]=report[key];
     }
-    report.programLifetimeVerified=true;report.abruptExitVerified=true;
+    report.resourcesVerified=true;report.programLifetimeVerified=true;report.abruptExitVerified=true;
     report.largeCapacityVerified=true;report.optimizationLevelsVerified=[0,1,2,3];
     report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
   }
