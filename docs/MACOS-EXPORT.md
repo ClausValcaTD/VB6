@@ -8,7 +8,7 @@ The IDE's **File → Make Project.app (macOS Apple Silicon)…** command default
 
 **Build via Mac Bridge** explicitly contacts a local Mac compiler and downloads the signed application's original ZIP bytes. **Download Source Build Kit** is a separate offline source artifact; extraction and compilation on a Mac are still necessary for that artifact.
 
-All paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and optimization (O2 for direct export; O0–O3 for the explicit Clang/source paths). Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
+All paths run shared-frontend validation and native-target preflight. The dialog provides application name, reverse-DNS bundle identifier, minimum macOS version and optimization (O0–O3 project code for direct export, independently of the O2 native SDK; O0–O3 for the explicit Clang/source paths). Existing Windows AOT, licensed Microsoft VB6 runtime, VB.NET and HTML commands remain independent.
 
 ### Optional Mac compiler bridge
 
@@ -92,7 +92,10 @@ The explicit Clang mode is a C++-lowering backend; the default direct mode uses 
 | Error handling | Native error state, source checkpoints, On Error and Resume lowering. |
 | Project interfaces | Shared bound contracts, restricted dispatch and canonical target identity. |
 
-`Implements` lowering uses the shared frontend's member bindings, including public-field accessor contracts. Interface parameter names are translated to implementation parameter positions before ordinary call-frame binding. Interface views expose only their contract, support checked cross-casts and back-casts, preserve ByRef storage checks, and share object identity for `Is` and dictionary keys. A view strongly owns its instance; the reverse view cache is weak, avoiding an introduced target/view reference-count cycle. This does not implement arbitrary COM vtables or Windows type-library activation. Native class finalization and its remaining global/form-lifecycle boundaries are described in [lifetime and editing contracts](MACOS-LIFETIME-EDITING.md).
+`Implements` lowering uses the shared frontend's member bindings, including public-field accessor contracts. Interface parameter names are translated to implementation parameter positions before ordinary call-frame binding. Interface views expose only their contract, support checked cross-casts and back-casts, preserve ByRef storage checks, and share object identity for `Is` and dictionary keys. A view strongly owns its instance; the reverse view cache is weak, avoiding an introduced target/view reference-count cycle. This does not implement arbitrary COM vtables or Windows type-library activation. Native class finalization, normal program-root cleanup and default-form lifecycle contracts are described in [lifetime and editing contracts](MACOS-LIFETIME-EDITING.md).
+
+[Native array contracts](MACOS-ARRAYS.md) describe typed Function/Property array results,
+per-call result storage, typed-array copies, Variant ReDim and ABI validation.
 
 AppKit provides native windows, editing controls, buttons, lists, outlines, tables, tabs, menus, timers, dialogs, retained drawing and printing adapters. Source-level `Declare` adapters translate explicitly supported kernel32/user32/gdi32/shell32-style contracts to native services. Windows DLL names do not cause DLL loading. Raw Windows pointers are not accepted as Cocoa objects.
 
@@ -134,7 +137,7 @@ This is an authority boundary, not a sandbox. The compiler invokes a local nativ
 
 The native builder uses direct process arguments, source/toolchain-keyed runtime caching, private staging, output-path checks, Mach-O segment inspection and native signature verification. Each POSIX compiler invocation owns a separate process group. Cancellation, timeout, excessive diagnostics or a failing log callback terminates that group and waits for process exit and closed output streams before source staging can be removed. This does not sandbox a malicious tool that escapes its process group. UTF-8 output is decoded incrementally and independently for stdout and stderr. SDK line endings are normalized before embedding so Windows CRLF and Unix LF checkouts yield the same build-kit revision and IDE fingerprints.
 
-Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--clang --identity`; project/HTTP data cannot choose it. No signing credential is included in project exports. Developer ID distribution and notarization remain the developer's responsibility.
+Default signing is ad-hoc. It is **not** Developer ID signing, notarization, Gatekeeper acceptance or App Store qualification. A trusted local CLI can supply its signing identity with `--clang --identity`, or sign a direct executable with `--distribute --identity`. The [distribution workflow](MACOS-DISTRIBUTION.md) supports Hardened Runtime, explicitly supplied entitlements and optional Apple notarization through a local Keychain profile. Project/HTTP data cannot choose these settings. No signing credential is included in project exports, and real service acceptance requires the developer's own valid identity and credentials. A synthetic notarization test is not evidence of Apple trust.
 
 ## Validation and scope of evidence
 
@@ -152,6 +155,6 @@ Portable Node regressions also validate malformed archives/Mach-O, permissions, 
 
 ## Unfinished compatibility
 
-A green targeted test run does not certify the complete original VB6 language/runtime/control API. Important remaining areas include global/static/default-form shutdown and complete lifecycle semantics; reference-cycle collection and exact resurrection compatibility; design-time FRX/resource fidelity; complete control member, event and layout behavior; locale-sensitive formatting and ANSI conversion; native database/COM integration; and comprehensive visual/application parity. The 33-control test is a creation-and-selected-behavior smoke test, not full acceptance for every member of those controls.
+A green targeted test run does not certify the complete original VB6 language/runtime/control API. Important remaining areas include exact remaining lifecycle/event ordering; reference-cycle collection and exact resurrection compatibility; design-time FRX/resource fidelity; complete control member, event and layout behavior; locale-sensitive formatting and ANSI conversion; native database/COM integration; and comprehensive visual/application parity. The 33-control test is a creation-and-selected-behavior smoke test, not full acceptance for every member of those controls.
 
 Unknown native declarations and unknown control types are rejected by native preflight. Some unsupported members are detected at runtime instead; compilation alone therefore does not prove a program's untested paths are supported. Arbitrary Windows DLL/OCX binaries, COM servers and pointer-based Win32 extensions are not made portable by this backend. Keep original sources and validate application behavior on an actual Mac before relying on a migration.

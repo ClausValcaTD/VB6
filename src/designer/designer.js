@@ -8,7 +8,7 @@ import {GraphicsSurface} from '../graphics/surface.js';
 import {ApplicationThemeController} from '../theme/application-appearance.js';
 import {activeTab, checkedTab, controlParents, materializeTabPages, tabEntries, tabPagePlan} from '../controls/tab-model.js';
 import {addControl, copyControls, deleteControls, designContainer, normalizeSize, pasteControls, resizeAxes, selectionRoots, setTabIndex, tabOrderEligible, visibleDesignerIds} from './control-model.js';
-import {editDesignerProperties} from './property-model.js';
+import {designerPropertyValues, editDesignerProperties} from './property-model.js';
 
 export class FormDesigner extends Signal {
   constructor(container, options = {}) {
@@ -25,7 +25,7 @@ export class FormDesigner extends Signal {
       if (!this.formView?.node.contains(e.target)) return;
       e.preventDefault(); e.stopPropagation(); if (e.target.closest('[data-designer-tab]')) return;
       const node = e.target.closest('[data-control-id]'), control = this.module?.form.controls.find(c => c.id === node?.dataset.controlId);
-      this.emit('event', {control: control || this.selected()[0] || null});
+      this.emit('event', {control: control || null});
     }, true);
     this.root.addEventListener('contextmenu', e => {
       e.preventDefault(); e.stopPropagation();
@@ -124,7 +124,7 @@ export class FormDesigner extends Signal {
     if (tab && control?.type === 'SSTab' && this.tool === 'Pointer') {this.activateTab(control, Number(tab.dataset.designerTab)); return;}
     if (!content.contains(event.target) && !formHandle) {this.select([]); return;}
     const before = clone(this.module.form), plan = tabPagePlan(this.module.form); let mode, origin, ghost, parent = null;
-    const origins = () => selectionRoots(this.module.form, this.selected()).map(c => ({c, left: plan.bindings.get(c.id)?.left ?? Number(c.properties.Left || 0), top: Number(c.properties.Top || 0), width: Number(c.properties.Width || 0), height: Number(c.properties.Height || 0)}));
+    const origins = () => selectionRoots(this.module.form, this.selected()).map(c => {const p = designerPropertyValues(c, this.module.form, plan); return {c, left: p.Left, top: p.Top, width: p.Width, height: p.Height};});
     if (formHandle) {if (this.locked) return; mode = 'formResize'; origin = {w: this.module.form.properties.ClientWidth, h: this.module.form.properties.ClientHeight};}
     else if (this.tool !== 'Pointer') {
       mode = 'draw'; ghost = el('div', {class: 'designer-rubberband'}); this.overlay.append(ghost);
@@ -240,6 +240,7 @@ export class FormDesigner extends Signal {
         if (controls.length < 3) return;
         const horizontal = command === 'distributeHorizontal', axis = horizontal ? 'x' : 'y', size = horizontal ? 'width' : 'height', key = horizontal ? 'Left' : 'Top';
         const sorted = [...controls].filter(c => rects.get(c.id)).sort((a, b) => rects.get(a.id)[axis] - rects.get(b.id)[axis]);
+        if (sorted.length < 3) return;
         const begin = rects.get(sorted[0].id)[axis], end = rects.get(sorted.at(-1).id), total = sorted.reduce((sum, c) => sum + rects.get(c.id)[size], 0), gap = (end[axis] + end[size] - begin - total) / (sorted.length - 1);
         let position = begin;
         for (const c of sorted) {const rect = rects.get(c.id); c.properties[key] += Math.round((position - rect[axis]) * 15); position += rect[size] + gap;} return;
@@ -289,6 +290,8 @@ export class FormDesigner extends Signal {
     this.transaction(event.shiftKey ? 'Resize controls' : 'Move controls', () => {
       materializeTabPages(this.module.form);
       for (const c of roots) {
+        const p = designerPropertyValues(c, this.module.form);
+        for (const key of ['Left', 'Top', 'Width', 'Height']) c.properties[key] ??= p[key];
         if (event.shiftKey) Object.assign(c.properties, normalizeSize(c, c.properties.Width + dx * step, c.properties.Height + dy * step));
         else {c.properties.Left += dx * step; c.properties.Top += dy * step;}
       }

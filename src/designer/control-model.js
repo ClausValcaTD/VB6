@@ -1,5 +1,5 @@
 /** Shared design-time geometry, identity, containment and tab-order rules. */
-import {createControl, newId} from '../project/model.js';
+import {createControl, newId, CONTROL_DEFAULTS} from '../project/model.js';
 import {activeTab, controlParents, materializeTabPages, tabPagePlan} from '../controls/tab-model.js';
 
 const noTabIndex = new Set(['Menu', 'Timer', 'Data', 'Adodc', 'Image', 'Shape', 'Line', 'ImageList', 'CommonDialog']);
@@ -12,8 +12,12 @@ export function resizeAxes(control) {
 }
 export function normalizeSize(control, width, height) {
   const axes = resizeAxes(control), minimum = control.type === 'Line' ? 0 : 15;
-  return {Width: axes.x ? Math.max(minimum, Math.min(300000, width)) : control.properties.Width,
-    Height: axes.y ? Math.max(minimum, Math.min(300000, height)) : control.properties.Height};
+  const defaults = CONTROL_DEFAULTS[control.type] || {}, p = control.properties || {};
+  const currentWidth = Number(p.Width ?? defaults.Width ?? 1800), currentHeight = Number(p.Height ?? defaults.Height ?? 450);
+  width = Number(width ?? currentWidth); height = Number(height ?? currentHeight);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) throw new Error('Invalid control size.');
+  return {Width: axes.x ? Math.max(minimum, Math.min(300000, width)) : currentWidth,
+    Height: axes.y ? Math.max(minimum, Math.min(300000, height)) : currentHeight};
 }
 export function tabOrderedControls(form) {
   return form.controls.filter(tabOrderEligible).map((control, order) => ({control, order})).sort((a, b) => (Number(a.control.properties.TabIndex) || 0) - (Number(b.control.properties.TabIndex) || 0) || a.order - b.order).map(({control}) => control);

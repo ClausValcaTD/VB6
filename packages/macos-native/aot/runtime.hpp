@@ -6,6 +6,7 @@
 #include <exception>
 #include <limits>
 namespace vb6::aot {
+inline constexpr int AbiVersion = 4;
 using Word=uint64_t;
 constexpr Word failed=std::numeric_limits<Word>::max();
 struct Scope;
@@ -15,7 +16,7 @@ struct Program {
 };
 struct Scope {
   Frame& frame;std::shared_ptr<Program> program;Value result;std::exception_ptr error;Word redirect=failed;
-  using Item=std::variant<Value,Ref,Args,Bounds,std::vector<Value>,std::vector<Ref>>;
+  using Item=std::variant<Value,Ref,Args,Bounds,std::vector<Value>,std::vector<Ref>,std::shared_ptr<ArrayBorrow>>;
   std::deque<Item> items;
   Scope(Frame& f,std::shared_ptr<Program> p):frame(f),program(std::move(p)){}
   template<class T> Word put(T value){if(items.size()>=65536)fail(7,"AOT expression temporary limit exceeded");items.emplace_back(std::move(value));return items.size();}

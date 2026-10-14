@@ -21,6 +21,7 @@ export function designerPropertyValues(control, form = null, plan = null) {
     if (binding) {values.Left = binding.left; values.TabPage = binding.page;}
   }
   for (const key of ['Nodes', 'Columns', 'Items', 'Buttons', 'Panels', 'Tabs', 'ListImages', 'GridData']) {
+    if (control.type === 'TabStrip' && key === 'Tabs' && !Array.isArray(values.Tabs)) values.Tabs = tabEntries(control);
     if (collectionDefinition(control, key)) values[key] ??= key === 'Columns' ? values.ColumnHeaders || [] : key === 'Items' ? values.ListItems || [] : [];
   }
   if (values.Columns) delete values.ColumnHeaders;

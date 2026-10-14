@@ -72,7 +72,7 @@ export function tabPagePlan(form, {strict = false} = {}) {
       if (!Number.isInteger(page) || page < 0 || page >= entries.length) {problem(`${child.name}: invalid TabPage ${page}.`); return;}
       const previous = bindings.get(child.id);
       if (previous && (previous.page !== page || previous.owner.id !== owner.id)) {problem(`${child.name}: conflicting tab page ownership.`); return;}
-      const shifted = legacy && owner.type === 'SSTab' && page !== activeTab(owner) && Number(child.properties.Left) <= -30000;
+      const shifted = legacy && owner.type === 'SSTab' && page !== activeTab(owner) && child.properties.TabPage === undefined;
       bindings.set(child.id, {owner, child, page, left: shifted ? Number(child.properties.Left) + 75000 : previous?.left ?? Number(child.properties.Left || 0)});
     };
     const resolve = value => {
@@ -98,6 +98,7 @@ export function materializeTabPages(form) {
   const plan = tabPagePlan(form, {strict: true});
   for (const {child, page, left} of plan.bindings.values()) {child.properties.Left = left; child.properties.TabPage = page;}
   for (const {owner} of plan.owners.values()) {
+    if (owner.type === 'SSTab') owner.designerTabPages = true;
     for (const key of Object.keys(owner.properties)) if (ownedKey.test(key)) delete owner.properties[key];
     if (Array.isArray(owner.properties.Tabs)) for (const entry of owner.properties.Tabs) delete entry.Controls;
   }
@@ -141,7 +142,7 @@ export function formWithSavedTabs(form) {
   for (const {owner, entries} of plan.owners.values()) {
     if (owner.type !== 'SSTab') continue;
     const pages = byOwner.get(owner.id) || new Map();
-    const canonical = Array.isArray(owner.properties.Tabs) || [...pages.values()].some(children => children.some(b => b.child.properties.TabPage !== undefined));
+    const canonical = owner.designerTabPages === true || Array.isArray(owner.properties.Tabs) || [...pages.values()].some(children => children.some(b => b.child.properties.TabPage !== undefined));
     if (!canonical) continue;
     for (const key of Object.keys(owner.properties)) if (ownedKey.test(key)) delete owner.properties[key];
     owner.properties.Tabs = entries.length;

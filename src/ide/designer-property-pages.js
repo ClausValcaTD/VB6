@@ -1,6 +1,7 @@
 import {el} from '../core/core.js';
 import {modal, alertDialog} from './ui.js';
 import {collectionDefinition, defaultCollectionItem, validateCollection} from '../designer/collections.js';
+import {matrixText, matrixFromText} from '../designer/matrix-text.js';
 import {activeTab, materializeTabPages, setTabCount, setTabEntry, tabEntries} from '../controls/tab-model.js';
 
 /** Edit a private draft. Cancel and failed validation never modify a control. */
@@ -8,15 +9,9 @@ export async function collectionDialog(control, name, value) {
   const schema = collectionDefinition(control, name); if (!schema) throw new Error('Unsupported collection.');
   let draft = structuredClone(value || []), result;
   if (schema.matrix) {
-    const original = draft, content = el('textarea', {class: 'designer-grid-data', 'aria-label': 'Grid data', value: draft.map(row => row.map(v => v ?? '').join('\t')).join('\n')});
-    await modal(name + ' - ' + control.name, {width: 680, content: el('div', {}, el('p', {}, 'Rows are separated by newlines; columns by tabs. Paste rectangular data from a spreadsheet.'), content), buttons: [
-      {label: 'OK', value: true, primary: true, action: () => {
-        const rows = content.value === '' ? [] : content.value.split(/\r?\n/).map((line, r) => line.split('\t').map((value, c) => {
-          const old = original[r]?.[c]; if (value === String(old ?? '')) return old ?? '';
-          if (control.type !== 'MSChart') return value;
-          const n = Number(value); if (!Number.isFinite(n)) throw new Error('Chart values must be numbers.'); return n;
-        })); result = validateCollection(control, name, rows);
-      }}, {label: 'Cancel', value: false}]}); return result;
+    const content = el('textarea', {class: 'designer-grid-data', 'aria-label': 'Grid data', value: matrixText(draft)});
+    await modal(name + ' - ' + control.name, {width: 680, content: el('div', {}, el('p', {}, 'Rows are separated by newlines; columns by tabs. Fields containing tabs, quotes or newlines use double-quote escaping.'), content), buttons: [
+      {label: 'OK', value: true, primary: true, action: () => {result = matrixFromText(control, content.value, draft);}}, {label: 'Cancel', value: false}]}); return result;
   }
   const list = el('select', {size: 10, 'aria-label': name + ' items'}), fields = el('div', {class: 'dialog-grid designer-item-fields'}), toolbar = el('div', {class: 'designer-collection-actions'});
   const content = el('div', {class: 'designer-collection-editor'}, el('div', {class: 'designer-collection-list'}, list, toolbar), fields);
@@ -88,7 +83,7 @@ export async function sstabPropertyPages(ide, control) {
       applyCount(); const numbers = {TabsPerRow: [rows, 1, 32767], TabHeight: [height, 0, 300000], TabMaxWidth: [maxWidth, 0, 300000]};
       for (const [name, [input, min, max]] of Object.entries(numbers)) {const value = Number(input.value); if (!Number.isInteger(value) || value < min || value > max) throw new Error(name + ' is outside its valid range.'); owner.properties[name] = value;}
       Object.assign(owner.properties, {Tab: page, TabOrientation: Number(orientation.value), Style: Number(style.value)});
-      if (ide.runState !== 'design' || ide.activeModule !== module || JSON.stringify(module.form) !== before) throw new Error('The form changed while the property pages were open. Reopen the editor before applying.');
+      if (ide.runState !== 'design' || ide.designer.locked || ide.activeModule !== module || JSON.stringify(module.form) !== before) throw new Error('The form changed while the property pages were open. Reopen the editor before applying.');
       accepted = true;
     }}, {label: 'Cancel', value: false}]
   });

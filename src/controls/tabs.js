@@ -6,18 +6,22 @@ import {VBError} from '../language/lexer.js';
 import {truth} from '../runtime/values.js';
 import {acceptsInput} from './input.js';
 import {TabItems} from './collections.js';
-import {activeTab, checkedTab, tabCount, tabEntries, tabPagePlan, setTabCount, setTabEntry} from './tab-model.js';
+import {activeTab, checkedTab, tabCount, tabEntries, tabPagePlan, materializeTabPages, setTabCount, setTabEntry} from './tab-model.js';
 
 const state = view => ({...view.model, type: view.type, properties: view.props});
 const stripMnemonic = text => String(text ?? '').replace(/&&/g, '\0').replace(/&/g, '').replace(/\0/g, '&');
 const indexed = new Map(['Caption', 'Enabled', 'Visible', 'Picture'].map(key => ['tab' + key.toLowerCase(), key]));
 const asVBError = fn => {try {return fn();} catch (e) {if (e instanceof VBError) throw e; throw new VBError(e.message, 380);}};
+// Rewriting an identical ARIA attribute still notifies MutationObserver and
+// invalidates the GPU DOM scene; retain both nodes and unchanged attributes.
+const tabAttribute = (node, name, value) => {value = String(value); if (node.getAttribute(name) !== value) node.setAttribute(name, value);};
 
 export function browserTabEntries(view) {
   return view.type === 'TabStrip' && view.Tabs ? view.Tabs.items : tabEntries(state(view));
 }
 
 export function buildTabs(view) {
+  view._pageChildren = [];
   view.node.classList.add('vb-tabs');
   view.node.classList.toggle('vb-sstab', view.type === 'SSTab');
   view.tabHeader = el('div', {class: 'vb-tab-header', role: 'tablist', 'aria-label': view.model.name + ' pages'});
@@ -107,6 +111,24 @@ export function setTabProperty(view, key, value) {
   return false;
 }
 
+/** Keep page membership independent of Visible and remove stale owner links.
+ * Validate first: a failed reassignment cannot detach the old page membership.
+ */
+export function bindTabChild(view, parent, page) {
+  const owner = parent?.type === 'SSTab' ? parent : null;
+  const next = owner ? asVBError(() => checkedTab(state(owner), page ?? activeTab(state(owner)))) : undefined;
+  unbindTabChild(view);
+  if (owner) {
+    view._tabOwner = owner; view._tabPage = next; view.props.TabPage = next;
+    (owner._pageChildren ??= []).push(view);
+  }
+}
+
+export function unbindTabChild(view) {
+  if (view._tabOwner) view._tabOwner._pageChildren = (view._tabOwner._pageChildren || []).filter(child => child !== view);
+  view._tabOwner = null; view._tabPage = undefined; delete view.props.TabPage;
+}
+
 /** Apply raw import offsets once at mount, not every time a child moves. Keep
  * page visibility separate from Visible so code can change Visible while its
  * page is inactive. Nested containers naturally inherit their parent's mask.
@@ -114,7 +136,7 @@ export function setTabProperty(view, key, value) {
 export function mountTabPages(form) {
   const plan = tabPagePlan(form.originalModel || form.model), views = new Map(form.controls.map(c => [c.model.id, c]));
   form.tabDiagnostics = plan.diagnostics;
-  for (const view of form.controls) view._pageChildren = [];
+  for (const view of form.controls) {view._pageChildren = []; view._tabOwner = null; view._tabPage = undefined;}
   for (const {owner, child, page, left} of plan.bindings.values()) {
     const parent = views.get(owner.id), view = views.get(child.id);
     if (!parent || !view) continue;
@@ -123,6 +145,10 @@ export function mountTabPages(form) {
     parent._pageChildren.push(view);
     view.refresh();
   }
+  // Live props are already independent clones. Drop their legacy name records
+  // after resolving coordinates, so later Container changes do not invalidate
+  // unrelated page-count edits. Never modify the persisted designer document.
+  if (!plan.diagnostics.length) materializeTabPages({controls: form.controls.map(state)});
 }
 
 export function refreshTabs(view, image = () => '') {
@@ -132,8 +158,8 @@ export function refreshTabs(view, image = () => '') {
   const orientation = Math.max(0, Math.min(3, Number(view.props.TabOrientation) || 0)), vertical = orientation >= 2;
   const perRow = Math.max(1, Math.min(32767, Number(view.props.TabsPerRow) || (view.type === 'SSTab' ? 3 : Math.max(1, visible.length))));
   const rows = Math.max(1, Math.ceil(visible.length / perRow)), height = Math.max(18, Number(view.props.TabHeight ?? 360) / 15);
-  view.node.dataset.tabOrientation = String(orientation);
-  view.tabHeader.setAttribute('aria-orientation', vertical ? 'vertical' : 'horizontal');
+  if (view.node.dataset.tabOrientation !== String(orientation)) view.node.dataset.tabOrientation = String(orientation);
+  tabAttribute(view.tabHeader, 'aria-orientation', vertical ? 'vertical' : 'horizontal');
   Object.assign(view.tabHeader.style, {gridTemplateColumns: vertical ? `repeat(${rows}, ${height}px)` : `repeat(${Math.min(perRow, Math.max(1, visible.length))}, minmax(0, 1fr))`, gridTemplateRows: vertical ? `repeat(${Math.min(perRow, Math.max(1, visible.length))}, minmax(0, 1fr))` : `repeat(${rows}, ${height}px)`, gridAutoFlow: vertical ? 'column' : 'row', height: vertical ? '100%' : rows * height + 'px', width: vertical ? rows * height + 'px' : '100%'});
   view.node.classList.toggle('vb-tab-property-pages', Number(view.props.Style) === 1);
   const signature = JSON.stringify([visible.map(({entry, index}) => [index, entry.Caption, entry.Enabled, entry.Visible, entry.Picture, entry.Image]), view.design]);
@@ -156,12 +182,13 @@ export function refreshTabs(view, image = () => '') {
   for (const button of view.tabHeader.children) {
     const selected = Number(button.dataset.tabIndex) === active;
     button.classList.toggle('active', selected);
-    button.setAttribute('aria-selected', String(selected));
-    button.tabIndex = !view.design && selected && truth(view.props.TabStop) ? 0 : -1;
+    tabAttribute(button, 'aria-selected', selected);
+    const tabIndex = !view.design && selected && truth(view.props.TabStop) ? 0 : -1;
+    if (button.tabIndex !== tabIndex) button.tabIndex = tabIndex;
     const maxWidth = Number(view.props.TabMaxWidth || 0);
     button.style.maxWidth = !vertical && maxWidth > 0 ? maxWidth / 15 + 'px' : '';
   }
-  view.childHost.setAttribute('aria-labelledby', `tab-${view.model.id}-${active}`);
+  tabAttribute(view.childHost, 'aria-labelledby', `tab-${view.model.id}-${active}`);
   for (const child of view._pageChildren || []) {
     const hidden = child._tabPage !== active || !view.design && (!truth(child.props.Visible) || ['Timer', 'ImageList', 'CommonDialog'].includes(child.type));
     if (child.node.hidden !== hidden) child.node.hidden = hidden;

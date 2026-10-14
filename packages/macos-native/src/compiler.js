@@ -1,3 +1,4 @@
+import {prepareMacOSResources} from './resources.js';
 /** Shared VB6 IR -> C++17 native procedure lowering. No VM/bytecode interpreter. */
 import {compileProject} from '../../../src/language/compiler.js';
 import {normalizeProject} from '../../../src/project/model.js';
@@ -67,7 +68,7 @@ export class MacOSLowering {
       case 'empty':return 'Value{}';case 'nothing':return 'Value::object(nullptr)';case 'missing':return 'Value::missing()';
       case 'group':case 'byval':return this.expression(node.expr);
       case 'id':return `f.get(${q(node.name)})`;
-      case 'with':return 'f.with()';
+      case 'with':return `f.with(${q(this.instruction?.withId||'')})`;
       case 'new':return `f.create(${q(node.name)})`;
       case 'member':return `getMember(f.runtime,${this.expression(node.object)},${q(node.name)})`;
       case 'call':return this.call(node);
@@ -80,7 +81,7 @@ export class MacOSLowering {
         else if(this.module.procedures.has(name))owners=[this.module];
         else owners=[...this.program.modules.values()].filter(m=>m.kind==='module'&&m.procedures.has(name)&&m.procedures.get(name).scope!=='private');
         owners=owners.filter(Boolean);if(owners.length!==1||owners[0].kind!=='module')this.fail('AddressOf must resolve one standard-module procedure','MAC230');
-        const procedure=owners[0].procedures.get(name);if(!procedure||procedure.external||procedure.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
+        const procedure=owners[0].procedures.get(name);if(!procedure||procedure.external||procedure.returnArray||procedure.params.some(p=>p.optional||p.paramArray||p.byRef||p.bounds!==null&&p.bounds!==undefined))this.fail('Native callbacks require fixed ByVal scalar parameters','MAC230');
         return `f.callback(${q(owners[0].name)},${q(procedure.name)})`;
       }
       default:this.fail('Unsupported native expression '+node.kind);
@@ -91,9 +92,10 @@ export class MacOSLowering {
     if(node.kind==='member')return `memberRef(f.runtime,${this.expression(node.object)},${q(node.name)})`;
     if(node.kind==='call'){
       if(node.args.length===0&&node.callee.kind==='id'&&this.canReference(node))return this.reference(node.callee);
-      if(node.callee.kind==='member')return wrapped(`auto receiver=${this.expression(node.callee.object)};auto args=${this.arguments(node.args)};return objectReference(f.runtime,receiver,${q(node.callee.name)},args);`);
+      if(node.callee.kind==='member')return wrapped(`auto receiver=${this.expression(node.callee.object)};auto borrow=borrowArrayValue(receiver);auto args=${this.arguments(node.args)};return objectReference(f.runtime,receiver,${q(node.callee.name)},args);`);
+      if(node.callee.kind==='id'&&this.procedure?.returnArray&&lower(this.procedure.name)===lower(node.callee.name))return wrapped(`auto receiver=f.get(${q(node.callee.name)});auto borrow=borrowArrayValue(receiver);std::vector<Value> indices{${node.args.map(a=>this.expression(a.kind==='named'?a.expr:a)).join(',')}};return indexedRef(f.runtime,receiver,indices);`);
       if(node.callee.kind==='id'&&(this.module.procedures.has(lower(node.callee.name)+':get')||this.module.procedures.has(lower(node.callee.name)+':let')||this.module.procedures.has(lower(node.callee.name)+':set')))return `f.propertyRef(${q(node.callee.name)},${this.arguments(node.args)})`;
-      return wrapped(`auto receiver=${this.expression(node.callee)};std::vector<Value> indices{${node.args.map(a=>this.expression(a.kind==='named'?a.expr:a)).join(',')}};return indexedRef(f.runtime,receiver,indices);`);
+      return wrapped(`auto receiver=${this.expression(node.callee)};auto borrow=borrowArrayValue(receiver);std::vector<Value> indices{${node.args.map(a=>this.expression(a.kind==='named'?a.expr:a)).join(',')}};return indexedRef(f.runtime,receiver,indices);`);
     }
     this.fail('Native assignment target is not a variable, member, or indexed reference');
   }
@@ -109,9 +111,12 @@ export class MacOSLowering {
       return true;
     }
     if(node.kind==='member')return !this.constant(node);
+    // Member/default calls obtain a runtime reference: fields/indexed arrays
+    // alias directly, while getters/methods remain once-evaluated value temporaries.
+    if(node.kind==='call'&&node.callee.kind!=='id')return true;
     if(node.kind==='call'&&node.callee.kind==='id'){
       const name=lower(node.callee.name),variables=[...(this.procedure?.params||[]),...this.module.declarations,...(this.procedure?.code||[]).flatMap(i=>i.decls||[])];
-      return variables.some(v=>lower(v.name)===name&&v.bounds!==null&&v.bounds!==undefined);
+      return !!(this.procedure?.returnArray&&lower(this.procedure.name)===name)||variables.some(v=>lower(v.name)===name&&v.bounds!==null&&v.bounds!==undefined);
     }
     return false;
   }
@@ -121,7 +126,8 @@ export class MacOSLowering {
     // the entire callee. Build the vector directly and transfer sole ownership.
     return wrapped(`Args args;args.reserve(${nodes.length});${nodes.map(node=>{
       const name=node.kind==='named'?node.name:'';if(node.kind==='named')node=node.expr;
-      return `args.emplace_back(${this.canReference(node)?this.reference(node):this.expression(node)},${q(name)});`;
+      const reference=this.canReference(node),directOnly=reference&&node.kind==='call'&&node.callee.kind!=='id';
+      return `args.emplace_back(${reference?this.reference(node):this.expression(node)},${q(name)}${directOnly?',true':''});`;
     }).join('')}return args;`);
   }
   call(node){
@@ -155,13 +161,13 @@ export class MacOSLowering {
       case 'case':return `auto value=f.temps.at(${q(ins.id)});bool matched=false;${ins.cases.map(c=>c.kind==='range'?`if(!matched){auto a=${s(c.low)};auto b=${s(c.high)};matched=binary(">=",value,a,f.module.textCompare).truth()&&binary("<=",value,b,f.module.textCompare).truth();}`:`if(!matched)matched=binary(${q(c.op||'=')},value,${s(c.expr)},f.module.textCompare).truth();`).join('')}if(!matched){${go(ins.target)}}`;
       case 'forInit':return `auto variable=${r(parseExpression(ins.name))};auto start=${s(ins.start)};auto end=${s(ins.end)};auto step=${s(ins.step)};if(!f.forStart(${q(ins.id)},variable,start,end,step)){${go(ins.target)}}`;
       case 'forNext':return `if(f.forNext(${q(ins.id)})){${go(ins.target)}}`;
-      case 'eachInit':return `auto variable=${r(parseExpression(ins.name))};auto iterable=${e(ins.expr)};if(!f.eachStart(${q(ins.id)},variable,iterable)){${go(ins.target)}}`;
+      case 'eachInit':return `f.closeEach(${q(ins.id)});auto iterable=${e(ins.expr)};auto borrow=borrowArrayValue(iterable,true);auto variable=${r(ins.variable||parseExpression(ins.name))};if(!f.eachStart(${q(ins.id)},variable,iterable,${ins.target})){${go(ins.target)}}`;
       case 'eachNext':return `if(f.eachNext(${q(ins.id)})){${go(ins.target)}}`;
       case 'redim':return ins.decls.map(d=>`{auto reference=f.ref(${q(d.name)});auto bounds=${this.bounds(d)};f.redim(reference,bounds,${bool(ins.preserve)},${q(d.explicitType?d.storageType||d.type:'')});}`).join('');
       case 'erase':return ins.exprs.map(node=>`${e(node)}.asArray()->erase();`).join('');
-      case 'withPush':return `f.withValues.push_back(${e(ins.expr)});`;
-      case 'withPop':return 'if(f.withValues.empty())fail(91);f.withValues.pop_back();';
-      case 'withUnwind':return `if(f.withValues.size()<${ins.count})fail(91);f.withValues.resize(f.withValues.size()-${ins.count});`;
+      case 'withPush':return this.canReference(ins.expr)?`f.closeWith(${q(ins.id)});auto reference=${r(ins.expr)};auto value=reference.get();f.pushWith(${q(ins.id)},value,${ins.target},std::move(reference));`:`f.closeWith(${q(ins.id)});f.pushWith(${q(ins.id)},${e(ins.expr)},${ins.target});`;
+      case 'withPop':return `f.closeWith(${q(ins.id)});`;
+      case 'withUnwind':return `f.unwindWith(${ins.count});`;
       case 'onError':return `f.onError(${q(ins.mode)},${ins.target??-1});`;
       case 'resume':return `f.resume(${q(ins.mode)},${ins.target??-1});goto dispatch;`;
       case 'gosub':return `if(f.gosubs.size()>=f.runtime.maxCallDepth)fail(28);f.gosubs.push_back(${index+1});${go(ins.target)}`;
@@ -190,14 +196,14 @@ export class MacOSLowering {
     this.procedure=procedure;this.instruction=null;this.procedures++;
     if(procedure.external){const adapter=resolveMacOSDeclaration(procedure,this.module.name);this.external.push({...adapter,procedure:procedure.name,source:this.module.name});return `static Value p${id}(Frame&f){auto result=f.runtime.host->api(f.runtime,${q(adapter.id)},f.arguments);return ${procedure.kind==='sub'?'Value{}':`coerce(result,${q(procedure.storageReturnType||procedure.returnType)})`};}\n`;}
     const code=procedure.code;this.instructions+=code.length;
-    const locals=code.filter(ins=>ins.op==='dim').flatMap(ins=>ins.decls.map(d=>this.declaration(d,false,ins.static))).join('\n');
+    const locals=(procedure.redimDeclarations||[]).map(d=>this.declaration(d,false,false)).join('\n')+code.filter(ins=>ins.op==='dim').flatMap(ins=>ins.decls.map(d=>this.declaration(d,false,ins.static))).join('\n');
     const instructions=code.map((ins,i)=>{this.sourceMap.push({function:`p${id}`,instruction:i,module:this.module.name,procedure:procedure.name,line:ins.line,sequencePoint:ins.sequencePoint});return `L${i}:{f.mark(${i},${i+1},${ins.line||procedure.line});${this.instructionCode(ins,i)}}`;});
     return `static Value p${id}(Frame&f){\n${locals}\ndispatch:\ntry {\nswitch(f.pc){${code.map((_,i)=>`case ${i}:goto L${i};`).join('')}default:goto L${code.length};}\n${instructions.join('\n')}\nL${code.length}:return f.result();\n}catch(const Error&e){if(!f.handle(e))throw;}\ngoto dispatch;\n}\n`;
   }
   recordCode(name,fields){
     return `m.records[${q(lower(name))}]=[](Frame&f){(void)f;auto record=std::make_shared<Record>();record->name=${q(name)};${fields.map(field=>{
       const type=field.storageType||field.type;const init=field.bounds?.length?`Value::array(std::make_shared<Array>(${q(type)},${this.bounds(field)},false,f.runtime.maxArrayElements,${field.fixedLength||0},[prototype=f.runtime.defaultValue(${q(type)},&f)]{return prototype.copy();}))`:`f.runtime.defaultValue(${q(type)},&f)`;
-      return `record->order.push_back(${q(lower(field.name))});record->fields[${q(lower(field.name))}]=std::make_shared<Cell>(${init},${q(field.bounds?.length?'variant':type)},${field.fixedLength||0});`;
+      return `record->order.push_back(${q(lower(field.name))});record->fields[${q(lower(field.name))}]=std::make_shared<Cell>(${init},${q(type)},${field.fixedLength||0},false,${bool(!!field.bounds?.length)});`;
     }).join('')}return Value::record(record);};`;
   }
   spec(control){
@@ -210,21 +216,22 @@ export class MacOSLowering {
     for(const module of this.program.modules.values()){
       this.module=module;this.procedure=null;this.instruction=null;
       const registrations=[];
-      for(const [key,proc]of module.procedures){functions.push(this.procedureCode(proc,id));registrations.push(`{Procedure p;p.name=${q(proc.name)};p.scope=${q(proc.scope)};p.returnType=${q(proc.storageReturnType||proc.returnType)};p.accessor=${q(proc.accessor||'')};p.isFunction=${bool(proc.kind==='function'||proc.accessor==='get')};p.isStatic=${bool(proc.static)};p.external=${bool(proc.external)};p.code=&p${id++};p.parameters={${proc.params.map(param=>{
+      for(const [key,proc]of module.procedures){functions.push(this.procedureCode(proc,id));registrations.push(`{Procedure p;p.name=${q(proc.name)};p.scope=${q(proc.scope)};p.returnType=${q(proc.storageReturnType||proc.returnType)};p.accessor=${q(proc.accessor||'')};p.isFunction=${bool(proc.kind==='function'||proc.accessor==='get')};p.returnArray=${bool(proc.returnArray)};p.isStatic=${bool(proc.static)};p.external=${bool(proc.external)};p.code=&p${id++};p.parameters={${proc.params.map(param=>{
         const initial=proc.defaultScalars.get(lower(param.name));return `Parameter{${q(param.name)},${q(param.storageType||param.type)},${bool(param.byRef)},${bool(param.optional)},${bool(param.paramArray)},${bool(param.bounds!==null&&param.bounds!==undefined)},${initial?`[](Frame&)->Value{return ${cppScalar(initial)};}`:'{}'}}`;
       }).join(',')}};m.procedures[${q(key)}]=std::move(p);}`);}
       this.procedure=null;this.instruction=null;
       initialize.push(`{Module m;m.name=${q(module.name)};m.kind=${q(module.kind)};m.defaultMember=${q(module.defaultMember||'')};m.optionExplicit=${bool(module.optionExplicit)};m.optionBase=${module.optionBase};m.textCompare=${bool(module.optionCompare==='text')};m.defaultTypes={${Object.entries(module.defaultTypes).map(([k,v])=>`{${q(k)},${q(v)}}`).join(',')}};m.interfaces={${module.interfaces.map(i=>q(i.name)).join(',')}};m.interfaceBindings={${Object.entries(module.interfaceBindings||{}).map(([name,contract])=>`{${q(name)},InterfaceContract{${q(contract.defaultMember||'')},{${Object.entries(contract.members).map(([key,member])=>`{${q(key)},InterfaceMember{${q(member.procedure)},{${member.signature.params.map(p=>q(lower(p.name))).join(',')}}}}`).join(',')}}}}`).join(',')}};m.publicFields={${module.declarations.filter(d=>d.scope!=='private').map(d=>q(lower(d.name))).join(',')}};\n${Object.entries(module.types).map(([name,fields])=>this.recordCode(name,fields)).join('\n')}\nm.initialize=[](Frame&f){(void)f;${module.declarations.map(d=>this.declaration(d,true)).join('\n')}};\n${registrations.join('\n')}\n${module.form?`m.form=${this.spec({...module.form,name:module.name})};m.controls={${module.form.controls.map(c=>this.spec(c)).join(',')}};m.menus={${(module.form.menus||[]).map(c=>this.spec({...c,type:'Menu'})).join(',')}};`:''}\nrt.modules[${q(lower(module.name))}]=std::move(m);}`);
     }
-    return `// Generated VB6 native procedures. No project text is executed as C++ code.\n#include "vb6.hpp"\n#include "library.hpp"\n#include <iostream>\nusing namespace vb6;\n${functions.join('\n')}\nvoid initializeProgram(Runtime&rt){rt.name=${q(this.options.name)};rt.startup=${q(this.program.startup)};rt.maxArrayElements=${this.options.maxArrayElements};rt.maxCallDepth=${this.options.maxCallDepth};\n${initialize.join('\n')}\n}\n#ifndef VB6_NATIVE_NO_MAIN\nint main(int argc,char**argv){try{Runtime rt(makeNativeHost());if(argc>0)rt.executablePath=std::filesystem::absolute(argv[0]);for(int i=1;i<argc;++i)rt.commandLine.emplace_back(argv[i]);initializeProgram(rt);rt.run();return 0;}catch(const vb6::Error&e){std::cerr<<"VB6 error "<<e.number<<": "<<e.what()<<"\\n";return 1;}catch(const std::exception&e){std::cerr<<"Native runtime failure: "<<e.what()<<"\\n";return 2;}}\n#endif\n`;
+    return `// Generated VB6 native procedures. No project text is executed as C++ code.\n#include "vb6.hpp"\n#include "library.hpp"\n#include "array-ownership.hpp"\n#include <iostream>\nusing namespace vb6;\n${functions.join('\n')}\nvoid initializeProgram(Runtime&rt){rt.name=${q(this.options.name)};rt.startup=${q(this.program.startup)};rt.maxArrayElements=${this.options.maxArrayElements};rt.maxCallDepth=${this.options.maxCallDepth};\n${initialize.join('\n')}\n}\n#ifndef VB6_NATIVE_NO_MAIN\nint main(int argc,char**argv){try{Runtime rt(makeNativeHost());if(argc>0)rt.executablePath=std::filesystem::absolute(argv[0]);for(int i=1;i<argc;++i)rt.commandLine.emplace_back(argv[i]);initializeProgram(rt);rt.run();return 0;}catch(const vb6::Error&e){std::cerr<<"VB6 error "<<e.number<<": "<<e.what()<<"\\n";return 1;}catch(const std::exception&e){std::cerr<<"Native runtime failure: "<<e.what()<<"\\n";return 2;}}\n#endif\n`;
   }
 }
 export function compileMacOS(input,options={}){
   const project=normalizeProject(input);const normalized=macOSOptions({name:project.name,...options});
+  const resources=prepareMacOSResources(project);
   project.settings={...project.settings,conditionalConstants:{...project.settings.conditionalConstants,VBWEB:0,Win32:0,Win64:0,Mac:-1,MacOS:-1,ARM64:-1}};
   const program=compileProject(project);if(!program.valid){const error=new MacOSCompileError('VB6 frontend rejected the project');error.diagnostics=program.diagnostics;throw error;}
   const controls=macOSControlReport(project);
   const lowering=new MacOSLowering(program,normalized),source=lowering.emit();
-  const report={target:MACOS_TARGET.id,architecture:'arm64',format:'Mach-O',artifact:'native-source-build-kit',compiler:'Apple Clang C++17',nativeRuntime:'vb6-native',modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,optimization:normalized.optimization,minimumVersion:normalized.minimumVersion,sourceBytes:new TextEncoder().encode(source).length,diagnostics:[]};
-  return {target:MACOS_TARGET,options:normalized,project,files:{'main.cpp':source,'Info.plist':macOSInfoPlist(normalized),'source-map.json':JSON.stringify(lowering.sourceMap,null,2)+'\n'},report,diagnostics:[]};
+  const report={target:MACOS_TARGET.id,architecture:'arm64',format:'Mach-O',artifact:'native-source-build-kit',compiler:'Apple Clang C++17',nativeRuntime:'vb6-native',modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,optimization:normalized.optimization,minimumVersion:normalized.minimumVersion,sourceBytes:new TextEncoder().encode(source).length,resources:resources.report,diagnostics:[]};
+  return {target:MACOS_TARGET,options:normalized,project,files:{...resources.files,'main.cpp':source,'Info.plist':macOSInfoPlist(normalized),'source-map.json':JSON.stringify(lowering.sourceMap,null,2)+'\n'},report,diagnostics:[]};
 }

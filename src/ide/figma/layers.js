@@ -12,7 +12,7 @@ export function createFigmaLayers(workspace){
   const title=el('strong',{}),count=el('span',{class:'figma-muted'}),tree=el('div',{class:'figma-layer-tree',role:'tree','aria-label':'VB6 form layers','aria-multiselectable':'true',tabindex:0}),content=el('div',{class:'figma-layer-content'});
   tree.append(content);panel.append(ide.caption('Layers',()=>ide.docking.show('figma-layers',false)),el('div',{class:'figma-search'},figmaIcon('search'),search),el('div',{class:'figma-section-title'},title,count),tree);
   let rows=[],key='',focused='@form',anchor=null,drag=null,frame=0;
-  const current=()=>workspace.currentDesigner(),form=()=>current()?.module.form;
+  const current=()=>workspace.contextDesigner(),form=()=>current()?.module.form;
   const selected=id=>id==='@form'?!current()?.selection.size:current()?.selection.has(id);
   const focusAt=index=>{
     if(!rows.length)return;index=Math.min(rows.length-1,Math.max(0,index));focused=rows[index].control.id;
@@ -21,6 +21,7 @@ export function createFigmaLayers(workspace){
   };
   const choose=(id,event={})=>{
     const designer=current();if(!designer)return;
+    if(!workspace.currentDesigner())ide.openDocument(designer.module.id,'form');
     if(id==='@form'){designer.select([]);anchor=null;}
     else if(event.shiftKey&&anchor){const a=rows.findIndex(r=>r.control.id===anchor),b=rows.findIndex(r=>r.control.id===id);designer.select(rows.slice(Math.max(0,Math.min(a,b)),Math.max(a,b)+1).map(r=>r.control.id).filter(id=>id!=='@form'));}
     else if(event.ctrlKey||event.metaKey){const ids=new Set(designer.selection);ids.has(id)?ids.delete(id):ids.add(id);designer.select([...ids]);anchor=id;}
@@ -62,7 +63,7 @@ export function createFigmaLayers(workspace){
     if(hadFocus){const node=[...content.children].find(n=>n.dataset.layerId===selectedId);(node||tree).focus({preventScroll:true});}
   }
   function sync(){
-    const f=form(),query=search.value,next=(current()?.module.id||'')+':'+ide.visualRevision+':'+[...current()?.selection||[]].join(',')+':'+ide.runState+':'+!!current()?.locked+':'+query+':'+[...collapsed].join(',');
+    const f=form(),query=search.value,next=(current()?.module.id||'')+':'+ide.visualRevision+':'+[...current()?.selection||[]].join(',')+':'+ide.runState+':'+ide.activeDoc?.view+':'+!!current()?.locked+':'+query+':'+[...collapsed].join(',');
     if(next===key)return;key=next;title.textContent=f?.name||'No form selected';count.textContent=f?(f.controls.length+' layers'):'';
     rows=f?[{control:{...f,id:'@form'},depth:1,hasChildren:!!f.controls.length,expanded:!collapsed.has('@form')},...(!collapsed.has('@form')||query?layerRows(f,{collapsed,query}).map(r=>({...r,depth:r.depth+1})):[])]:[];
     if(!rows.some(r=>r.control.id===focused))focused=rows.find(r=>selected(r.control.id))?.control.id||'@form';

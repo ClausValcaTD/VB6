@@ -1,3 +1,19 @@
+import {nativeAutomationMethods} from './automation.js';
+import {prepareNativeAutomation} from './automation-plan.js';
+import {emitNativeAutomation} from './automation-helpers.js';
+import {emitNativeInputBox} from './inputbox.js';
+import {nativeFormInstanceMethods} from './form-instances.js';
+import {emitFormInterface} from './form-instance-abi.js';
+import {emitNativeCheckBoxHelpers} from './control-checkbox.js';
+import {nativeDynamicControlMethods} from './dynamic-controls.js';
+import {nativeDynamicEventMethods} from './dynamic-control-events.js';
+import {nativeEventMethods} from './events.js';
+import {nativeClassMethods} from './classes.js';
+import {emitNativeStringStatements} from './string-statements.js';
+import {emitPrivateErrorScopes} from './private-error-scope.js';
+import {nativeCollectionMethods} from './collections.js';
+import {nativeSurfaceMethods} from './surfaces.js';
+import {nativePrivateKernelMethods} from './private-kernels.js';
 import {nativeMathMethods,emitNativeMathHelpers} from './math-intrinsics.js';
 import {emitNativeRecordStringHelpers} from './record-strings.js';
 import {nativeCompilerStateMethods} from './compiler-state.js';
@@ -56,6 +72,9 @@ class NativeCompiler {
     if (!this.program.valid) { const error = new NativeCompileError('Project contains compile errors'); error.diagnostics = this.program.diagnostics; error.message = error.diagnostics.map(d => `${d.source}:${d.line}: ${d.message}`).join('\n'); throw error; }
     for(const module of this.program.modules.values())for(const proc of module.procedures.values())if(proc.returnArray)this.fail('Typed array procedure returns require the HTML or Electron runtime; native array-return ABI is not implemented', {module,proc});
     for (const module of this.program.modules.values()) this.externals.set(key(module.name),lowerNativeDeclarations(module));
+    try{this.nativeAutomationMode=prepareNativeAutomation(this.program);}catch(error){this.fail(error.message);}
+    this.prepareNativeClassTypes();
+    this.prepareNativeFormTypes();
     this.recordLayouts=new NativeRecordLayouts(this.program,message=>this.fail(message));
     for(const module of this.program.modules.values())for(const declaration of this.externals.get(key(module.name)).values())for(const p of declaration.params)if(!INT_TYPES.has(key(p.type))&&!REAL_TYPES.has(key(p.type))&&!['currency','string','any'].includes(key(p.type))){p.nativeRecord=this.recordLayouts.resolve(p.type,module);if(!p.nativeRecord||!p.byRef)this.fail('Native Declare record parameters require a known ByRef POD record: '+p.type,module);}
     this.image = new PE32Image(); this.text = this.image.section('.text', 0x60000020); this.ro = this.image.section('.rdata', 0x40000040); this.data = this.image.section('.data', 0xc0000040);
@@ -66,6 +85,7 @@ class NativeCompiler {
     const parents = [...this.modules.values()].filter(m => m.form?.type === 'MDIForm');
     if (parents.length > 1) this.fail('Only one MDI parent is supported'); this.mdi = parents[0];
     for (const module of this.modules.values()) if (module.form?.properties.MDIChild && !this.mdi) this.fail('MDI child requires an MDIForm', module);
+    this.prepareNativeDynamics();
     this.prepareNativeTabPages();this.prepareLayout();this.prepareGridKernel();this.prepareChartKernel();
   }
   fail(message, context = this.context) { throw new NativeCompileError(message, context?.module?.name || context?.name || '', this.instruction?.line || context?.proc?.line || 0); }
@@ -76,9 +96,9 @@ class NativeCompiler {
     const x = this.x;
     emitNativeRecordStringHelpers(this);emitNativeMathHelpers(this);
     emitNativeNumericHelpers(this);emitNativeCurrencyHelpers(this);emitNativeDateHelpers(this);emitNativeDateIntervalHelpers(this);
-    emitNativeStorageHelpers(this);emitNativeStringLibraryHelpers(this);
+    emitNativeStorageHelpers(this);emitNativeStringLibraryHelpers(this);emitNativeStringStatements(this);
     emitNativeArrayHelpers(this);
-    this.emitNativeGridEditHelpers();this.emitNativePictureHelpers();this.emitNativeImageListHelpers();this.emitNativeDialogHelpers();this.emitNativeControlTextHelpers();this.emitNativeRichTextHelpers();this.emitNativeRangeHelpers();this.emitNativeFileHelpers();this.emitNativeFontHelpers();this.emitNativeInputHelpers();this.emitNativeTabHelpers();this.emitNativeTabTextHelpers();this.emitNativeColorHelpers();this.emitNativeDrawingHelpers();
+    this.emitNativeGridEditHelpers();this.emitNativePictureHelpers();this.emitNativeImageListHelpers();this.emitNativeDialogHelpers();this.emitNativeControlTextHelpers();this.emitNativeRichTextHelpers();this.emitNativeRangeHelpers();this.emitNativeFileHelpers();this.emitNativeFontHelpers();this.emitNativeInputHelpers();emitNativeCheckBoxHelpers(this);this.emitNativeTabHelpers();this.emitNativeTabTextHelpers();this.emitNativeColorHelpers();this.emitNativeDrawingHelpers();
     // int-to-string(value, buffer), including INT_MIN without signed negation overflow.
     const positive = x.unique(), digits = x.unique(), copy = x.unique(), done = x.unique();
     x.label('int-to-string').enter(64).value({argument:8}).emit(0x89,0xc3).value({argument:12}).emit(0x89,0xc7,0x89,0xd8,0x85,0xc0).branch('ns',positive);
@@ -86,27 +106,28 @@ class NativeCompiler {
     x.label(positive).local(-2).emit(0x89,0xc6,0x89,0xd8,0x85,0xc0); const magnitude = x.unique(); x.branch('ns',magnitude).emit(0xf7,0xd8).label(magnitude).emit(0x31,0xdb);
     x.label(digits).emit(0x31,0xd2,0xb9).imm(10).emit(0xf7,0xf1,0x80,0xc2,48,0x66,0x89,0x16,0x83,0xee,2,0x43,0x85,0xc0).branch('ne',digits);
     x.label(copy).emit(0x83,0xc6,2,0x66,0x8b,0x06,0x66,0x89,0x07,0x83,0xc7,2,0x4b).branch('ne',copy).emit(0x66,0xc7,0x07,0,0).value({argument:12}).leave(8);
-    emitNativeErrorHelpers(this);
+    emitNativeErrorHelpers(this);emitPrivateErrorScopes(this);emitNativeInputBox(this);emitNativeAutomation(this);
   }
   build() {
-    for (const module of this.modules.values()) if(module!==this.gridModule&&module!==this.chartModule)for (const proc of module.procedures.values()) this.procedure(proc);
+    this.prepareNativeSurfaceDemand();
+    for (const module of this.modules.values()) if(module!==this.gridModule&&module!==this.chartModule&&!module.deferredNativeKernel)for (const proc of module.procedures.values()) this.procedure(proc);
     for (const module of this.modules.values()) if (module.form) this.form(module);
-    this.emitGridKernel();this.emitChartKernel();
+    this.emitGridKernel();this.emitChartKernel();this.emitNativeClassCleanup();this.emitPrivateNativeKernels();emitFormInterface(this);
     emitNativeStringInteropHelpers(this);
     emitNativeCallbackHelpers(this);
     this.helpers(); this.context = null; this.instruction = null;
     const x = this.x, loop = x.unique(), dispatch = x.unique(), quit = x.unique();
     x.label('entry').api('kernel32.dll','GetModuleHandleW',[0]).store('instance');
-    this.initializeNativeControlLibraries();
+    this.initializeNativeControlLibraries();this.initializeNativeSurfaceClasses();
     if(this.nativeCallbacks?.size)x.api('kernel32.dll','GetCurrentThreadId').store('native:callback:thread');
     for (const module of this.modules.values()) if (module.form) {
       x.value(mem('instance')).store(module.wc,16).api('user32.dll','LoadCursorW',[0,32512]).store(module.wc,24);
       x.api('user32.dll','RegisterClassW',[module.wc]).test().branch('e','error:7');
     }
-    for(const module of this.modules.values())if(!module.form)for(const variable of module.globals.values())this.initializeFixedString(variable);
-    for (const module of this.modules.values()) if (!module.form) { this.context = {module,proc:{},locals:new Map()}; for (const variable of module.globals.values()) if (variable.initial) { const first=this.globalVariantTemps?.length||0;this.storageExpression(variable,variable.initial);this.store(variable);for(const temp of (this.globalVariantTemps||[]).slice(first))this.clearVariantStorage(temp); } }
+    for(const module of this.modules.values())if(!module.form&&!module.nativeClass)for(const variable of module.globals.values())this.initializeFixedString(variable);
+    for (const module of this.modules.values()) if (!module.form&&!module.nativeClass) { this.context = {module,proc:{},locals:new Map()}; for (const variable of module.globals.values()) if (variable.initial) { const first=this.globalVariantTemps?.length||0;this.storageExpression(variable,variable.initial);this.store(variable);for(const temp of (this.globalVariantTemps||[]).slice(first))this.clearVariantStorage(temp); } }
     if (key(this.project.startup) === 'sub main') {
-      const candidates = [...this.modules.values()].filter(m => !m.form).map(m => m.procedures.get('main')).filter(Boolean);
+      const candidates = [...this.modules.values()].filter(m => !m.form&&!m.nativeClass).map(m => m.procedures.get('main')).filter(Boolean);
       if (candidates.length !== 1 || candidates[0].proc.params.length) this.fail('Native Sub Main startup must be unique and parameterless'); x.call(candidates[0].label);this.checkNativeError('native:error:fatal');
     } else {
       const startup = this.modules.get(key(this.project.startup)); if (!startup?.form) this.fail('Native startup form was not found');
@@ -123,7 +144,7 @@ class NativeCompiler {
     return {bytes:linked.bytes,report:{controls:this.nativeControlsReport(),optimization:{...linked.optimization,...this.optimizationStats},records:[...this.recordLayouts.layouts.values()].map(r=>({name:r.id,size:r.size,fileSize:r.fileSize,alignment:r.alignment,fields:[...r.fields.values()].map(f=>({name:f.name,type:f.type,offset:f.recordOffset,bytes:f.nativeBytes}))})),...(this.layoutModule?{layout:{enabled:true,kernel:'private VB-to-x86',logicalUnit:'twip',rounding:'nearest HWND pixel',nodes:this.layoutSeed.count,features:['anchor-16-masks','nested-containers','min-max','dock','horizontal','vertical','wrap','suspend-resume']}}:{}),target:'win32-aot',architecture:'x86',format:'PE32',extraction:false,arrayLimits:{maxBytes:this.maxArrayBytes,maxRank:60},controlFlow:{maxGoSubDepth:this.maxGoSubDepth,withRecords:true,computedBranches:true},runtime:'Win32 system DLLs; no embedded JavaScript engine or VB6 runtime',graphics:'native Windows controls / GDI, not WebGPU',size:linked.bytes.length,imports:linked.imports,sections:linked.sections,sourceMap:this.sourceMap.map(s => ({...s,rva:linked.symbols[s.symbol]??null,...(linked.symbols[s.symbol]===undefined?{optimizedOut:true}:{})})),callbacks:[...(this.nativeCallbacks?.values()||[])].map(({target,label})=>({module:target.module.name,procedure:target.proc.name,rva:linked.symbols[label],argumentBytes:target.argumentBytes,thread:'application',convention:'stdcall'})),limits:['Typed scalars, owned Variants/Decimal, Variant-contained arrays, ParamArray, typed arrays, POD records and error recovery; managed records, classes, Object/IDispatch and unsupported VB constructs fail compilation.','Native controls use Windows theme/font metrics, not pixel-identical VB6 styling.','WebGPU remains a separate Electron target.']}};
   }
 }
-Object.assign(NativeCompiler.prototype,nativeCompilerStateMethods,nativeCompilerExpressionMethods,nativeCompilerProcedureMethods,nativeCompilerFormMethods,nativeVariantMethods,nativeControlMethods,nativeStringLibraryMethods,nativeFlowMethods,nativeIntegerMethods,nativeOptimizationMethods,nativeLayoutMethods,nativeStringInteropMethods,nativeCallbackMethods,nativeCallMethods,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods,nativeDateMethods,nativeDateIntervalMethods,nativeRecordMethods,nativeMathMethods);
+Object.assign(NativeCompiler.prototype,nativePrivateKernelMethods,nativeSurfaceMethods,nativeCompilerStateMethods,nativeCompilerExpressionMethods,nativeCompilerProcedureMethods,nativeCompilerFormMethods,nativeVariantMethods,nativeControlMethods,nativeStringLibraryMethods,nativeFlowMethods,nativeIntegerMethods,nativeOptimizationMethods,nativeLayoutMethods,nativeStringInteropMethods,nativeCallbackMethods,nativeCallMethods,nativeBindingMethods,nativeStorageMethods,nativeErrorMethods,nativeArrayMethods,nativeNumericMethods,nativeControlArrayMethods,nativeCurrencyMethods,nativeDateMethods,nativeDateIntervalMethods,nativeRecordMethods,nativeMathMethods,nativeCollectionMethods,nativeClassMethods,nativeEventMethods,nativeDynamicControlMethods,nativeDynamicEventMethods,nativeFormInstanceMethods,nativeAutomationMethods);
 export function compileWin32(project, options = {}) {
   if (options.graphics && options.graphics !== 'gdi') throw new NativeCompileError('The freestanding Win32 target uses native controls/GDI; use the desktop target for WebGPU');
   if (options.arch && options.arch !== 'x86') throw new NativeCompileError('The freestanding compiler currently emits x86 PE32');

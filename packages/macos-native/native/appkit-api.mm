@@ -1,6 +1,7 @@
 // Source-level Win32 contracts implemented with AppKit, Foundation and POSIX.
 // This is a checked adapter, not a loader for Windows DLLs or raw Win32 pointers.
 #include "appkit.hpp"
+#include "appkit-pixels.hpp"
 #include "file-codec.hpp"
 #include <cerrno>
 #include <cstring>
@@ -35,7 +36,7 @@ void writeBytes(const Arg&arg,const Bytes&bytes){
 }
 void writeLong(const Arg&arg,int64_t value){if(!arg.reference||!arg.nativeByRef)fail(13,"API output must be ByRef");arg.reference.set(Value::integer(value));}
 void write64(const Arg&arg,uint64_t value){Bytes bytes(8);for(size_t i=0;i<8;i++)bytes[i]=uint8_t(value>>(8*i));writeBytes(arg,bytes);}
-std::vector<int32_t>readInts(const Arg&arg,size_t count){auto bytes=rawBytes(arg);if(bytes.size()<count*4)fail(5,"API record is too small");std::vector<int32_t>values;for(size_t i=0;i<count;i++){uint32_t n=0;for(size_t j=0;j<4;j++)n|=uint32_t(bytes[i*4+j])<<(8*j);values.push_back(int32_t(n<=INT32_MAX?int64_t(n):int64_t(n)-4294967296LL));}return values;}
+std::vector<int32_t>readInts(const Arg&arg,size_t count){auto bytes=rawBytes(arg);if(bytes.size()<count*4)fail(5,"API record is too small");std::vector<int32_t>values;for(size_t i=0;i<count;i++){uint32_t n=0;for(size_t j=0;j<4;j++)n|=uint32_t(bytes[i*4+j])<<(j*8);values.push_back(int32_t(n<=INT32_MAX?int64_t(n):int64_t(n)-4294967296LL));}return values;}
 void writeInts(const Arg&arg,const std::vector<int32_t>&values){Bytes bytes(values.size()*4);for(size_t i=0;i<values.size();i++)for(size_t j=0;j<4;j++)bytes[i*4+j]=uint8_t(uint32_t(values[i])>>(8*j));writeBytes(arg,bytes);}
 Text readText(const Arg&arg,bool wide,bool terminated=true,int64_t count=-1){
   Text result;const auto&value=arg.value;
@@ -282,7 +283,7 @@ Value MacHost::api(Runtime&rt,const std::string&raw,Args args){
     }
     if(name=="SetPixel"){auto command=dcCommand(context,*target,"pixel");command.coordinates={double(n(1)),double(n(2))};command.color=i32(a(3).value);appendCommand(*target,command);return Value::integer(command.color);}
     if(name=="GetPixel"){
-      double x=n(1),y=n(2);auto bounds=target->view.bounds;if(x<0||y<0||x>=bounds.size.width||y>=bounds.size.height)return Value::integer(-1);NSBitmapImageRep*bitmap=[target->view bitmapImageRepForCachingDisplayInRect:bounds];if(!bitmap)return bad(rt,8,-1);[target->view cacheDisplayInRect:bounds toBitmapImageRep:bitmap];NSInteger px=NSInteger(x*bitmap.pixelsWide/bounds.size.width),py=NSInteger(y*bitmap.pixelsHigh/bounds.size.height);return Value::integer(colorValue([bitmap colorAtX:px y:py]));
+      double x=n(1),y=n(2);auto bounds=target->view.bounds;if(x<0||y<0||x>=bounds.size.width||y>=bounds.size.height)return Value::integer(-1);NSBitmapImageRep*bitmap=[target->view bitmapImageRepForCachingDisplayInRect:bounds];if(!bitmap)return bad(rt,8,-1);[target->view cacheDisplayInRect:bounds toBitmapImageRep:bitmap];NSInteger px=NSInteger(x*bitmap.pixelsWide/bounds.size.width),py=NSInteger(y*bitmap.pixelsHigh/bounds.size.height);return Value::integer(nativeBitmapColor(bitmap,px,py));
     }
     if(name=="TextOut"||name=="DrawText"||name=="GetTextExtentPoint32"){
       size_t textIndex=name=="TextOut"?3:1,countIndex=name=="TextOut"?4:2;int64_t count=n(countIndex);if(count<0&&(name!="DrawText"||count!= -1))return bad(rt,87);auto string=readText(a(textIndex),wide,count<0,count);auto command=dcCommand(context,*target,name=="DrawText"?"textrect":"text");command.text=string;command.color=context->textColor;

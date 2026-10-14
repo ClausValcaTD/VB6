@@ -22,6 +22,7 @@ namespace vb6 {
 using Text = std::u16string;
 struct Runtime; struct Frame; struct Object; struct Array; struct Record; struct Cell;
 struct Module; struct Procedure; struct Instance; struct NativeHost; struct NativeLifetime;
+struct ArrayOwners; struct ArrayBorrow; class NativeResources;
 using ObjectPtr = std::shared_ptr<Object>;
 using CellPtr = std::shared_ptr<Cell>;
 struct Error : std::runtime_error {
@@ -55,6 +56,8 @@ struct Value {
   Type type=Type::Empty; bool variant=false;
   using Payload=std::variant<std::monostate,int64_t,double,Text,ObjectPtr,std::shared_ptr<Array>,std::shared_ptr<Record>,Decimal>;
   Payload payload;
+  // Weak aggregate ancestry is execution metadata, never owned/copied storage.
+  std::shared_ptr<const ArrayOwners> arrayOwners{};
   Value()=default;
   static Value integer(int64_t value, Type type=Type::Long, bool variant=false);
   static Value real(double value, Type type=Type::Double, bool variant=false);
@@ -93,21 +96,22 @@ struct Arg {
   Value value; Ref reference; std::string name; bool nativeByRef=false;
   Arg() : value(Value::missing()) {}
   explicit Arg(Value value, std::string name="") : value(std::move(value)),name(std::move(name)) {}
-  explicit Arg(Ref reference, std::string name="") : value(reference.get()),reference(std::move(reference)),name(std::move(name)) {}
+  explicit Arg(Ref reference, std::string name="", bool directOnly=false) : value(reference.get()),reference(std::move(reference)),name(std::move(name)) { if(directOnly&&!this->reference.direct)this->reference={}; }
   void set(Value value) const { if(reference) reference.set(std::move(value)); }
 };
 using Args=std::vector<Arg>;
 using Bounds=std::vector<std::pair<int32_t,int32_t>>;
 struct Cell {
-  Value value; std::string type="variant"; size_t fixedLength=0; bool constant=false;
+  Value value; std::string type="variant"; size_t fixedLength=0; bool constant=false,arrayStorage=false;
   std::function<Value()> lazy;
   std::function<void(Value)> changed;
-  Cell(Value value={},std::string type="variant",size_t fixedLength=0,bool constant=false);
+  Cell(Value value={},std::string type="variant",size_t fixedLength=0,bool constant=false,bool arrayStorage=false);
   Value get(); void set(Value value,bool objectSet=false);
 };
 Ref cellRef(CellPtr cell);
 struct Array : std::enable_shared_from_this<Array> {
   std::string elementType; Bounds bounds; bool dynamic=true, allocated=false; size_t fixedLength=0;
+  size_t borrowedElements=0;
   std::vector<Value> values; std::function<Value()> initializer;
   Array(std::string type, Bounds bounds, bool dynamic, size_t maxElements, size_t fixedLength=0,std::function<Value()> initializer={});
   size_t offset(const std::vector<Value>& indices) const;
@@ -144,7 +148,7 @@ struct Parameter {
 };
 struct Procedure {
   std::string name,returnType="variant",scope="public",accessor;
-  bool isFunction=false,isStatic=false,external=false;
+  bool isFunction=false,isStatic=false,external=false,returnArray=false;
   std::vector<Parameter> parameters;
   std::function<Value(Frame&)> code;
 };
@@ -184,20 +188,27 @@ struct Instance : Object {
   Value invoke(Runtime&,const std::string&,Args) override;
   Ref reference(Runtime&,const std::string&,Args={}) override;
   bool supports(const std::string&) const override;
+  bool hasControl(const std::string&) const;
   ObjectPtr queryInterface(const std::string&) override;
   std::map<std::string,std::weak_ptr<Object>> interfaceViews;
 };
 struct ErrorState { int32_t number=0,lastDllError=0,helpContext=0; Text description,source,helpFile; int32_t erl=0; void clear(); };
 struct ForState { Ref variable; Value end,step; };
-struct EachState { Ref variable; std::vector<Value> values; size_t position=0; };
+struct EachState {
+  Ref variable; std::vector<Value> values; std::shared_ptr<Array> array;
+  std::shared_ptr<ArrayBorrow> borrow; size_t position=0; int start=0,end=0;
+};
+struct WithState {
+  Value value; Ref reference; std::shared_ptr<ArrayBorrow> borrow; int start=0,end=0;
+};
 struct Frame {
   Runtime& runtime; std::shared_ptr<Instance> self; Module& module; Procedure* procedure;
   std::map<std::string,Ref> locals; std::vector<Arg> arguments;
-  std::map<std::string,Value> temps; std::vector<Value> withValues;
+  std::map<std::string,Value> temps; std::map<std::string,WithState> withScopes;
   std::map<std::string,ForState> fors; std::map<std::string,EachState> each;
   std::vector<int> gosubs;
   int pc=0,site=0,next=0,line=0,labelLine=0,errorSite=0,errorNext=0,errorHandler=-1;
-  bool handlerActive=false,errorResumeNext=false; size_t errorWithDepth=0;
+  bool handlerActive=false,errorResumeNext=false;
   Frame(Runtime&,std::shared_ptr<Instance>,Procedure* =nullptr,Args={});
   ~Frame(); Frame(const Frame&)=delete; Frame& operator=(const Frame&)=delete;
   Value get(const std::string& name); Ref ref(const std::string& name);
@@ -208,10 +219,14 @@ struct Frame {
   void initial(const std::string& name,Value value);
   void global(const std::string& name,const std::string& type,Bounds bounds={},int arrayKind=0,size_t fixedLength=0,bool constant=false,bool autoNew=false,bool withEvents=false);
   Ref propertyRef(const std::string&,Args);
-  Value result(); Value with() const;
+  Value result(); Value with(const std::string& id="") const;
+  void closeWith(const std::string& id); void unwindWith(size_t count);
+  void pushWith(const std::string& id,Value value,int end,Ref reference={});
+  void reconcileScopes(int instruction); void clearScopes();
   bool forStart(const std::string& id,Ref variable,Value start,Value end,Value step);
   bool forNext(const std::string& id);
-  bool eachStart(const std::string& id,Ref variable,Value iterable); bool eachNext(const std::string& id);
+  bool eachStart(const std::string& id,Ref variable,Value iterable,int end); bool eachNext(const std::string& id);
+  void closeEach(const std::string& id);
   void redim(Ref reference,Bounds bounds,bool preserve,const std::string& explicitType="");
   void mark(int site,int next,int line);
   bool handle(const Error&); void onError(const std::string& mode,int target);
@@ -231,6 +246,7 @@ struct NativeHost {
   virtual void graphics(Frame&,Value,const std::string&,std::vector<Value>,Value,bool);
   virtual void log(const Text&,bool newline);
   virtual int run(Runtime&); virtual void pump(); virtual void shutdown();
+  virtual bool hasOpenForms() const noexcept { return false; }
 };
 struct FileState;
 struct Subscription { std::weak_ptr<Object> source; std::weak_ptr<Instance> sink; std::string field; };
@@ -241,6 +257,7 @@ struct Runtime {
   std::map<std::string,std::function<Value(Frame&,Args)>> builtins;
   std::unique_ptr<NativeHost> host;
   std::shared_ptr<NativeLifetime> lifetime;
+  std::shared_ptr<NativeResources> resources;
   std::map<int,std::shared_ptr<FileState>> files;
   std::map<std::string,std::map<std::string,Text>> settings;
   std::vector<std::string> commandLine;
@@ -250,17 +267,22 @@ struct Runtime {
   ErrorState error;
   size_t maxArrayElements=16777216,maxCallDepth=512,depth=0;
   std::string name="Application",startup;
-  uint32_t randomSeed=0x1234abcd; bool ending=false;
+  uint32_t randomSeed=0x1234abcd; bool ending=false,finished=false,finishing=false;
   explicit Runtime(std::unique_ptr<NativeHost> host);
   ~Runtime(); Runtime(const Runtime&)=delete; Runtime& operator=(const Runtime&)=delete;
   std::shared_ptr<Instance> instance(const std::string& name,bool fresh=false);
   Value create(const std::string& name);
   Value defaultValue(const std::string& type,Frame* frame=nullptr);
   Value invoke(const std::shared_ptr<Instance>&,const std::string& name,Args={},bool internal=false);
-  Value dispatch(const std::shared_ptr<Instance>&,const std::string& name,Args={});
-  void load(const std::shared_ptr<Instance>&); void unload(const std::shared_ptr<Instance>&);
+  Value dispatch(const std::shared_ptr<Instance>&,const std::string&,Args={});
+  void load(const std::shared_ptr<Instance>&); void unload(const std::shared_ptr<Instance>&,int16_t mode=1);
   void bindEvents(std::shared_ptr<Instance>,const std::string&,Value);
   void raiseEvent(const std::shared_ptr<Instance>&,const std::string&,Args);
+  // Normal completion executes finalizers while module state/host/files are live.
+  // Returns false if a finalizer opens a window and the event loop must resume.
+  bool finish();
+  void stop() noexcept;
+  Ref defaultFormRef(const std::string&);
   void run();
 };
 Value scalar(Runtime&,Value);

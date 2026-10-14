@@ -1,8 +1,9 @@
+import {bindReferenceParameter} from './parameter-binding.js';
 import {RecordTypeIndex} from '../language/record-resolution.js';
 import {createRuntimeArray,createRuntimeRecord} from './record-storage.js';
 import {pushWithScope,popWithScope,unwindWithScopes,closeWithScopes,reconcileWithScopes,withValue} from './with-lifetime.js';
-import {ArrayLeaseScope,inheritArrayOwners,inheritReferenceOwners,closeArrayEnumeration,closeArrayEnumerations,reconcileArrayEnumerations} from './array-lifetime.js';
-import {VBScalar,SCALAR_TYPES,recordField,recordTypeMatches,arrayTypeMatches,printScalar,unbox,tagScalar,scalarType,storageScalar,readScalar,literalScalar,signedLiteralScalar} from './values.js';
+import {ArrayLeaseScope,inheritArrayOwners,closeArrayEnumeration,closeArrayEnumerations,reconcileArrayEnumerations} from './array-lifetime.js';
+import {VBScalar,SCALAR_TYPES,recordField,printScalar,unbox,tagScalar,scalarType,storageScalar,readScalar,literalScalar,signedLiteralScalar} from './values.js';
 import {RuntimeDebugger,StopExecution,isSequencePoint,statementIndex,immediateStatements} from './debug-control.js';
 import {VBWin32Bridge} from './win32.js';
 import {isAutomationObject,automationDefaultName,automationMember,automationReference,automationInvoke,automationEnumerate,automationSubscribe} from './automation.js';
@@ -157,7 +158,7 @@ export class VirtualMachine extends Signal {
   }
 
   async raiseEvent(instance,name,nodes,frame){
-    const leases=new ArrayLeaseScope();
+    const leases=new ArrayLeaseScope(),copyBack=[];
     try {
     const event=instance.module.events?.get(lower(name));if(!event)throw new VBError('Event not declared: '+name,1002);
     if(nodes.length!==event.params.length)throw new VBError('Wrong number of arguments to event '+name,450);
@@ -165,25 +166,21 @@ export class VirtualMachine extends Signal {
     for(let i=0;i<nodes.length;i++){
       const param=event.params[i],type=param.storageType||param.type,record=this.recordDefinition(type,instance.module);
       const actual=param.byRef?await this.sourceArgument(nodes[i],frame,leases):await this.evaluateScalar(nodes[i],frame);
-      if(Array.isArray(param.bounds)){
-        // Arrays are declared element storage, not a scalar of the element type.
-        // Keep the original reference so ReDim and element edits copy back to VB.
-        const value=actual?.ref?await actual.ref.get():unbox(actual);
-        if(!param.byRef||!actual?.ref||!arrayTypeMatches(value,type,record?.identity))throw new VBError('ByRef array type mismatch',13);
-        args.push(actual);
-      }else if(param.byRef&&actual?.ref){
-        if(record&&(lower(actual.ref.type)==='variant'||!recordTypeMatches(await actual.ref.get(),type,record.identity)))throw new VBError('ByRef user-defined type mismatch',13);
-        if(Object.hasOwn(SCALAR_TYPES,lower(type))&&lower(actual.ref.type)!==lower(type))throw new VBError('ByRef argument type mismatch',13);
-        args.push(actual);
+      if(Array.isArray(param.bounds)&&(!param.byRef||!actual?.ref))throw new VBError('ByRef array type mismatch',13);
+      if(param.byRef&&actual?.ref){
+        const binding=await bindReferenceParameter(this,param,actual.ref,instance.module);
+        args.push({ref:binding.cell});if(binding.copyBack)copyBack.push(binding.copyBack);
       }else if(param.byRef)args.push({ref:record?createRecordCell(type,actual,record.identity):new Cell(type,actual)});
       else args.push(storageScalar(actual,type));
     }
-    if(this.host.sourceEventEnabled?.(instance,name)===false)return;
+    if(this.host.sourceEventEnabled?.(instance,name)===false){for(const write of copyBack)await write();return;}
     for(const sink of [...(this.eventSinks.get(instance)||[])]){if(!(this.eventSinks.get(instance)||[]).includes(sink))continue;const proc=sink.owner.module.procedures.get(lower(sink.prefix+'_'+name));if(proc)await this.callProcedure(sink.owner,proc,args,frame);}
     // An explicitly installed source-control host shares the declared cells,
     // so cancellable source events preserve the same ByRef storage as VB sinks.
     await this.host.sourceEvent?.(instance,name,args);
+    if(this.state==='stopped')throw new StopExecution();this.debugEvaluation?.check();
     this.emit('event',{instance,name,args:args.map(a=>a?.ref?a.ref.get():a)});
+    for(const write of copyBack)await write();
     }finally{leases.release();}
   }
   async evalBounds(bounds,frame){const result=[];for(const [lo,hi]of bounds)result.push([lo?numeric(await this.evaluateScalar(lo,frame)):frame.module.optionBase,numeric(await this.evaluateScalar(hi,frame))]);return result;}
@@ -539,7 +536,7 @@ export class VirtualMachine extends Signal {
     object[native]=unbox(args[0]);return args[0];
   }
   async callProcedure(instance,proc,args=[],caller=null,scalarReturn=false){
-    const leases=new ArrayLeaseScope();
+    const leases=new ArrayLeaseScope(),copyBack=[];
     try {
     for(let i=0;i<proc.params.length;i++)if(proc.params[i].byRef&&!proc.params[i].paramArray&&args[i]?.ref)leases.reference(args[i].ref);
     if(proc.external){const value=await this.debugAwait(this.win32.invoke(proc,args.map(a=>a?.ref?a:a?.__win32ByVal?{...a,value:unbox(a.value)}:unbox(a))));return scalarReturn?storageScalar(value,proc.storageReturnType||proc.returnType||'Variant'):value;}
@@ -552,15 +549,8 @@ export class VirtualMachine extends Signal {
       if(unbox(actual)===MISSING){if(param.initial)actual=proc.defaultScalars?.has(lower(param.name))?proc.defaultScalars.get(lower(param.name)):await this.evaluateScalar(param.initial,frame);else if(!param.optional)throw new VBError(`Argument not optional: ${param.name}`,449);else actual=lower(param.type)==='variant'?MISSING:defaultValue(param.type);}
       const declared=param.storageType||param.type;
       if(param.byRef&&actual?.ref){
-        const ref=actual.ref,value=await ref.get();
-        if(param.bounds!==null){if(!arrayTypeMatches(value,declared,this.recordDefinition(declared,frame.module)?.identity))throw new VBError('ByRef array type mismatch',13);cell=ref;}
-        else if(this.recordSchema(param.type,frame.module)){if(lower(ref.type)==='variant'||!recordTypeMatches(value,param.type,this.recordDefinition(param.type,frame.module)?.identity))throw new VBError('ByRef user-defined type mismatch',13);cell=ref;}
-        else if(Object.hasOwn(SCALAR_TYPES,lower(declared))&&lower(ref.type)!==lower(declared))throw new VBError('ByRef argument type mismatch',13);
-        else if(lower(declared)==='variant'&&scalarType(value)){
-          cell=inheritReferenceOwners(ref,new Ref(()=>ref.get(),v=>ref.set(v),'Variant',ref.fixedLength,async()=>storageScalar(await readScalar(ref),'Variant')));
-          // Only storage-backed references may participate in automatic watches.
-          if(ref instanceof Cell||typeof ref.debugGetScalar==='function'){cell.debugGetScalar=()=>storageScalar(ref instanceof Cell?ref.getScalar():ref.debugGetScalar(),'Variant');cell.debugGet=()=>unbox(cell.debugGetScalar());}
-        }else cell=objectSupports(value,param.type)&&lower(ref.type)!==lower(param.type)?new Ref(async()=>coerce(await ref.get(),param.type),v=>ref.set(v),param.type):ref;
+        const binding=await bindReferenceParameter(this,param,actual.ref,frame.module);
+        cell=binding.cell;if(binding.copyBack)copyBack.push(binding.copyBack);
       }else {
         const value=actual?.ref?await readScalar(actual.ref):actual,record=this.recordDefinition(param.type,frame.module);
         cell=param.bounds!==null?createArrayCell(declared,value,record?.identity):record?createRecordCell(declared,value,record.identity):new Cell(declared,value);
@@ -569,7 +559,7 @@ export class VirtualMachine extends Signal {
     }
     for(const decl of proc.redimDeclarations||[])await this.declare(decl,frame,frame.locals,decl.static||proc.static);
     this.stack.push(frame);this.currentFrame=frame;
-    try {await this.execute(frame);return scalarReturn?frame.result.getScalar():frame.result.get();}
+    try {await this.execute(frame);for(const write of copyBack)await write();return scalarReturn?frame.result.getScalar():frame.result.get();}
     finally{closeWithScopes(frame);closeArrayEnumerations(frame);this.stack.pop();this.currentFrame=this.stack.at(-1)||null;if(!this.stack.length&&!this.debugEvaluation&&frame.proc.code.some(isSequencePoint))this.stepMode=null;if(!this.stack.length&&this.eventQueue.length)queueMicrotask(()=>this.processEvents());}
     }finally{leases.release();}
   }

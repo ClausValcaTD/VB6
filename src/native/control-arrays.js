@@ -1,15 +1,17 @@
+import {nativeCheckBoxClick} from './control-checkbox.js';
 /** Statically designed control arrays, including Index event arguments. Each
  * element retains its own native HWND and ID; no flattened duplicate names. */
 const key=value=>String(value).toLowerCase();
 export const nativeControlArrayMethods={
   applyNativeControlFont(control){
     const p={...control.module.form.properties,...control.model.properties},x=this.x;
+    if(control.model.type==='CheckBox')x.value(p.TripleState?-1:0).store(control.state);
     const size=Number(p.FontSize||8.25),name=String(p.FontName||'MS Sans Serif');
     if(!Number.isFinite(size)||size<1||size>512)this.fail('Native font size must be 1..512 points');
     const font={name,size,weight:p.FontBold?700:400,italic:p.FontItalic?1:0,underline:p.FontUnderline?1:0,strike:p.FontStrikethrough||p.FontStrikethru?1:0};
     const cache=this.nativeFonts ||= new Map(),id=JSON.stringify(font);
     if(!cache.has(id))cache.set(id,this.slot('font:'+cache.size));
-    const slot=cache.get(id),ready=x.unique(),created=x.unique();
+    const slot=cache.get(id);control.nativeFontHandle=slot;const ready=x.unique(),created=x.unique();
     x.value({memory:slot}).test().branch('ne',ready);
     x.api('user32.dll','GetDC',[0]).emit(0x89,0xc3).push(90).emit(0x53).invoke('gdi32.dll','GetDeviceCaps').emit(0x89,0xc6);
     x.emit(0x53).push(0).invoke('user32.dll','ReleaseDC');
@@ -63,6 +65,7 @@ export const nativeControlArrayMethods={
     return false;
   },
   controlHandler(module,control,event,args=[]){
+    if(control.model.type==='CheckBox'&&key(event)==='click')nativeCheckBoxClick(this,this.controlHandleRef(control));
     const name=control.model.name+'_'+event;
     if(control.model.properties.Index===undefined)return this.handler(module,name,args);
     this.x.value(control.model.properties.Index).emit(0x89,0x45,0xf0);
