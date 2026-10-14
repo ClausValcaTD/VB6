@@ -25,7 +25,7 @@ test('Option Compare Text now lowers comparison expressions and Select Case usin
 });
 test('Null dollar-string conversion has a checked native path; unsupported Objects remain diagnosed',()=>{
  assert.ok(compileWin32(project('Sub Main()\nDim s As String,v As Variant\nv=Null\nOn Error Resume Next\ns=Trim$(v)\nIf Err.Number<>94 Then Error 5\nEnd Sub')).bytes.length);
- assert.throws(()=>compileWin32(project('Sub Main()\nDim s As String,v As Object\ns=StrReverse(v)\nEnd Sub')),/storage/);
+ assert.throws(()=>compileWin32(project('Sub Main()\nDim s As String,v As Object\ns=StrReverse(v)\nEnd Sub')),/explicit text property/);
 });
 test('Len and LenB indexed numeric/record values retain subscript calls and bounds checks',()=>{
  const p=project('Type P\n x As Long\nEnd Type\nType B\n points(0 To 1) As P\nEnd Type\nFunction Index() As Long\nIndex=1\nEnd Function\nSub Main()\nDim a(0 To 1) As Long,b As B,n As Long\nn=Len(a(Index()))+LenB(b.points(Index()))\nEnd Sub');

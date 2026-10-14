@@ -1,3 +1,6 @@
+import {emitNativeGridLifetime} from './grid-lifetime-primitives.js';
+import {emitNativeGridDataTransaction} from './grid-data-transaction.js';
+import {emitNativeGridPrimitive} from './grid-primitives.js';
 import {compileProject} from '../language/compiler.js';
 import {NATIVE_GRID_TYPES,NATIVE_GRID_FIELDS as F,NATIVE_GRID_PROPERTIES,nativeGridSeed} from './control-grid-contract.js';
 import {nativeGridCoreSource,NATIVE_GRID_HOSTS} from './control-grid-core.js';
@@ -28,7 +31,7 @@ export const nativeGridMethods={
   module.declarations=module.declarations.filter(d=>key(d.name)!=='d');
   this.data.align(4).label('native:grid:state').zero(Object.keys(F).length*4*this.nativeGridControls.length);
   this.externals.set(key(name),new Map());const before=[this.preparingModule,this.preparingProcedure];this.prepareModule(module);[this.preparingModule,this.preparingProcedure]=before;
-  this.gridModule=this.modules.get(key(name));this.gridModule.nativeState={label:'native:grid:state',fields:Object.keys(F).length,count:this.nativeGridControls.length};this.gridRoots=new Set();this.gridFeatures=new Set();
+  this.gridModule=this.modules.get(key(name));this.gridModule.nativeCompactFrame=true;this.gridModule.nativeState={label:'native:grid:state',fields:Object.keys(F).length,count:this.nativeGridControls.length};this.gridRoots=new Set();this.gridFeatures=new Set();
  },
  gridStateVariable(node,context){
   if(!context?.module?.nativeState||node.kind!=='call'||node.callee.kind!=='id'||key(node.callee.name)!=='d')return null;
@@ -108,13 +111,13 @@ export const nativeGridMethods={
   if(seed.formatString)this.invokeGrid('formatstring',[...receiver,lit(seed.formatString)]);
   x.value(seed.fields.redraw).store('native:grid:state',seedBase+F.redraw*4);
  },
- disposeNativeGrid(control){if(!this.isNativeGrid(control))return;const end=this.x.unique();this.nativeGridEditing=true;this.x.value({memory:control.state,addend:108}).test().branch('e',end).push(0).push(0).push({memory:control.state,addend:108}).call('native:grid:edit-finish').label(end);this.x.value(0).store(control.state,80).push(control.gridIndex).call(this.gridProc('dispose').label);this.checkNativeError();},
+ disposeNativeGrid(control){if(!this.isNativeGrid(control))return;if(control.nativeBoundSource){this.clearVariantStorage(control.nativeBoundSource);this.x.value(9).store(control.nativeBoundSource.label);}const end=this.x.unique();this.nativeGridEditing=true;this.x.value({memory:control.state,addend:108}).test().branch('e',end).push(0).push(0).push({memory:control.state,addend:108}).call('native:grid:edit-finish').label(end);this.x.value(0).store(control.state,80).push(control.gridIndex).call(this.gridProc('dispose').label);this.checkNativeError();},
  emitGridKernel(){
   if(!this.gridModule)return;
   const needed=new Set(),visit=name=>{if(needed.has(name))return;needed.add(name);const proc=this.gridModule.procedures.get(name);if(!proc)return;
    const walk=node=>{if(!node||typeof node!=='object')return;if(node.kind==='id'&&this.gridModule.procedures.has(key(node.name)))visit(key(node.name));if(Array.isArray(node)){for(const v of node)walk(v);}else for(const v of Object.values(node))walk(v);};walk(proc.proc.code);};
   for(const name of this.gridRoots)visit(name);
-  for(const [name,proc]of this.gridModule.procedures)if(needed.has(name)){if(Object.hasOwn(NATIVE_GRID_HOSTS,name))this.emitGridHost(name,proc);else this.procedure(proc);}
+  for(const [name,proc]of this.gridModule.procedures)if(needed.has(name)){if(name==='publishdata'){emitNativeGridDataTransaction(this,proc);continue;}if(emitNativeGridPrimitive(this,name,proc)||emitNativeGridLifetime(this,name,proc))continue;if(Object.hasOwn(NATIVE_GRID_HOSTS,name))this.emitGridHost(name,proc);else this.procedure(proc);}
   this.gridEmitted=[...needed].sort();
  }
 };
