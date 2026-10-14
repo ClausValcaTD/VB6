@@ -109,7 +109,9 @@
     "test:advanced-editor": "node --test tests/advanced-editor*.test.mjs",
     "test:browser:advanced-editor": "python tools/browser-advanced-editor-tests.py",
     "test:designer": "node --test tests/designer-*.test.mjs",
-    "test:designer:browser": "python tools/browser-designer-tests.py --origin http"
+    "test:designer:browser": "python tools/browser-designer-tests.py --origin http",
+    "test:winui": "node --test tests/winui-theme.test.mjs",
+    "test:winui:browser": "python tools/browser-winui-tests.py"
   },
   "engines": {
     "node": ">=22"

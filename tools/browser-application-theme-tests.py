@@ -69,7 +69,7 @@ class ApplicationThemes(unittest.TestCase):
    self.theme(theme);self.assertEqual(self.page.evaluate(BOUNDS),baseline,theme)
    self.assertTrue(self.page.evaluate('savedControls.every((n,i)=>n===document.querySelectorAll("#app .vb-control")[i])'))
    self.assertEqual(self.page.evaluate('JSON.stringify(vb6Application.project)'),project)
-   self.assertEqual(self.css('[data-control="TextBox1"] input','backgroundColor'),self.rgb(self.palettes[theme]['colors']['window']))
+   self.assertEqual(self.css('[data-control="TextBox1"] input','backgroundColor'),{'fluent':'rgba(255, 255, 255, 0.7)','fluent-dark':'rgba(255, 255, 255, 0.06)'}.get(theme,self.rgb(self.palettes[theme]['colors']['window'])))
    self.assertEqual(self.css('[data-control="cmdRGB"]','backgroundColor'),'rgb(153, 102, 51)')
    self.assertEqual(self.css('[data-control="cmdRGB"]','color'),'rgb(255, 255, 255)')
    self.assertEqual(self.css('[data-control="OptionButton1"] input','borderRadius'),'0px' if theme.startswith('x11') else '50%')
