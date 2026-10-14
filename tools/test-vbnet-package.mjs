@@ -7,12 +7,13 @@ import vm from 'node:vm';
 import {pathToFileURL} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {readZip} from '../src/project/zip.js';
+import {extractPackage} from './ci/extract-package.mjs';
 const root=path.resolve(import.meta.dirname,'..'),artifacts=path.join(root,'artifacts/vbnet-migration');
 const manifest=JSON.parse(fs.readFileSync(path.join(artifacts,'package-manifest.json'),'utf8'));
 const archive=path.join(artifacts,manifest.filename),directory=fs.mkdtempSync(path.join(os.tmpdir(),'vbnet-package-'));
 try{
   // Extract only the npm-generated archive, not an untrusted project archive.
-  const extraction=spawnSync('tar',['-xzf',archive,'-C',directory],{encoding:'utf8'});
+  const extraction=extractPackage(archive,directory);
   assert.equal(extraction.status,0,extraction.stderr||extraction.error?.message);
   const installed=path.join(directory,'package');
   const api=await import(pathToFileURL(path.join(installed,'lib/src/migration/index.js')).href);

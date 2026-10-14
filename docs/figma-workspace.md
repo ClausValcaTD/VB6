@@ -330,3 +330,88 @@ Classic restoration. It runs on HTTP/file origins in the Figma browser matrix.
 against actual optional Monaco editing and split views. Generated screenshots
 and per-case results are retained in CI; an unavailable backend or startup failure
 is not a passing case.
+
+
+## Agent, MCP and tool views in the workspace
+
+The header provides **Agent**, **MCP** and **Tools**. Agent opens beside the current
+form/code document in the right dock, with the original Task, Connection, Changes,
+Queue, Permissions, Tools, Plan, Tasks and Activity pages. MCP opens in the bottom
+tool dock with its original access, permissions, capabilities, activity and
+operations pages. Tools links directly to those pages and to Search, Object
+Browser, Resources, Data Environment and the registered docked views. Existing
+modeless documents, including XAML and advanced navigation tools, receive real
+workspace document tabs. Their source/view implementations are not replaced.
+
+The hosted content is the original tool object and DOM root. Hiding a dock leaves
+its task/connection alive; **Expand to document** moves the same view into MDI;
+the header rehosts it. The original Close action retains its original cancellation
+and disposal semantics. Returning to Classic moves hosted views back to their
+MDI owners without clearing drafts, transcripts, keys or running transports. Keys
+are not copied into workspace preferences. Dock placement is part of the existing
+independent Figma profile; no provider/MCP connection is created by profile reload.
+Opening Data Environment never executes a query. Existing project-reset owners
+still revoke old-project access and cancel their operations.
+
+Header state distinguishes an active agent run and enabled MCP sharing. The
+original MCP access indicator and consent/permission controls remain operative;
+**Stop MCP sharing** delegates to the original sharing owner. Opening, hiding,
+expanding or restyling a tool grants no new permissions and sends no request.
+On narrow screens the Agent opens in the right drawer, with scrollable page tabs;
+Escape closes the drawer, not its task. Tool content uses workspace palette
+variables locally, without changing the authored application's colors.
+
+**Review selection for agent** captures form/control identities and allowlisted
+geometry/layout settings, or the explicitly selected source text. A review dialog
+lets the user edit the text, cancel, or append it to the current agent draft. It
+never sends the draft. Existing draft edits are preserved. Task, project or module
+replacement invalidates the pending append. Form values such as Text, Tag, assets,
+project settings, transport credentials and runtime data are not collected.
+Names and selected source can still be confidential: inspect the preview. The
+source excerpt is limited to 12,000 characters, control context to 100 controls,
+and the resulting draft to the agent's 100,000-character limit. Reviewed context
+is task data, never an authorization to perform its described actions.
+
+## Drag Assets onto the actual designer
+
+Drag a VB6 component card from **Assets** onto the form or a nested container.
+The preview shows the target name, local twip coordinates, default-size footprint
+and destination outline. In flow containers it shows the insertion slot instead.
+Placement uses the live transformed client surface: pan/zoom and Frame/tab client
+insets are accounted for. Selection handles and layout-padding overlays do not
+accidentally turn a nested drop into a root-level insertion. Other windows and
+modals still occlude the designer normally.
+
+The drop uses the canonical stock/registered component type, independent custom
+defaults, a unique name, TabIndex and both native-parent ID and name. It creates
+one detached proposal, validates it, then publishes one Undo transaction. Existing
+layout solves horizontal/vertical/wrapping/grid children in that transaction.
+Alt bypasses the grid and marks participating visual children Ignore auto layout;
+Timer and other nonvisual components remain form-owned and outside flows. Normal
+click-to-draw and double-click insertion remain available.
+
+Use the separate grip for touch/pen dragging; the remainder of the card remains
+scrollable. Focus the grip and press Enter/Space for keyboard placement, arrows
+to move, Shift+arrows for ten grid steps and Enter to insert. Escape/Tab cancels.
+The current form designer is activated when placement starts from its Code view.
+A pointer held near the canvas edge pans the viewport without changing form data;
+Escape reverses that drag's automatic pan. Animation stops when the drag ends or
+leaves the edge. Pointer cancellation, capture loss, blur, mode exit, invalid
+outside drops and intervening project/form revisions cancel without insertion.
+Locked and running forms reject placement.
+
+Only a drag started in this workspace is accepted. The browser's protected drag
+store contains an opaque per-drag nonce, not serialized controls, JavaScript,
+URLs or credentials. The destination revalidates the session, nonce, type,
+revision and form before publication. External files, `.fig` objects and other
+browser windows are not interpreted as component drag capabilities; use the
+existing project/file import commands for those workflows.
+
+`tools/figma-services-browser-tests.py` checks real hosted tool lifetimes, reviewed
+context, an active synthetic local transport without provider calls, native asset
+drops, nested/flow/Alt/nonvisual placement, mouse-grip and keyboard cancellation,
+edge pan, narrow drawers and origin-backed dock reload. Chromium additionally
+uses a physical CDP touch stream; Firefox and WebKit explicitly skip that
+Chromium-only touch injector, not their native/pointer authoring checks. All three
+engines run HTTP and standalone-file cases in the Figma workflow. Memory origin
+is a local fallback only and explicitly skips persistence.

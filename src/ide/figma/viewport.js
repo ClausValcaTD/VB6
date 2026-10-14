@@ -20,6 +20,11 @@ export function installFigmaViewport(designer,workspace){
     if(designer.zoom!==state.zoom){designer.zoom=state.zoom;render.call(designer);}
     apply();
   };
+  // View-only relative pan for Assets edge navigation; never edits form data.
+  viewport.pan=(dx,dy)=>{
+    if(disposed||!Number.isFinite(dx)||!Number.isFinite(dy))return;
+    commit({...state,x:Math.max(-1000000,Math.min(1000000,state.x+dx)),y:Math.max(-1000000,Math.min(1000000,state.y+dy))});
+  };
   viewport.zoom=(value,point)=>{const rect=root.getBoundingClientRect();commit(zoomAt(state,value,point||{x:rect.width/2,y:rect.height/2}));};
   viewport.fit=(selection=false)=>{
     const rect=root.getBoundingClientRect(),node=designer.formView?.node;if(!node||!rect.width||!rect.height)return;

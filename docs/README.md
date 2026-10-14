@@ -6,6 +6,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 ## Build, test and architecture
 
+- [Validation and deployment](CI.md): consolidated workflows, parallel suite ownership, failure gates and publication security.
+
 - [Architecture and SDK embedding](ARCHITECTURE.md): module boundaries, execution,
   persistence and extension points.
 - [Application export](APPLICATION-EXPORT.md): deployment APIs, modular output, CSP and validation.
