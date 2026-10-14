@@ -1,5 +1,6 @@
 // Native AppKit widgets and the VB property/event boundary. MIT.
 #include "appkit.hpp"
+#include "appkit-pictures.hpp"
 #include "appkit-edit.hpp"
 #include "appkit-control-utils.hpp"
 #include <cfloat>
@@ -37,7 +38,7 @@ int32_t colorValue(NSColor* value){
   return int32_t(channel(c.redComponent)|(channel(c.greenComponent)<<8)|(channel(c.blueComponent)<<16));
 }
 Text captionText(const Text& value){Text out;for(size_t i=0;i<value.size();i++){if(value[i]==u'&'){if(i+1<value.size()&&value[i+1]==u'&')++i;else continue;}out.push_back(value[i]);}return out;}
-Value MacImage::get(Runtime&,const std::string&raw){auto n=lower(raw);if(n=="handle")return Value::integer(handle);if(n=="type")return Value::integer(image?1:0,Type::Integer);if(n=="width")return Value::integer(image?bankers(image.size.width*2540.0/96.0):0);if(n=="height")return Value::integer(image?bankers(image.size.height*2540.0/96.0):0);fail(438);}
+Value MacImage::get(Runtime&,const std::string&raw){auto n=lower(raw);if(n=="handle")return Value::integer(handle);if(n=="type")return Value::integer(image?pictureType:0,Type::Integer);if(n=="width")return Value::integer(image?bankers(image.size.width*2540.0/96.0):0);if(n=="height")return Value::integer(image?bankers(image.size.height*2540.0/96.0):0);fail(438);}
 Value MacControl::property(const std::string& name,Value fallback)const{auto it=properties.find(lower(name));return it==properties.end()?fallback:it->second;}
 double MacControl::number(const std::string&name,double fallback)const{return property(name,Value::real(fallback)).floating();}
 bool MacControl::flag(const std::string&name,bool fallback)const{return property(name,Value::boolean(fallback)).truth();}
@@ -75,6 +76,7 @@ void MacControl::initialize(){
   if(initialized)return;initialized=true;for(auto&p:spec.properties)properties[lower(p.name)]=p.value;
   properties["name"]=Value::string(fromUTF8(spec.name));if(spec.index>=0)properties["index"]=Value::integer(spec.index,Type::Integer);
   delegate=[VB6ControlDelegate new];delegate->model=self();
+  initializeNativePictures(*this);
   const std::string&t=spec.type;
   if(t=="Menu"){
     auto caption=captionText(property("caption",Value::string(fromUTF8(spec.name))).string());
@@ -128,7 +130,7 @@ void MacControl::initialize(){
   handle=host->handles.add(self(),t=="Form"||t=="MDIForm"?HandleKind::Window:HandleKind::Control);
   auto initial=property("list");if(initial.type==Type::Array)for(auto&v:initial.asArray()->values)list.push_back(v.string());itemData.resize(list.size());
   if(t=="DriveListBox"||t=="DirListBox"||t=="FileListBox")reloadFiles();
-  refresh();applyFrame();applyFont();originalFrame=view.frame;
+  refresh();applyFrame();applyFont();if(properties.count("picture"))setNativePicture(*this,"picture",properties.at("picture"));originalFrame=view.frame;
 }
 void MacControl::refresh(){
   if(disposed)return;if(menu){menu.title=ns(captionText(property("caption",Value::string(u"")).string()));menu.enabled=flag("enabled",true);menu.hidden=!flag("visible",true);menu.state=flag("checked")?NSControlStateValueOn:NSControlStateValueOff;return;}
@@ -146,9 +148,10 @@ void MacControl::refresh(){
   }
   if([widget isKindOfClass:NSDatePicker.class]){auto date=property("value",Value::string(u"2000-01-01"));auto c=civilTime(parseDate(date));NSDateComponents*components=[NSDateComponents new];components.year=c.year;components.month=c.month;components.day=c.day;components.hour=c.hour;components.minute=c.minute;components.second=c.second;((NSDatePicker*)widget).dateValue=[[NSCalendar currentCalendar]dateFromComponents:components];}
   if(spec.type=="ComboBox"||spec.type=="ListBox"||spec.type=="DriveListBox"||spec.type=="FileListBox"||spec.type=="DirListBox")reloadList();
+  refreshNativePictures(*this);
   view.needsDisplay=YES;
 }
-void MacControl::dispose(){if(disposed)return;disposed=true;[timer invalidate];timer=nil;[view removeFromSuperview];[menu.menu removeItem:menu];host->handles.remove(handle);for(auto&entry:collections)entry.second->owner.reset();if(delegate)delegate->model.reset();if(tableDelegate)tableDelegate->model.reset();if(outlineDelegate)outlineDelegate->model.reset();}
+void MacControl::dispose(){if(disposed)return;disposed=true;if(cursorTracking){[view removeTrackingArea:cursorTracking];cursorTracking=nil;}[timer invalidate];timer=nil;[view removeFromSuperview];[menu.menu removeItem:menu];host->handles.remove(handle);for(auto&entry:collections)entry.second->owner.reset();if(delegate)delegate->model.reset();if(tableDelegate)tableDelegate->model.reset();if(outlineDelegate)outlineDelegate->model.reset();}
 void MacControl::event(const std::string&name,Args args){
   if(disposed||eventSuppression)return;auto object=owner.lock();if(!object||!object->loaded)return;
   std::string prefix=spec.type=="Form"?"form":spec.type=="MDIForm"?"mdiform":lower(spec.name);

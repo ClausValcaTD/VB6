@@ -21,7 +21,7 @@ try {
       const app=path.join(expanded,archive.options.name+'.app');
       await run('/usr/bin/codesign',['--verify','--strict','--verbose=2',app]);
       const output=await run(path.join(app,'Contents','MacOS',archive.options.name),[]);
-      for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK'])assert.ok(output.includes(marker),marker);
+      for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),marker);
       results.push({optimization:archive.options.optimization??2,archive:archive.name,sha256:verified.sha256,nativeSignatureVerified:true,arm64ExecutionVerified:true});
     }
   }

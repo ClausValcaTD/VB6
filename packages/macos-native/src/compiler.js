@@ -1,3 +1,4 @@
+import {prepareMacOSResources} from './resources.js';
 /** Shared VB6 IR -> C++17 native procedure lowering. No VM/bytecode interpreter. */
 import {compileProject} from '../../../src/language/compiler.js';
 import {normalizeProject} from '../../../src/project/model.js';
@@ -226,10 +227,11 @@ export class MacOSLowering {
 }
 export function compileMacOS(input,options={}){
   const project=normalizeProject(input);const normalized=macOSOptions({name:project.name,...options});
+  const resources=prepareMacOSResources(project);
   project.settings={...project.settings,conditionalConstants:{...project.settings.conditionalConstants,VBWEB:0,Win32:0,Win64:0,Mac:-1,MacOS:-1,ARM64:-1}};
   const program=compileProject(project);if(!program.valid){const error=new MacOSCompileError('VB6 frontend rejected the project');error.diagnostics=program.diagnostics;throw error;}
   const controls=macOSControlReport(project);
   const lowering=new MacOSLowering(program,normalized),source=lowering.emit();
-  const report={target:MACOS_TARGET.id,architecture:'arm64',format:'Mach-O',artifact:'native-source-build-kit',compiler:'Apple Clang C++17',nativeRuntime:'vb6-native',modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,optimization:normalized.optimization,minimumVersion:normalized.minimumVersion,sourceBytes:new TextEncoder().encode(source).length,diagnostics:[]};
-  return {target:MACOS_TARGET,options:normalized,project,files:{'main.cpp':source,'Info.plist':macOSInfoPlist(normalized),'source-map.json':JSON.stringify(lowering.sourceMap,null,2)+'\n'},report,diagnostics:[]};
+  const report={target:MACOS_TARGET.id,architecture:'arm64',format:'Mach-O',artifact:'native-source-build-kit',compiler:'Apple Clang C++17',nativeRuntime:'vb6-native',modules:program.modules.size,procedures:lowering.procedures,instructions:lowering.instructions,operations:[...lowering.usedOps].sort(),controls,imports:lowering.external,optimization:normalized.optimization,minimumVersion:normalized.minimumVersion,sourceBytes:new TextEncoder().encode(source).length,resources:resources.report,diagnostics:[]};
+  return {target:MACOS_TARGET,options:normalized,project,files:{...resources.files,'main.cpp':source,'Info.plist':macOSInfoPlist(normalized),'source-map.json':JSON.stringify(lowering.sourceMap,null,2)+'\n'},report,diagnostics:[]};
 }

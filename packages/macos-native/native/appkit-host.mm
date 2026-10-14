@@ -1,5 +1,6 @@
 // AppKit application lifetime, windows, event routing and platform services. MIT.
 #include "appkit.hpp"
+#include "appkit-pictures.hpp"
 #include <spawn.h>
 #include <cstring>
 #include <cerrno>
@@ -67,7 +68,7 @@ struct HostObject final:Object {
   }
   Value invoke(Runtime&rt,const std::string&raw,Args args)override{
     auto name=lower(raw);host->ensureApplication();if(kind=="forms"&&(name.empty()||name=="item")){if(args.size()!=1)fail(450);auto values=enumerate(rt);auto n=args[0].value.integral();if(n<0||size_t(n)>=values.size())fail(9);return values[size_t(n)];}
-    if(kind=="screen"&&name=="fonts"){if(args.size()!=1)fail(450);auto fonts=NSFontManager.sharedFontManager.availableFontFamilies;auto n=args[0].value.integral();if(n<0||NSUInteger(n)>=fonts.count)fail(9);return Value::string(text(fonts[NSUInteger(n)]));}
+    if(kind=="screen"&&name=="fonts"){if(args.size()!=1)fail(450);auto fonts=NSFontManager.sharedFontManager.availableFontFamilies;auto n=args[0].value.integral();if(n<0||size_t(n)>=fonts.count)fail(9);return Value::string(text(fonts[NSUInteger(n)]));}
     if(kind=="clipboard"){
       auto clipboard=NSPasteboard.generalPasteboard;
       if(name=="clear"){[clipboard clearContents];return {};}
@@ -127,7 +128,7 @@ void MacHost::createForm(const std::shared_ptr<Instance>&object){
     auto border=surface->number("borderstyle",2);NSWindowStyleMask style=border==0?NSWindowStyleMaskBorderless:NSWindowStyleMaskTitled|NSWindowStyleMaskClosable;
     if(border==2||border==5)style|=NSWindowStyleMaskResizable;if(surface->flag("minbutton",true))style|=NSWindowStyleMaskMiniaturizable;
     result->window=[[NSWindow alloc]initWithContentRect:NSMakeRect(0,0,width,height)styleMask:style backing:NSBackingStoreBuffered defer:NO];result->window.releasedWhenClosed=NO;result->window.contentView=surface->view;surface->view.frame=NSMakeRect(0,0,width,height);surface->view.autoresizingMask=NSViewWidthSizable|NSViewHeightSizable;
-    result->window.title=ns(surface->property("caption",Value::string(fromUTF8(object->module->name))).string());result->window.backgroundColor=color(int64_t(surface->number("backcolor",0xffffff)));result->window.acceptsMouseMovedEvents=YES;
+    result->window.title=ns(surface->property("caption",Value::string(fromUTF8(object->module->name))).string());result->window.backgroundColor=color(int64_t(surface->number("backcolor",0xffffff)));result->window.acceptsMouseMovedEvents=YES;refreshNativePictures(*surface);
     result->delegate=[VB6WindowDelegate new];result->delegate->host=this;result->delegate->model=result;result->window.delegate=result->delegate;
     result->originalSize=surface->view.bounds.size;double left=surface->number("left",300)/15,top=surface->number("top",300)/15;NSRect frame=result->window.frame;frame.origin=NSMakePoint(left,NSMaxY(NSScreen.mainScreen.frame)-top-frame.size.height);[result->window setFrame:frame display:NO];
     if(surface->number("startupposition",2)!=0)[result->window center];
@@ -265,11 +266,21 @@ Value MacHost::builtin(Frame&frame,const std::string&raw,Args args){
     std::thread([pid]{int status;while(waitpid(pid,&status,0)<0&&errno==EINTR){}}).detach();return Value::real(double(pid));
   }
   if(name=="loadpicture"){
-    auto path=stringArgument(args,0);if(path.find(u'\0')!=Text::npos)fail(52);NSImage*image=path.empty()?nil:[[NSImage alloc]initWithContentsOfFile:ns(path)];if(!path.empty()&&!image)fail(53,"Picture could not be decoded");auto object=std::make_shared<MacImage>(image);object->handle=handles.add(object,HandleKind::Image);return Value::object(object);
+    auto path=stringArgument(args,0);if(path.empty())return Value::object(std::make_shared<MacImage>(nil));
+    if(path.find(u'\0')!=Text::npos)fail(52);return loadNativeImage(*this,readNativeResourceFile(std::filesystem::path(toUTF8(path))));
+  }
+  if(name=="loadrespicture"){
+    const auto format=integerArgument(args,1,0);if(format<0||format>2)fail(5,"Invalid resource picture format");
+    return loadNativeImage(*this,nativeResources(*runtime).picture(argument(args,0),int(format)));
   }
   if(name=="savepicture"){
     auto image=std::dynamic_pointer_cast<MacImage>(argument(args,0).asObject());if(!image||!image->image)fail(5);auto path=stringArgument(args,1);if(path.find(u'\0')!=Text::npos)fail(52);auto extension=lower(std::filesystem::path(toUTF8(path)).extension().string());NSBitmapImageFileType type=extension==".jpg"||extension==".jpeg"?NSBitmapImageFileTypeJPEG:extension==".bmp"?NSBitmapImageFileTypeBMP:extension==".gif"?NSBitmapImageFileTypeGIF:extension==".tiff"||extension==".tif"?NSBitmapImageFileTypeTIFF:NSBitmapImageFileTypePNG;
-    NSBitmapImageRep*rep=[NSBitmapImageRep imageRepWithData:image->image.TIFFRepresentation];NSData*data=[rep representationUsingType:type properties:@{}];NSError*error=nil;if(!data||![data writeToFile:ns(path) options:NSDataWritingAtomic error:&error])fail(75,error?toUTF8(text(error.localizedDescription)):"Picture encoding failed");return {};
+    NSData*data=nil;
+    if(image->pictureType==3&&!image->encoded.empty()){
+      auto bytes=image->encoded;
+      if(image->isCursor){bytes.at(2)=2;bytes.at(10)=uint8_t(image->hotspot.x);bytes.at(11)=uint8_t(uint32_t(image->hotspot.x)>>8);bytes.at(12)=uint8_t(image->hotspot.y);bytes.at(13)=uint8_t(uint32_t(image->hotspot.y)>>8);}
+      data=[NSData dataWithBytes:bytes.data() length:bytes.size()];
+    }else {NSBitmapImageRep*rep=[NSBitmapImageRep imageRepWithData:image->image.TIFFRepresentation];data=[rep representationUsingType:type properties:@{}];}NSError*error=nil;if(!data||![data writeToFile:ns(path) options:NSDataWritingAtomic error:&error])fail(75,error?toUTF8(text(error.localizedDescription)):"Picture encoding failed");return {};
   }
   if(name=="savesetting"||name=="getsetting"||name=="deletesetting"||name=="getallsettings"){
     auto root=settingsRoot();NSString*app=settingName(argument(args,0)),*section=settingName(argument(args,1));NSMutableDictionary*application=[root[app]mutableCopy]?:[NSMutableDictionary dictionary];NSMutableDictionary*values=[application[section]mutableCopy]?:[NSMutableDictionary dictionary];

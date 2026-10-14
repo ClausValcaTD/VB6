@@ -1,4 +1,5 @@
 /** Browser/Node direct arm64 executable linker and .app ZIP packager. */
+import {MACOS_RESOURCE_FILE} from './resources.js';
 import {resizeAOTImage} from './aot-resize.js';
 import {compileMacOSAOT} from './aot-compiler.js';
 import {linkARM64} from '../../../src/native/arm64.js';
@@ -36,9 +37,13 @@ export async function linkMacOSAOT(compiled,runtime,{resources={}}={}){
   const buildReport={...compiled.report,artifact:'native-executable',compiled:true,name:o.name,codeCapacity:layout.code.size,metadataCapacity:layout.metadata.size,runtimeSha256:runtime.manifest.sha256,minimumVersion:o.minimumVersion,optimization:o.optimization,projectOptimization:compiled.report.optimization,runtimeOptimization:2,signing:'ad-hoc',notarized:false};
   const bundleResources=Object.create(null);let total=0;
   for(const [name,value]of Object.entries(resources)){
-    if(!resourcePath(name)||['Resources/vb6-source-map.json','Resources/vb6-build.json'].includes(name))throw new Error('Invalid or reserved native resource path');
+    if(!resourcePath(name)||['Resources/vb6-source-map.json','Resources/vb6-build.json','Resources/'+MACOS_RESOURCE_FILE].includes(name))throw new Error('Invalid or reserved native resource path');
     const bytes=typeof value==='string'?encoder.encode(value):value instanceof Uint8Array?value.slice():null;
     if(!bytes||bytes.length>20*1024*1024||(total+=bytes.length)>50*1024*1024)throw new Error('Native resource is invalid or exceeds limits');bundleResources[name]=bytes;
+  }
+  for(const [name,bytes]of Object.entries(compiled.resourceFiles||{})){
+    if(name!=='resources/'+MACOS_RESOURCE_FILE||!(bytes instanceof Uint8Array)||bytes.length>20*1024*1024||(total+=bytes.length)>50*1024*1024)throw new Error('Invalid compiled resource catalog');
+    bundleResources['Resources/'+MACOS_RESOURCE_FILE]=bytes.slice();
   }
   bundleResources['Resources/vb6-source-map.json']=encoder.encode(JSON.stringify(compiled.sourceMap,null,2)+'\n');
   bundleResources['Resources/vb6-build.json']=encoder.encode(JSON.stringify(buildReport,null,2)+'\n');
