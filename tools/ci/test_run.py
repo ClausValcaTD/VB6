@@ -18,6 +18,15 @@ class RunnerTests(unittest.TestCase):
                 tasks=run.plan(group,engine,'http');self.assertTrue(0<len(tasks)<=16)
                 if group in ('advanced-editor','code-gpu'):
                     self.assertEqual({t['transport'] for t in tasks},{'http','file'})
+    def test_figma_partitions_are_disjoint_and_combined_alias_preserves_every_suite(self):
+        for engine in run.ENGINES:
+            for origin in ('http', 'file'):
+                first=run.plan('figma-authoring',engine,origin)
+                second=run.plan('figma-services',engine,origin)
+                self.assertFalse({t['script'] for t in first}&{t['script'] for t in second})
+                self.assertEqual(first+second,run.plan('figma',engine,origin))
+                self.assertEqual(len(first),5)
+                self.assertEqual(len(second),3)
     def test_invalid_arguments_fail_closed(self):
         for args in [('unknown','chromium','http'),('../figma','chromium','http'),('figma','chrome','http'),('figma','webkit','https://remote')]:
             with self.assertRaises(ValueError):run.plan(*args)
@@ -32,7 +41,7 @@ class RunnerTests(unittest.TestCase):
     def test_paths_duplicates_and_empty_groups_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);(root/'tools/ci').mkdir(parents=True)
-            for scripts in [[],['missing.py'],['../../a.py'],['/tmp/a.py'],['a.py','a.py']]:
+            for scripts in [[],['missing.py'],['../../a.py'],['/tmp/a.py'],['a.py','a.py'],{},'a.py']:
                 (root/'tools/ci/suites.json').write_text(json.dumps({'group':scripts}))
                 with self.assertRaises(ValueError):run.plan('group','chromium','http',root)
     def test_failure_preserves_output_and_runs_independent_successor(self):

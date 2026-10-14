@@ -25,7 +25,8 @@ Loader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, mapping)
 
 
 def audit(root=ROOT):
-    paths = sorted((root / '.github/workflows').glob('*.yml'))
+    folder = root / '.github/workflows'
+    paths = sorted([*folder.glob('*.yml'), *folder.glob('*.yaml')])
     if {p.name for p in paths} != {'validate.yml', 'pages.yml', 'macos-aot-runtime.yml'}:
         raise ValueError('Only three maintained workflows are permitted')
     docs = {p.name: yaml.load(p.read_text(), Loader=Loader) for p in paths}
@@ -44,6 +45,13 @@ def audit(root=ROOT):
             raise ValueError('Unbounded validation job: ' + name)
         if not set(job.get('needs', [])) <= set(jobs):
             raise ValueError('Unknown dependency: ' + name)
+        # Matrix-axis checks alone do not notice an excluded engine/origin.
+        matrix = job.get('strategy', {}).get('matrix', {})
+        if matrix.get('exclude') or matrix.get('include'):
+            raise ValueError('Validation matrices must be exhaustive Cartesian products: ' + name)
+        for axis, values in matrix.items():
+            if not isinstance(values, list) or not values or len(set(values)) != len(values):
+                raise ValueError('Empty or duplicate matrix axis: ' + name + '/' + axis)
     def visit(name, ancestors):
         if name in ancestors:
             raise ValueError('Dependency cycle: ' + name)
@@ -57,6 +65,8 @@ def audit(root=ROOT):
     for owner in ('browser', 'figma', 'authoring-exports', 'advanced-editor'):
         if set(jobs[owner]['strategy']['matrix']['browser']) != {'chromium', 'firefox', 'webkit'}:
             raise ValueError('Missing engine: ' + owner)
+    if set(jobs['figma']['strategy']['matrix']['suite']) != {'figma-authoring', 'figma-services'}:
+        raise ValueError('Both disjoint Figma partitions required')
     if set(jobs['figma']['strategy']['matrix']['transport']) != {'http', 'file'}:
         raise ValueError('Both real Figma origins required')
     gpu = jobs['rendering-qualification']['strategy']['matrix']
@@ -72,7 +82,8 @@ def audit(root=ROOT):
         raise ValueError('All engines must consume the shared actual editor build')
     suites = json.loads((root / 'tools/ci/suites.json').read_text())
     owners = set(jobs['core-browser']['strategy']['matrix']['suite']) | set(jobs['browser']['strategy']['matrix']['suite'])
-    owners |= {'figma', 'authoring-exports', 'advanced-editor', 'code-gpu'}
+    owners |= set(jobs['figma']['strategy']['matrix']['suite'])
+    owners |= {'authoring-exports', 'advanced-editor', 'code-gpu'}
     if set(suites) != owners:
         raise ValueError('Unowned or missing suite group')
     for group, scripts in suites.items():
@@ -81,6 +92,9 @@ def audit(root=ROOT):
         for script in scripts:
             if not re.fullmatch(r'[a-z][a-z0-9_-]*\.py', script) or not (root / 'tools' / script).is_file():
                 raise ValueError('Invalid suite entrypoint: ' + script)
+    figma_scripts = [script for group in jobs['figma']['strategy']['matrix']['suite'] for script in suites[group]]
+    if len(figma_scripts) != len(set(figma_scripts)):
+        raise ValueError('Figma partitions may not duplicate any test entrypoint')
     text = '\n'.join(p.read_text() for p in paths)
     npm = json.loads((root / 'package.json').read_text())['scripts']
     pending = re.findall(r'npm run ([\w:-]+)', text); seen = set()

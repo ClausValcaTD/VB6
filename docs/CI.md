@@ -23,7 +23,15 @@ The complete `tests/*.test.mjs` set uses Node's four-way `--test-shard` partitio
 with two test-file workers per job. Package/ABI checks and browser suites no longer
 share that deadline. `tools/ci/suites.json` assigns each browser entrypoint to a
 bounded group. Figma HTTP and standalone-file tests run in separate jobs in
-Chromium, Firefox and WebKit. Native Apple jobs still execute the archives
+Chromium, Firefox and WebKit. Each Figma engine/origin is further split into two
+explicit, disjoint script owners: **figma-authoring** (five designer, editor and
+presentation suites) and **figma-services** (three keyboard, Agent/MCP, Assets and
+state suites). They run on separate runners, not competing browser processes in
+one job. The combined `figma` CLI alias still runs all eight scripts locally.
+Unique artifact names include partition, engine and origin. Only the Firefox
+partition containing the required-WebGL case installs Mesa/Xvfb dependencies.
+This trades additional runner setup for lower end-to-end latency; it does not
+claim reduced billed compute time. Native Apple jobs still execute the archives
 exported by all three browsers.
 
 The optional Monaco distribution is built once from locked dependencies and
@@ -63,10 +71,13 @@ python tools/ci/test_run.py
 python tools/ci/test_check.py
 node --test tests/ci-gate.test.mjs
 VB6_BROWSER=chromium VB6_TEST_TRANSPORT=http python tools/ci/run.py figma
+# Reproduce one exact CI partition:
+VB6_BROWSER=chromium VB6_TEST_TRANSPORT=http python tools/ci/run.py figma-services
 ```
 
 The audit rejects duplicate YAML keys, missing gate dependencies, cycles, missing
-suite owners, missing engines/origins/platforms and failure suppression. It also
+suite owners, missing engines/origins/platforms, omitted Figma partitions, matrix exclusions,
+duplicate matrix values, extra `.yaml` workflows and failure suppression. It also
 parses Bash blocks. The pinned, SHA-256-verified actionlint binary checks Actions
 syntax and expression types. Historical timings or results do not qualify a
 later source revision.
@@ -84,3 +95,15 @@ redeploy stale source.
 References: [GitHub workflow-run security](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_run),
 [Node test sharding](https://nodejs.org/api/cli.html#--test-shard), and
 [Playwright CI/cache tradeoffs](https://playwright.dev/python/docs/ci).
+
+## Windows package-extraction paths
+
+The independent VB.NET npm-package check passes a read-only archive descriptor
+as `tar`'s standard input and sets the extraction directory with the child process
+working directory. No archive path is passed to `tar -f`: GNU tar interprets a
+colon in that argument as a remote host, including Windows drive-letter paths
+when the workflow runs under Git Bash. This keeps the independent extractor and
+all standalone ESM, CLI, browser-bundle and archive assertions. The input closes
+on success, extraction failure and process-start failure; a bounded child timeout
+returns a failing result rather than accepting an incomplete package. Only locally
+built, trusted package archives belong in this harness.

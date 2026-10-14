@@ -18,22 +18,29 @@ import time
 
 ROOT = Path(__file__).resolve().parents[2]
 ENGINES = ('chromium', 'firefox', 'webkit')
+# The combined name remains a local convenience; CI schedules each owner once.
+FIGMA_GROUPS = ('figma-authoring', 'figma-services')
 
 
 def plan(group, engine, transport, root=ROOT):
     if engine not in ENGINES or transport not in ('http', 'file', 'memory'):
         raise ValueError('Unknown engine or transport')
     suites = json.loads((root / 'tools/ci/suites.json').read_text())
-    if group not in suites or not re.fullmatch(r'[a-z][a-z0-9-]*', group):
+    if not isinstance(group, str) or not re.fullmatch(r'[a-z][a-z0-9-]*', group):
         raise ValueError('Unknown validation group')
-    scripts = suites[group]
+    groups = FIGMA_GROUPS if group == 'figma' else (group,)
+    if any(name not in suites for name in groups):
+        raise ValueError('Unknown validation group')
+    if any(not isinstance(suites[name], list) for name in groups):
+        raise ValueError('A validation group must be a list of scripts')
+    scripts = [script for name in groups for script in suites[name]]
     if not scripts or len(scripts) != len(set(scripts)):
         raise ValueError('Empty or duplicate suite list')
     origins = ('http', 'file') if group in ('advanced-editor', 'code-gpu') else (transport,)
     result = []
     for origin in origins:
         for script in scripts:
-            if not re.fullmatch(r'[a-z][a-z0-9_-]*\.py', script):
+            if not isinstance(script, str) or not re.fullmatch(r'[a-z][a-z0-9_-]*\.py', script):
                 raise ValueError('Only fixed tool basenames are allowed')
             path = root / 'tools' / script
             if not path.is_file() or path.is_symlink():

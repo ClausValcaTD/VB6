@@ -39,12 +39,14 @@
     "browser-macos-aot-tests.py",
     "browser-designer-tests.py"
   ],
-  "figma": [
+  "figma-authoring": [
     "figma-browser-tests.py",
     "figma-presentation-browser-tests.py",
     "figma-retained-webgl-browser-tests.py",
     "figma-navigation-browser-tests.py",
-    "figma-editor-browser-tests.py",
+    "figma-editor-browser-tests.py"
+  ],
+  "figma-services": [
     "figma-property-keyboard-browser-tests.py",
     "figma-services-browser-tests.py",
     "figma-service-state-browser-tests.py"

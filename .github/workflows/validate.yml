@@ -249,12 +249,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   figma:
-    name: Figma (${{ matrix.browser }}, ${{ matrix.transport }})
+    name: Figma (${{ matrix.suite }}, ${{ matrix.browser }}, ${{ matrix.transport }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        # Each suite owns disjoint scripts; origins and engines stay exhaustive.
+        suite:
+          - figma-authoring
+          - figma-services
         browser:
           - chromium
           - firefox
@@ -270,17 +274,18 @@ jobs:
         with:
           browser: ${{ matrix.browser }}
           profile: authoring
-          mesa: ${{ matrix.browser == 'firefox' }}
-      - name: Agent, Assets, Code, properties and presentation
-        run: python tools/ci/run.py figma
+          mesa: ${{ matrix.browser == 'firefox' && matrix.suite == 'figma-authoring' }}
+      - name: Run the assigned authoring or services partition
+        run: python tools/ci/run.py "$SUITE"
         env:
+          SUITE: ${{ matrix.suite }}
           VB6_TEST_TRANSPORT: ${{ matrix.transport }}
       - name: Verify generated outputs remain reproducible
         run: git diff --exit-code -- dist src/exporter/runtime-payload.js src/editor/diagnostics-payload.js examples
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: figma-${{ matrix.browser }}-${{ matrix.transport }}
+          name: ${{ matrix.suite }}-${{ matrix.browser }}-${{ matrix.transport }}
           path: reports
           if-no-files-found: error
           retention-days: 7

@@ -25,6 +25,16 @@ class WorkflowAuditTests(unittest.TestCase):
     def test_missing_engine_rejected(self):self.reject(lambda w:w['jobs']['figma']['strategy']['matrix']['browser'].remove('webkit'))
     def test_missing_origin_rejected(self):self.reject(lambda w:w['jobs']['figma']['strategy']['matrix']['transport'].remove('file'))
     def test_missing_gpu_display_rejected(self):self.reject(lambda w:w['jobs']['rendering-qualification']['strategy']['matrix']['display'].remove('headed'))
+    def test_missing_figma_partition_rejected(self):
+        self.reject(lambda w:w['jobs']['figma']['strategy']['matrix']['suite'].remove('figma-services'))
+    def test_hidden_matrix_exclusion_rejected(self):
+        self.reject(lambda w:w['jobs']['figma']['strategy']['matrix'].update({'exclude':[{'browser':'webkit','transport':'file'}]}))
+    def test_duplicate_matrix_value_rejected(self):
+        self.reject(lambda w:w['jobs']['node']['strategy']['matrix']['shard'].append(4))
+    def test_extra_yaml_extension_workflow_rejected(self):
+        (self.root/'.github/workflows/duplicate.yaml').write_text('name: Duplicate\non: push\njobs: {}\n')
+        with self.assertRaisesRegex(ValueError,'Only three'):
+            check.audit(self.root)
     def test_duplicate_yaml_keys_rejected(self):
         self.path.write_text(self.path.read_text()+'\nname: Invalid\n')
         with self.assertRaisesRegex(ValueError,'Duplicate YAML'):check.audit(self.root)
