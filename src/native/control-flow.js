@@ -102,7 +102,7 @@ export const nativeFlowMethods={
     if(ins.op==='withUnwind'){
       if(!Number.isInteger(ins.count)||ins.count<0||ins.count>context.withBindings.length)this.fail('Invalid native With unwind');
       // A runtime early exit must not pop the compiler's lexical binding stack.
-      for(const binding of ins.count?context.withBindings.slice(-ins.count):[])x.mov(memory(binding.active),0);
+      for(const binding of ins.count?context.withBindings.slice(-ins.count):[]){x.mov(memory(binding.active),0);if(binding.reference)this.clearNativeOwnedPointer(binding.reference);}
       return true;
     }
     return false;

@@ -1,3 +1,4 @@
+import {GRID_DATA_PUBLISH_SOURCE} from './grid-data-publish.js';
 import {NATIVE_GRID_FIELDS as F,NATIVE_GRID_MAX_CELLS} from './control-grid-contract.js';
 /** This private VB kernel is compiled by the existing native compiler to x86.
  * Host routines are intrinsic only inside this module. No source/interpreter is
@@ -19,6 +20,7 @@ export function nativeGridCoreSource(count){
 ${fields}
 Private D(0 To ${Object.keys(F).length-1}, 0 To ${count-1}) As Long
 ${headers}
+${GRID_DATA_PUBLISH_SOURCE}
 Private Function Bounded(ByVal value As Long, ByVal lo As Long, ByVal hi As Long) As Long
  If value<lo Then value=lo
  If value>hi Then value=hi

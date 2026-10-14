@@ -1,3 +1,4 @@
+import {nativeStatementTemporary} from './statement-temporaries.js';
 import {mem32} from './x86-operands.js';
 /** Native storage lowering. BSTR ownership is explicit; no JS or VB runtime is embedded. */
 import {NATIVE_ARRAY_MAX_BYTES, NATIVE_ARRAY_MAX_RANK} from './arrays.js';
@@ -63,6 +64,7 @@ export const nativeStorageMethods = {
   },
   temporaryString() {
     const c = this.context;
+    return nativeStatementTemporary(c,'string',()=>{
     const variable = {name: this.x.unique('string-temp'), type: 'String', nativeCount: 1, nativeBytes: 4, temporary: true};
     if (c?.proc?.name) {
       c.size += 4;
@@ -71,6 +73,7 @@ export const nativeStorageMethods = {
       (c.stringTemps ||= []).push(variable);
     } else { variable.label = variable.name; this.allocateStorage(variable); }
     return variable;
+    });
   },
   /** Adopt one statement-scoped native reference in EAX. Error dispatch and
    * normal instruction cleanup share the same release path. */
@@ -102,6 +105,7 @@ export const nativeStorageMethods = {
     if(key(variable.type)==='date')this.dateExpression(node);else if(key(variable.type)==='currency')this.currencyExpression(node);else if (key(variable.type) === 'string') {if(this.type(node)==='string')this.expression(node);else this.textExpression(node);} else if(['single','double'].includes(key(variable.type))){this.floatExpression(node,key(variable.type)==='single');}else if(key(variable.type)==='boolean')this.truth(node);else this.numeric(node);
   },
   rawStorageAddress(variable) {
+    if(variable.nativeKernelPointer){this.x.value(variable.nativeKernelPointer);return;}
     if(variable.nativeItem)this.fail('Borrowed native item references cannot be assigned, converted or passed outside their event; read a supported property');
     this.withGuard(variable.nativeWithActive);
     if(variable.recordOf)return this.recordAddress(variable);

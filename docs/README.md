@@ -87,9 +87,18 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Windows build targets](WINDOWS-BUILDS.md), [target validation](NATIVE-VALIDATION.md),
   [native compiler and optimizer](native-compiler-optimization.md),
   [direct Win32 AOT](WIN32-AOT.md) and [export troubleshooting](WIN32-EXPORT-TROUBLESHOOTING.md).
+- [Private native services](WIN32-PRIVATE-SERVICES.md): demand-driven linkage, pointer primitives and owned-frame performance.
 - [Native strings and control metadata](NATIVE-STRING-METADATA.md): counted BSTRs,
   Replace/InStr binding, Tag/Name lifetime and HWND-backed TabStop.
 - [Win32 controls](WIN32-CONTROLS.md): native AOT control coverage, property and stream ownership, layout integration, output dependencies and Windows execution checks.
+- [Runtime intrinsic controls](WIN32-DYNAMIC-CONTROLS.md): owned HWND references, sparse control arrays, generation-safe creation and native callbacks.
+- [Typed source events](WIN32-EVENTS.md): synchronous WithEvents/RaiseEvent, reentrant delivery and subscription ownership.
+- [Independent native Forms and MDI](WIN32-FORM-INSTANCES.md): per-instance HWND/control state, embedded interface ownership, cancellation and admission limits.
+- [Native Recordset/grid binding](WIN32-DATA-BINDING.md): owned snapshots, source cursor preservation, atomic publication and bounded bulk conversion.
+- [Native external Automation](WIN32-AUTOMATION.md): real IDispatch calls, argument ABI, ownership and COM errors.
+- [Native InputBox](WIN32-INPUTBOX.md): Unicode modal dialogs, argument snapshots, callback lifetime and Windows acceptance.
+- [Typed native classes](WIN32-CLASSES.md): instance ownership, properties, runtime member dispatch and counted String mutation.
+- [Native drawing surfaces](WIN32-SURFACES.md): Form/PictureBox hDC ownership, retained backing, painting, scaling and failure cleanup.
 - [Native RichEdit selection and search](WIN32-RICHEDIT.md): mixed-format masks, Unicode search, line lookup and undo/redo.
 - [Native grids, charts and tab pages](WIN32-GRIDS-CHARTS-TABS.md): storage, editing, GDI, ownership and execution gates.
 - AOT language/ABI contracts: [numeric storage](WIN32-NUMERIC.md),

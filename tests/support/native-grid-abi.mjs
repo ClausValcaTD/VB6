@@ -16,6 +16,8 @@ export function emittedGrid(t,code='',optimization=0,events=''){
  vm.hook('oleaut32.dll','SafeArrayGetDim',1,([h])=>arrays.get(h).bounds.length);
  vm.hook('oleaut32.dll','SafeArrayLock',1,([h])=>{m.write(h+8,m.read(h+8)+1);return 0;});
  vm.hook('oleaut32.dll','SafeArrayUnlock',1,([h])=>{assert.ok(m.read(h+8)>0);m.write(h+8,m.read(h+8)-1);return 0;});
+ vm.hook('oleaut32.dll','SafeArrayAccessData',2,([h,out])=>{m.write(h+8,m.read(h+8)+1);m.write(out,arrays.get(h).data);return 0;});
+ vm.hook('oleaut32.dll','SafeArrayUnaccessData',1,([h])=>{assert.ok(m.read(h+8)>0);m.write(h+8,m.read(h+8)-1);return 0;});
  vm.hook('oleaut32.dll','SafeArrayPtrOfIndex',3,([h,idx,out])=>{const at=pointer(h,idx);if(at===null)return 0x8002000b;m.write(out,at);return 0;});
  vm.hook('oleaut32.dll','SafeArrayGetElement',3,([h,idx,out])=>{const at=pointer(h,idx);if(at===null)return 0x8002000b;const a=arrays.get(h),v=m.read(at);m.write(out,a.kind===8?(v?m.string(m.bstr(v)):0):v);return 0;});
  vm.hook('oleaut32.dll','SafeArrayPutElement',3,([h,idx,input])=>{const at=pointer(h,idx);if(at===null)return 0x8002000b;const a=arrays.get(h);if(a.kind===8){const old=m.read(at),copy=input?m.string(m.bstr(input)):0;if(old)m.free(old-4);m.write(at,copy);}else m.write(at,m.read(input));return 0;});
