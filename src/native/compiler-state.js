@@ -8,39 +8,44 @@ export const nativeCompilerStateMethods={
   prepareModule(module) {
     this.preparingModule=module;this.preparingProcedure=null;
     for(const proc of module.procedures.values()){if(proc.storageReturnType)proc.returnType=proc.storageReturnType;for(const p of proc.params){if(p.storageType)p.type=p.storageType;const record=this.recordLayouts.resolve(p.type,module);if(record)p.nativeRecord=record;}}
-    if (!['form','module'].includes(module.kind) || module.interfaces.length ) this.fail('Native AOT does not yet lower classes or interfaces', module);
+    if (!['form','module','class'].includes(module.kind) || module.interfaces.length ) this.fail('Native AOT does not yet lower classes or interfaces', module);
     const result = {module,nativeInternal:!!module.nativeInternal,name:module.name,form:module.form,globals:new Map(),procedures:new Map(),controls:new Map(),controlArrays:new Map(),externals:this.externals.get(key(module.name))};
     this.modules.set(key(module.name), result);
+    if(module.kind==='class'||this.nativeFormTypes?.has(key(module.name))){result.nativeClass=this.nativeClassDescriptor(module.name);result.nativeClass.module=result;if(result.nativeClass.nativeForm)result.nativeForm=result.nativeClass;}
     for (const decl of module.declarations) {
       if (decl.constant) continue; this.scalar(decl);
-      const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; this.allocateStorage(variable); result.globals.set(key(decl.name),variable);
+      const variable = {...decl,owner:result,label:'global:' + module.name + ':' + decl.name}; if(result.nativeClass)this.allocateNativeInstanceField(variable,result);else this.allocateStorage(variable); result.globals.set(key(decl.name),variable);
     }
-    for (const proc of module.procedures.values()) {
+    for (const original of module.procedures.values()) {
+      const proc=original.kind==='property'&&result.nativeClass?{...original,kind:original.accessor==='get'?'function':'sub',nativeProperty:original.accessor}:original;
       if (proc.external) continue;
       this.preparingProcedure=proc;
       if (!['sub','function'].includes(proc.kind)) this.fail('Native AOT does not lower property procedures', module);
-      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType)) && key(proc.returnType)!=='string' && !REAL_TYPES.has(key(proc.returnType)) && !['currency','variant'].includes(key(proc.returnType))) this.fail('Native functions must return a supported scalar: ' + proc.name, module);
-      const context = {module:result,proc,label:'proc:' + module.name + ':' + proc.name,locals:new Map(),temporaries:new Map(),loops:new Map(),size:NATIVE_ERROR_FRAME_BYTES};
+      if (proc.kind === 'function' && !INT_TYPES.has(key(proc.returnType)) && key(proc.returnType)!=='string' && !REAL_TYPES.has(key(proc.returnType)) && !['currency','variant','collection','vba.collection'].includes(key(proc.returnType)) && !this.nativeClassDescriptor(proc.returnType) && !this.nativeObjectType(proc.returnType)) this.fail('Native functions must return a supported scalar: ' + proc.name, module);
+      const context = {module:result,proc,label:'proc:' + module.name + ':' + proc.name+(proc.nativeProperty?':'+proc.nativeProperty:''),locals:new Map(),temporaries:new Map(),loops:new Map(),size:NATIVE_ERROR_FRAME_BYTES};
       const local = (name, type = 'Long',decl={}) => { context.size += decl.nativeBytes || 4; if(context.size>512*1024)this.fail('Native procedure workspace exceeds 512 KiB',module); const variable = {...decl,name,type,offset:-context.size}; context.locals.set(key(name),variable); return variable; };
       this.prepareNativeParameters(context);
       context.variantReturn=proc.kind==='function'&&key(proc.returnType)==='variant';
       let argumentOffset=context.variantReturn?12:8;
+      if(result.nativeClass){context.instanceOffset=argumentOffset;argumentOffset+=4;}
       proc.params.forEach(p => { p=this.scalar({...p,parameter:true}); if(['string','variant'].includes(key(p.type))&&!p.byRef&& !p.nativeArray){const v=local(p.name,p.type,{...p,parameter:false});v.incomingOffset=argumentOffset;v.ownedParameter=true;}else context.locals.set(key(p.name),{...p,offset:argumentOffset,parameter:true}); argumentOffset+=nativeParameterBytes(p); });
-      context.argumentBytes=argumentOffset-8;
+      context.argumentBytes=argumentOffset-8;if(context.argumentBytes>65532)this.fail('Native method argument area exceeds the x86 stdcall return limit',context);
       if (proc.kind === 'function') context.returnValue = local(proc.name,proc.returnType,this.scalar({name:proc.name,type:proc.returnType}));
       for (const instruction of proc.code) {
         if (instruction.op === 'dim') for (const decl of instruction.decls) {
           if (decl.constant) continue; this.scalar(decl); if (context.locals.has(key(decl.name))) this.fail('Duplicate local: ' + decl.name,module);
-          if (instruction.static || proc.static) { if(decl.initial) this.fail('Native static initializers are not yet lowered',module); const variable = {...decl,label:'static:' + context.label + ':' + decl.name}; this.allocateStorage(variable);if(variable.fixedLength||variable.nativeRecord?.hasFixedStrings)variable.initialized=this.slot(variable.label+':initialized'); context.locals.set(key(decl.name),variable); }
+          if((instruction.static||proc.static)&&result.nativeClass){const variable=this.allocateNativeInstanceField({...decl},result);context.locals.set(key(decl.name),variable);}
+          else if (instruction.static || proc.static) { if(decl.initial) this.fail('Native static initializers are not yet lowered',module); const variable = {...decl,label:'static:' + context.label + ':' + decl.name}; this.allocateStorage(variable);if(variable.fixedLength||variable.nativeRecord?.hasFixedStrings)variable.initialized=this.slot(variable.label+':initialized'); context.locals.set(key(decl.name),variable); }
           else local(decl.name,decl.type,decl);
         }
         if (instruction.op === 'forInit') { const end = local(instruction.id + ':end','Long',{nativeBytes:16}), step = local(instruction.id + ':step','Long',{nativeBytes:16}); context.loops.set(instruction.id,{...instruction,endVariable:end,stepVariable:step}); }
         if (instruction.op === 'temp') context.temporaries.set(instruction.id,local(instruction.id,'Long',{nativeBytes:16}));
       }
-      result.procedures.set(key(proc.name),context);
+      result.procedures.set(key(proc.name)+(proc.nativeProperty?':'+proc.nativeProperty:''),context);
     }
     for (const name of result.externals.keys()) if (result.procedures.has(name) || result.globals.has(name) || module.constantBindings.has(name)) this.fail('Native declaration conflicts with a project member: ' + name,module);
     if (!module.form) return;
+    if(result.nativeForm){this.prepareInstanceForm(result);return;}
     if (!['Form','MDIForm'].includes(module.form.type)) this.fail('Unsupported native form designer',module);
     if(module.form.type==='MDIForm'&&module.form.properties.Picture)this.fail('Native MDI background Picture is not yet lowered',module);
     if (![1,3].includes(Number(module.form.properties.ScaleMode ?? 1))) this.fail('Native form ScaleMode currently supports Twips (1) or Pixels (3)',module);
@@ -59,7 +64,9 @@ export const nativeCompilerStateMethods={
       if (model.type === 'Timer') { control.interval = this.slot('timer-interval:' + module.name + ':' + controlKey,Number(model.properties.Interval) || 0); control.enabled = this.slot('timer-enabled:' + module.name + ':' + controlKey,model.properties.Enabled === 0 ? 0 : -1); }
       control.key=controlKey;this.registerNativeControl(result,control);this.prepareNativeControl(control);
     }
-    const supported = new Set(['load','initialize','activate','deactivate','resize','queryunload','unload']);
+    const supported = new Set(['load','initialize','activate','deactivate','resize','queryunload','unload',...(module.form.type==='Form'?['paint']:[])]);
+    if(result.procedures.has('form_paint'))this.prepareNativeSurface(result);
+    for(const control of result.controls.values())if(control.model.type==='PictureBox'&&result.procedures.has(key(control.model.name)+'_paint'))this.prepareNativeSurface(control);
     for (const context of result.procedures.values()) {
       const name = key(context.proc.name), match = name.match(/^(?:mdi)?form_(.*)$/);
       if (match && !supported.has(match[1])) this.fail('Native form event is not yet routed: ' + context.proc.name,module);
@@ -71,6 +78,7 @@ export const nativeCompilerStateMethods={
     }
   },
   variable(node, context = this.context) {
+    if(node.kind==='nativeKernelStorage')return node.storage;
     const gridState=this.gridStateVariable(node,context);if(gridState)return gridState;
     if(node.kind==='with')return this.nativeWithBinding().record||null;
     const record=this.recordMember(node,context);if(record)return record;
@@ -143,7 +151,7 @@ export const nativeCompilerStateMethods={
     if (callee.kind !== 'id') return null;
     const name = key(callee.name), own = current?.procedures.get(name) || current?.externals.get(name); if (own) return own;
     if(current?.nativeInternal)return;
-    const candidates = [...this.modules.values()].flatMap(m => [...m.procedures.values(),...m.externals.values()].filter(p => key((p.proc || p).name) === name && (p.proc || p).scope === 'public'));
+    const candidates = [...this.modules.values()].filter(m=>!m.nativeClass).flatMap(m => [...m.procedures.values(),...m.externals.values()].filter(p => key((p.proc || p).name) === name && (p.proc || p).scope === 'public'));
     if (candidates.length > 1) this.fail('Ambiguous native procedure: ' + callee.name); return candidates[0];
   }
 };
