@@ -1,3 +1,4 @@
+import {installDesignerEditors} from './designer-integration.js';
 import {captureNativeWindowState,nativeDocumentWindows} from '../project/native-window-state.js';
 import {el} from '../core/core.js';
 import {modal,alertDialog} from './ui.js';
@@ -14,6 +15,7 @@ export function installNativeWorkspace(ide){
     if(ide.runState!=='design'||ide.project!==project||ide.visualRevision!==revision||ide.controlRegistry!==registry||current.length!==selected.length||current.some((model,i)=>model!==selected[i]))throw new Error('Component selection or project changed while property pages were open');
     ide.setProperties(changes);return true;
   };
+  installDesignerEditors(ide);
   ide.restoreNativeWindows=()=>{
     const state=ide.project.nativeWindowState;if(ide.runState!=='design'||!state||!state.current&&!state.records?.some(r=>!r.ambiguous))return false;
     const states=nativeDocumentWindows(ide.project).slice(0,128); // never spawn OS windows from imported files
