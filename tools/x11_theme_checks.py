@@ -7,6 +7,7 @@ import io
 import os
 from pathlib import Path
 from PIL import Image
+from x11_overflow_checks import X11OverflowChecks
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = os.environ.get('VB6_BROWSER', 'chromium')
@@ -68,7 +69,7 @@ def set_control(page, name, key, value):
 }''', [name, key, value])
 
 
-class X11IdeChecks:
+class X11IdeChecks(X11OverflowChecks):
     def test_x11_ide_relief_defaults_fields_and_indicators(self):
         for theme, palette in PALETTES.items():
             with self.subTest(theme=theme):

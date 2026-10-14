@@ -90,3 +90,23 @@ Fonts and fractional-scale antialiasing can differ by host.
 Design references: [X.Org architecture](https://www.x.org/guide/concepts/) and
 [Motif widget resources](https://docs.oracle.com/cd/E19422-01/819-3700/WidgetReference_1.html).
 See also [application themes](APPLICATION-THEMES.md) and [IDE themes](IDE-THEMES.md).
+
+## Retained-renderer fractional clipping regression
+
+PR #129 continuation fixes fractional overflow coverage after child traversal.
+A clipped row could repaint an earlier parent-edge hole and alpha-composite its
+background over the already painted native border. The renderer now preserves
+only the fractional overflow perimeter after descendants. A two-device-pixel
+CSS-edge halo also covers independently rounded border widths and scroll offsets;
+opaque interiors remain Canvas2D/WebGL2/WebGPU commands.
+
+`tests/rendering-overflow-edges.test.mjs` checks clip-axis ownership, empty and
+integral boundaries, ancestor clipping, thin native coverage, and traversal order.
+`tools/x11_overflow_checks.py`, mixed into the existing IDE theme suite, compares
+fixed, independently stabilized HTML references with Canvas2D at DPR 1, 1.1,
+1.25, 1.5, 1.75, 2, 2.5 and 3, for light/dark palettes and initial/scrolled rows.
+All comparisons require zero changed pixels; a direct overlay-alpha assertion
+requires an opaque interior so an all-native fallback cannot pass.
+The existing headed/headless WebGPU and WebGL2 qualification continues to check
+full optional-theme IDE screenshots with zero tolerance. No baseline pixel
+images or pass thresholds were changed.
