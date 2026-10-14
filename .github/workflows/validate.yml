@@ -135,6 +135,10 @@ jobs:
         env:
           VB6_BROWSER: ${{ matrix.browser }}
         run: python tools/browser-html-retention.py
+      - name: SSTab imports and all built-in control designer interactions
+        env:
+          VB6_BROWSER: ${{ matrix.browser }}
+        run: npm run test:designer:browser
       - name: HTML5 WebBrowser source API, isolated DOM, designer and deployment origins
         env:
           VB6_BROWSER: ${{ matrix.browser }}
@@ -197,6 +201,7 @@ jobs:
           name: browser-windows-${{ matrix.browser }}
           path: |
             reports/html-retention/${{ matrix.browser }}
+            reports/designer/${{ matrix.browser }}
             reports/browser-windows
             reports/ide-themes
             reports/application-themes/${{ matrix.browser }}
