@@ -42,7 +42,8 @@ diagnostic; it is not a silently missing control image. The caller's original
 project and imported resource-binding snapshot are not modified.
 
 Native AppKit `StdPicture` values retain the decoded image, picture type,
-natural dimensions, selected icon/cursor data and hotspot. Assignments between
+natural dimensions and the complete validated ICO/CUR container, including all
+frame dimensions, color depths and cursor hotspots. Assignments between
 variables and controls retain object identity. Handles expire when the owning
 picture is released; stale handles cannot resolve a later object.
 
@@ -56,11 +57,33 @@ previous value, layout flag or frame.
 `LoadPicture` accepts the implemented BMP/DIB, PNG, JPEG, GIF and ICO/CUR
 formats; calling it without a filename returns an empty picture. Header and
 pixel-dimension checks run before AppKit decoding, and decoded dimensions must
-agree. `SavePicture` preserves selected icon/cursor format and hotspots, while
-bitmap pictures use the existing native raster encoders. This does not yet
-implement WMF/EMF rendering, every multi-resolution icon policy, original-file
-byte preservation for raster re-encoding, every ImageList/third-party property
-stream, or all historical OLE persistence formats.
+agree. Every icon/cursor frame is checked and decoded, including frames not
+selected for initial display. An invalid unused frame is an error, not a reason
+to silently discard part of the file. `SavePicture` writes the original complete
+ICO/CUR bytes; save/reload therefore preserves directories, PNG/DIB payloads and
+per-frame hotspots without flattening or re-encoding. Raster pictures still use
+the existing native encoders and do not promise original-file byte preservation.
+
+## Multi-resolution images and cursors
+
+The logical picture size retains the closest-to-32-pixel selection policy, with
+higher color depth winning equal-distance ties. Decoded AppKit representations
+share that logical size while retaining their individual physical pixel sizes.
+At duplicate dimensions the highest source depth is selected for drawing, with
+stable directory-order ties; every original entry remains owned and saveable.
+Distinct source colors in the native tests verify actual representation selection
+at 1x, 2x and 4x rather than merely counting stored representations.
+
+Custom cursors prefer an image large enough for the target backing resolution,
+then the nearest dimensions and highest depth. The selected frame's hotspot is
+converted from physical pixels to logical points. Cursors are cached by frame,
+not allocated on every mouse event, and the active control refreshes on mouse
+movement, cursor updates and window backing-scale changes. A cursor with only
+one image retains its original logical hotspot at every display scale.
+
+These policies do not claim every historical Windows image-selection algorithm,
+WMF/EMF rendering, every ImageList/third-party property stream, animated-cursor
+support or all OLE persistence formats.
 
 Bitmap sampling for native GetPixel is color-managed from the image's actual
 profile to sRGB. It uses a one-pixel CoreGraphics destination and returns VB's
@@ -98,7 +121,9 @@ The source-kit manifest lists actual resource file paths.
 Helper ABI 4 identifies the resource-aware runtime. Normal builds reject an
 outdated embedded SDK. The guarded runtime refresh requires native parser,
 AppKit picture/pixel, lifecycle, lexical-scope, large-project and O0–O3 execution
-proof before embedding the exact tested SDK bytes.
+proof before embedding the exact tested SDK bytes. Multi-resolution drawing,
+per-frame cursor selection and lossless save/reload proof are also mandatory;
+the helper ABI remains 4 because its call/metadata contracts did not change.
 
 `tests/macos-resources.test.mjs` checks catalog encoding, shared frontend/FRX
 resolution, caller immutability, diagnostics, source/direct resource identity,
@@ -106,11 +131,14 @@ resource report preservation and signature tampering. The independent native
 parser tests mutate headers, ranges, string tables, image groups and image
 dimensions under sanitizers. Genuine AppKit tests exercise decoded pixel
 colors, natural/stretched sizing, failure-atomic changes, cursor hotspots and
-picture/handle ownership.
+picture/handle ownership. Mixed PNG/DIB ICO/CUR fixtures cover 16, 32, 64 and
+256 pixels, per-frame hotspots, invalid unselected frames and exact file bytes.
 
 The direct native harness adds a resource-form application at each optimization
 level. It exercises original RES/FRX assets, resource functions, picture
-assignment and raster/icon/cursor save-load paths, and verifies signatures
+assignment and raster/icon/cursor save-load paths. The generated application
+compares every saved and reloaded multi-resolution file byte with its immutable
+resource data through native Binary Get, not just its length. It verifies signatures
 without recompiling or re-signing the exported application. Offline browser
 conformance archives include resource data and execute separately on Apple
 Silicon. Test results are retained in revision-specific CI artifacts, not
@@ -130,3 +158,6 @@ approval. See [macOS export](MACOS-EXPORT.md),
   https://github.com/llvm/llvm-project/blob/main/llvm/tools/llvm-rc/ResourceFileWriter.cpp
 - Apple CoreGraphics image cropping:
   https://developer.apple.com/documentation/coregraphics/cgimage/cropping(to:)
+
+- Apple high-resolution images and representation sizes:
+  https://developer.apple.com/library/archive/documentation/GraphicsAnimation/Conceptual/HighResolutionOSX/Optimizing/Optimizing.html

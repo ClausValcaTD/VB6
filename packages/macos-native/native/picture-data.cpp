@@ -63,12 +63,14 @@ NativePicture decodeNativePicture(std::vector<uint8_t> bytes){
         const uint64_t required=header+colors*4+masks+((uint64_t(width)*bits+31)/32*4)*height+(bits==32?0:((width+31)/32*4)*height);
         if(colors>256||required>size)fail(481,"Truncated icon pixels");
       }
+      result.frames.push_back({width,height,offset,size,result.cursor?uint32_t(r.u16(at+4)):0,
+        result.cursor?uint32_t(r.u16(at+6)):0,uint16_t(bits)});
       const int score=std::abs(int(width)-32)+std::abs(int(height)-32);
       if(score<best||(score==best&&bits>bestBits)){best=score;bestBits=bits;chosen=i;result.width=width;result.height=height;}
     }
-    const size_t at=6+chosen*16;const auto offset=r.u32(at+12),size=r.u32(at+8);
+    const size_t at=6+chosen*16;
     if(result.cursor){result.hotspotX=r.u16(at+4);result.hotspotY=r.u16(at+6);}
-    std::vector<uint8_t> ico(22+size);put(ico,2,1,2);put(ico,4,1,2);ico[6]=uint8_t(result.width);ico[7]=uint8_t(result.height);ico[8]=bytes[at+2];put(ico,10,1,2);put(ico,12,uint32_t(bestBits),2);put(ico,14,size,4);put(ico,18,22,4);std::copy(bytes.begin()+offset,bytes.begin()+offset+size,ico.begin()+22);bytes=std::move(ico);
+    result.selected=chosen; // Decoding a frame must never discard other owned images.
   }else fail(481,"Unsupported native picture format");
   dimensions(result.width,result.height);result.bytes=std::move(bytes);return result;
 }

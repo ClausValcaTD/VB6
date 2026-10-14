@@ -1,4 +1,5 @@
 /** Portable RES/FRX fixtures; no platform image generation or proprietary assets. */
+import {multiPictureBytes,pictureRoundTripCode} from './picture-frames.mjs';
 import {setResource,setResourceString} from '../../../src/project/res.js';
 import {toBase64,writeFRXRecord} from '../../../src/project/frx.js';
 export function bitmapBytes(){
@@ -73,11 +74,12 @@ export function resourceFormProject(){
   const p=resourceProject();p.name='NativeResourceForm';p.modules[1].code='Sub Main()\nCheckNativeResources\nLoad Form1\nEnd Sub';
   const pic=writeFRXRecord(bitmapBytes(),'picture'),text=writeFRXRecord('Résumé\r\nResource text','text32'),list=writeFRXRecord(['Alpha','Bêta'],'list');
   const frx=new Uint8Array(pic.length+text.length+list.length);frx.set(pic);frx.set(text,pic.length);frx.set(list,pic.length+text.length);
+  for(const cursor of [false,true])p.resources=setResource(p.resources,{type:10,name:cursor?'multires-cursor':'multires-icon',data:toBase64(multiPictureBytes(cursor))});
   p.assets={'Forms/Form1.frx':{encoding:'base64',data:toBase64(frx)}};
   const rectangle={Left:0,Top:0,Width:1800,Height:900,Visible:true,Enabled:true};
   const model=(name,type,properties)=>({name,type,properties:{...rectangle,...properties}});
-  p.modules.push({name:'Form1',kind:'form',sourcePath:'Forms/Form1.frm',form:{name:'Form1',type:'Form',properties:{Caption:'Native resource fidelity',ClientWidth:4500,ClientHeight:3000,Icon:'data:image/x-icon;base64,'+toBase64(iconBytes())},controls:[
-    model('Image1','Image',{Stretch:true,Picture:{resource:'Form1.frx',offset:'0000'},MousePointer:99,MouseIcon:'data:image/x-cursor;base64,'+toBase64(iconBytes(true))}),
+  p.modules.push({name:'Form1',kind:'form',sourcePath:'Forms/Form1.frm',form:{name:'Form1',type:'Form',properties:{Caption:'Native resource fidelity',ClientWidth:4500,ClientHeight:3000,Icon:'data:image/x-icon;base64,'+toBase64(multiPictureBytes())},controls:[
+    model('Image1','Image',{Stretch:true,Picture:{resource:'Form1.frx',offset:'0000'},MousePointer:99,MouseIcon:'data:image/x-cursor;base64,'+toBase64(multiPictureBytes(true))}),
     model('Picture1','PictureBox',{Picture:{resource:'Form1.frx',offset:'0000'}}),
     model('Button1','CommandButton',{Caption:'Picture button',Picture:{resource:'Form1.frx',offset:'0000'},Style:1}),
     model('Text1','TextBox',{MultiLine:true,Text:{resource:'Form1.frx',offset:pic.length,text:true}}),
@@ -89,6 +91,21 @@ export function resourceFormProject(){
   Debug.Assert Button1.Picture.Handle <> 0
   Debug.Assert Me.Icon.Type = 3
   Debug.Assert Image1.MouseIcon.Type = 3
+  SavePicture Me.Icon, "native-all-icon-frames.ico"
+  CheckPictureBytes "native-all-icon-frames.ico", "multires-icon"
+  Dim multiresCopy As Object
+  Set multiresCopy = LoadPicture("native-all-icon-frames.ico")
+  SavePicture multiresCopy, "native-copy-icon-frames.ico"
+  CheckPictureBytes "native-copy-icon-frames.ico", "multires-icon"
+  Kill "native-copy-icon-frames.ico"
+  Kill "native-all-icon-frames.ico"
+  SavePicture Image1.MouseIcon, "native-all-cursor-frames.cur"
+  CheckPictureBytes "native-all-cursor-frames.cur", "multires-cursor"
+  Set multiresCopy = LoadPicture("native-all-cursor-frames.cur")
+  SavePicture multiresCopy, "native-copy-cursor-frames.cur"
+  CheckPictureBytes "native-copy-cursor-frames.cur", "multires-cursor"
+  Kill "native-copy-cursor-frames.cur"
+  Kill "native-all-cursor-frames.cur"
   Debug.Assert Text1.Text = "Résumé" & vbCrLf & "Resource text"
   Debug.Assert List1.ListCount = 2
   Debug.Assert List1.List(1) = "Bêta"
@@ -131,5 +148,6 @@ export function resourceFormProject(){
   Debug.Assert pic.Type = 0
   Debug.Print "NATIVE_RESOURCE_FORM_OK"
   Unload Me
-End Sub`});return p;
+End Sub
+${pictureRoundTripCode()}`});return p;
 }

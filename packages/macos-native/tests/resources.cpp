@@ -1,5 +1,6 @@
 // Independent native parser/image contracts; JavaScript supplies only catalog bytes.
 #include "resources.hpp"
+#include "picture-frames.hpp"
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -82,4 +83,4 @@ void files(const std::filesystem::path& path){
   std::filesystem::remove(empty);std::filesystem::remove(link);
 }
 }
-int main(int argc,char**argv){assert(argc==2);const std::filesystem::path path=argv[1];auto bytes=readNativeResourceFile(path);catalog(bytes);malformed(bytes);pictures(bytes);files(path);std::cout<<"NATIVE_RESOURCE_PARSER_OK\n";}
+int main(int argc,char**argv){assert(argc==2);const std::filesystem::path path=argv[1];auto bytes=readNativeResourceFile(path);catalog(bytes);malformed(bytes);pictures(bytes);files(path);pictureTests::checkFrames();std::cout<<"NATIVE_RESOURCE_PARSER_OK\n";}

@@ -3,6 +3,7 @@
 #include "resources.hpp"
 namespace vb6 {
 Value loadNativeImage(MacHost&,std::vector<uint8_t>);
+NSCursor* nativePictureCursor(MacImage&,double scale);
 bool nativePictureProperty(const std::string&);
 void initializeNativePictures(MacControl&);
 void refreshNativePictures(MacControl&);
