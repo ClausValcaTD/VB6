@@ -19,3 +19,15 @@ test('real Recordset binding acceptance retains ten independent native assertion
  for(const optimization of [0,1,2]){const a=compileWin32(project,{optimization});assert.ok(a.bytes.length<100*1024);assert.deepEqual(a.bytes,compileWin32(project,{optimization}).bytes);}
  assert.equal(JSON.stringify(project),before);
 });
+
+
+test('real binding fixture explicitly admits and verifies the Null used by its conversion check',()=>{
+ const {project,checks}=nativeControlFixtures().find(f=>f.project.name==='AotControlDataBinding');
+ const code=project.modules[0].code;
+ assert.ok(code.includes('rs.Fields.Append "Name",adVarWChar,80,adFldIsNullable'));
+ assert.ok(code.includes('rs.Fields.Item("Name").Value=Null\nrs.Update\nG.DataSource=rs'));
+ const assertion=code.split('\n').find(line=>line.includes('Then ExitProcess 7'));
+ assert.ok(assertion.includes('IsNull(rs.Fields.Item("Name").Value)'));
+ assert.ok(assertion.includes('G.TextMatrix(2,1)=""'));
+ assert.equal(checks.length,10);
+});
