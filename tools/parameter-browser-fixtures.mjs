@@ -1,9 +1,11 @@
+import {localStorageFixtures} from './local-storage-browser-fixtures.mjs';
 import {newProject,createForm} from '../src/project/model.js';
 const module=(name,code,kind='module')=>({id:name,name,code,kind});
 const project=(code,extras=[])=>({...newProject('ParameterBindings'),startup:'Sub Main',modules:[module('M',code),...extras]});
 const bag=module('Bag','Public Value As Long','class');
 const lazyBag=module('Bag','Public Value As Long\nPrivate Sub Class_Initialize()\nM.created = M.created + 1\nEnd Sub','class');
 export const parameterFixtures=[
+ ...localStorageFixtures,
  {name:'Same-type ByRef does not instantiate an unused As New variable',project:project('Public created As Long\nSub Main()\nDim value As New Bag\nIgnore value\nDebug.Print created\nEnd Sub\nSub Ignore(ByRef value As Bag)\nEnd Sub',[lazyBag]),expected:['0'],error:null},
  {name:'Same-type forwarding defers creation until first use',project:project('Public created As Long\nSub Main()\nDim value As New Bag\nOuter value\nDebug.Print created, value.Value\nEnd Sub\nSub Outer(ByRef value As Bag)\nInner value\nDebug.Print created\nvalue.Value = 7\nEnd Sub\nSub Inner(ByRef value As Bag)\nDebug.Print created\nEnd Sub',[lazyBag]),expected:['0','0','1 7'],error:null},
  {name:'Later argument rejection has no eager constructor side effect',project:project('Public created As Long\nSub Main()\nDim value As New Bag, text As String\nOn Error Resume Next\nWork value, text\nDebug.Print Err.Number, created\nEnd Sub\nSub Work(ByRef value As Bag, ByRef count As Long)\nDebug.Print "must not enter"\nEnd Sub',[lazyBag]),expected:['13 0'],error:13},

@@ -1,3 +1,4 @@
+import {procedureLocalDeclarations} from './local-storage.js';
 import {bindReferenceParameter} from './parameter-binding.js';
 import {RecordTypeIndex} from '../language/record-resolution.js';
 import {createRuntimeArray,createRuntimeRecord} from './record-storage.js';
@@ -78,7 +79,7 @@ export class VirtualMachine extends Signal {
   replaceBreakpoints(breakpoints=[]){
     if(!Array.isArray(breakpoints)||breakpoints.length>10000)throw new VBError('Invalid breakpoint list',5);
     const next=new Map();for(const bp of breakpoints){const value={...this.breakpointLocation(bp.module,bp.line),condition:String(bp.condition||''),enabled:bp.enabled!==false};if(value.condition.length>4096)throw new VBError('Breakpoint condition is too long',5);if(value.condition)this.debugInspector.parse(value.condition);next.set(lower(value.module)+':'+value.line,value);}
-    this.breakpoints=next;this.emit('breakpoints',[...this.breakpoints.values()]);
+    this.breakpoints=next;this.emit('breakpoints',[...next.values()]);
   }
   removeBreakpoint(module,line){this.breakpoints.delete(lower(module)+':'+line);this.emit('breakpoints',[...this.breakpoints.values()]);}
   toggleBreakpoint(module,line){const key=lower(module)+':'+line;if(this.breakpoints.has(key))this.removeBreakpoint(module,line);else this.setBreakpoint(module,line);}
@@ -557,7 +558,7 @@ export class VirtualMachine extends Signal {
       }
       frame.locals.set(lower(param.name),cell);
     }
-    for(const decl of proc.redimDeclarations||[])await this.declare(decl,frame,frame.locals,decl.static||proc.static);
+    for(const {decl,static:keep} of procedureLocalDeclarations(proc))await this.declare(decl,frame,frame.locals,keep||proc.static);
     this.stack.push(frame);this.currentFrame=frame;
     try {await this.execute(frame);for(const write of copyBack)await write();return scalarReturn?frame.result.getScalar():frame.result.get();}
     finally{closeWithScopes(frame);closeArrayEnumerations(frame);this.stack.pop();this.currentFrame=this.stack.at(-1)||null;if(!this.stack.length&&!this.debugEvaluation&&frame.proc.code.some(isSequencePoint))this.stepMode=null;if(!this.stack.length&&this.eventQueue.length)queueMicrotask(()=>this.processEvents());}
@@ -625,7 +626,7 @@ export class VirtualMachine extends Signal {
       expectedCode=frame.proc.code;expectedPc=current+1;frame.activePc=current;frame.activeInstruction=ins;frame.pc++;
       try{
         switch(ins.op){
-          case 'dim':for(const decl of ins.decls)await this.declare(decl,frame,frame.locals,ins.static||frame.proc.static);break;
+          case 'dim':for(const decl of ins.decls)if(!frame.locals.has(lower(decl.name)))await this.declare(decl,frame,frame.locals,ins.static||frame.proc.static);break;
           case 'assign':{const ref=await this.reference(ins.target,frame,ins.objectSet);const value=await this.evaluateScalar(ins.expr,frame);if(ref.isArray&&!ref.isProperty&&(await ref.get()) instanceof VBArray&&!(await ref.get()).dynamic)throw new VBError('Cannot assign to a fixed-size array',10);await ref.set(ins.objectSet?value:await this.defaultValue(value));break;}
           case 'expr':await this.evaluateScalar(ins.expr,frame);break;
           case 'print':{const values=[];for(const e of ins.exprs){const v=await this.defaultValue(await this.evaluateScalar(e,frame));values.push(printScalar(v));}this.output(values.join(' '),ins.newline);break;}

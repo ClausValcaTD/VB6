@@ -32,6 +32,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 ## Language, runtime and project files
 
 - [Language frontend](LANGUAGE-FRONTEND.md): scanning, declarations and diagnostics.
+- [Procedure-local storage](LANGUAGE-LOCAL-STORAGE.md): skipped declarations, local scope,
+  per-invocation initialization, Static lifetime and metadata-only declaration plans.
 - [Circular record dependencies](LANGUAGE-RECORD-RECURSION.md): declaration-cycle diagnostics,
   iterative graph analysis and cached provider edits.
 - [Array storage, source properties and Like](LANGUAGE-ARRAYS-LIKE.md): binding, ownership,
@@ -55,6 +57,9 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Keyboard/mouse events](INPUT-EVENTS.md) and [optional automatic layout](anchoring-layout.md).
 
 ## IDE, appearance and rendering
+
+- [Form designer and SSTab editing](DESIGNER-SUPPORT.md): native tab imports,
+  atomic property/collection editors, shared control capabilities and explicit boundaries.
 
 - [Optional Figma workspace](figma-workspace.md): real VB6 Assets/Layers/Design,
   reversible workspace profiles, canvas navigation, auto layout and anchoring.
