@@ -145,6 +145,28 @@ class ServiceState(base.ServicesAssets):
     def test_rejected_pointer_drop_restores_pan_and_releases_session(self):
         self.assert_rejected_drop_cleanup('pointer')
 
+    def move_to_visible_form_client(self):
+        # The form can be partially clipped behind Assets after edge panning.
+        # A getBoundingClientRect-relative point need not be a reachable target.
+        # First leave the edge band with physical input, then sample the visible
+        # intersection. Do not stop the app's RAF, set its pan or dispatch events.
+        canvas=self.page.locator('.designer-scroll[data-figma-viewport]').bounding_box()
+        self.page.mouse.move(canvas['x']+canvas['width']/2,canvas['y']+canvas['height']/2)
+        target=self.page.locator('.mdi-active .vb-form-content').bounding_box()
+        left=max(target['x'],canvas['x']+40)
+        right=min(target['x']+target['width'],canvas['x']+canvas['width']-40)
+        top=max(target['y'],canvas['y']+40)
+        bottom=min(target['y']+target['height'],canvas['y']+canvas['height']-70)
+        self.assertGreater(right-left,80,'A visible client surface is required for this drop')
+        self.assertGreater(bottom-top,80,'A visible client surface is required for this drop')
+        x,y=(left+right)/2,bottom-30
+        self.page.mouse.move(x,y)
+        self.page.mouse.move(x+1,y)  # Native dragover follows dragenter.
+        self.assertTrue(self.page.evaluate("""([x,y])=>{
+          const d=vb6Studio.designer,n=document.elementFromPoint(x,y);
+          return !!n&&d.root.contains(n)&&d.formView.content.contains(n);
+        }""",[x+1,y]),'Release must hit the actual form client, not a clipped border or sidebar')
+
     def assert_rejected_drop_cleanup(self,kind):
         self.enable()
         source=self.asset('Label')
@@ -168,9 +190,7 @@ class ServiceState(base.ServicesAssets):
         self.page.mouse.move(viewport['x']+viewport['width']-8,viewport['y']+viewport['height']/2,steps=10)
         self.page.mouse.move(viewport['x']+viewport['width']-7,viewport['y']+viewport['height']/2)
         self.page.wait_for_function('x=>vb6Studio.figmaMode.viewports.get(vb6Studio.designer).state.x<x-20',arg=state['x'])
-        target=self.page.locator('.mdi-active .vb-form-content').bounding_box()
-        x,y=target['x']+30,target['y']+target['height']-30
-        self.page.mouse.move(x,y,steps=5);self.page.mouse.move(x+1,y);self.page.mouse.up()
+        self.move_to_visible_form_client();self.page.mouse.up()
         dialog=self.page.get_by_role('dialog',name='Figma workspace',exact=True)
         expect(dialog).to_be_visible();expect(dialog).to_contain_text('Test component rejected insertion')
         self.assertFalse(self.page.evaluate('vb6Studio.figmaMode.ui.assets.active'))
@@ -206,9 +226,9 @@ class ServiceState(base.ServicesAssets):
         self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),history)
         self.page.evaluate('void (vb6Studio.root.setPointerCapture=window.originalAssetCapture)')
         dialog.get_by_role('button',name='OK',exact=True).click()
-        r=grip.bounding_box();target=self.page.locator('.mdi-active .vb-form-content').bounding_box()
+        r=grip.bounding_box()
         self.page.mouse.move(r['x']+r['width']/2,r['y']+20);self.page.mouse.down()
-        self.page.mouse.move(target['x']+30,target['y']+target['height']-30,steps=10);self.page.mouse.up()
+        self.move_to_visible_form_client();self.page.mouse.up()
         self.assertEqual(self.inserted()['type'],'TextBox')
         self.assertEqual(self.page.evaluate('vb6Studio.history.undoStack.length'),history+1)
         self.done()
