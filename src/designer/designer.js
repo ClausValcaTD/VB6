@@ -16,15 +16,22 @@ export class FormDesigner extends Signal {
     this.tool = 'Pointer'; this.zoom = 1; this.clipboard = []; this.showTabOrder = false; this.tabOrderIndex = 0;
     this.root = el('div', {class: 'designer-scroll', tabindex: 0, 'aria-label': 'Form designer'});
     this.plane = el('div', {class: 'designer-plane'}); this.root.append(this.plane); container.append(this.root);
-    // Intercept at capture, before native widgets and embedded controls can act
-    // on design-time input. Only the designer's explicit actions run here.
-    this.root.addEventListener('pointerdown', e => this.safely(() => this.pointerDown(e)), true);
-    this.root.addEventListener('keydown', e => this.safely(() => this.keydown(e)), true);
+    // The root capture phase belongs to optional workspace/auto-layout tools.
+    // Handle base gestures on the plane in capture, still before native widgets,
+    // so a tool that consumes an event cannot start a second base gesture.
+    this.plane.addEventListener('pointerdown', e => this.safely(() => this.pointerDown(e)), true);
+    this.root.addEventListener('pointerdown', e => {if (e.target === this.root) this.safely(() => this.pointerDown(e));});
+    this.root.addEventListener('keydown', e => this.safely(() => this.keydown(e)));
     this.root.addEventListener('click', e => {if (this.formView?.node.contains(e.target)) {e.preventDefault(); e.stopPropagation();}}, true);
     this.root.addEventListener('dblclick', e => {
-      if (!this.formView?.node.contains(e.target)) return;
-      e.preventDefault(); e.stopPropagation(); if (e.target.closest('[data-designer-tab]')) return;
-      const node = e.target.closest('[data-control-id]'), control = this.module?.form.controls.find(c => c.id === node?.dataset.controlId);
+      // Pointer capture can retarget the synthesized dblclick to the root.
+      // Resolve its hit again after capture ends; a background double-click
+      // must open the form event, not an unrelated previously selected control.
+      const hit = e.target === this.root ? this.root.ownerDocument.elementFromPoint(e.clientX, e.clientY) : e.target;
+      if (!hit || !this.formView?.node.contains(hit)) return;
+      e.preventDefault(); e.stopPropagation(); if (hit.closest('[data-designer-tab]')) return;
+      const id = hit.closest('[data-control-id]')?.dataset.controlId || hit.closest('[data-selection-id]')?.dataset.selectionId;
+      const control = this.module?.form.controls.find(c => c.id === id);
       this.emit('event', {control: control || null});
     }, true);
     this.root.addEventListener('contextmenu', e => {

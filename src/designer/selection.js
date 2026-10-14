@@ -24,7 +24,7 @@ export function renderDesignerSelection(designer){
  }
  for(const control of items){
   const r=rects.get(control.id);if(!r)continue;
-  const box=el('div',{class:'selection-outline'+(control.id===d.primaryId?' primary-selection':''),style:{left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px'}});
+  const box=el('div',{class:'selection-outline'+(control.id===d.primaryId?' primary-selection':''),'data-selection-id':control.id,style:{left:r.x+'px',top:r.y+'px',width:r.width+'px',height:r.height+'px'}});
   const axes=resizeAxes(control);
   for(const handle of d.locked?[]:['nw','n','ne','e','se','s','sw','w'].filter(h=>(axes.x||!/[ew]/.test(h))&&(axes.y||!/[ns]/.test(h))))box.append(el('i',{class:'selection-handle '+handle,'data-handle':handle,'data-id':control.id}));nodes.push(box);
  }
