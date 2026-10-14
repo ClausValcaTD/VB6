@@ -17,6 +17,7 @@ export class IdeDocuments {
     value.on('tool',type=>{ide.toolboxGrid.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.controlType===type));ide.status(type==='Pointer'?'Ready':'Draw '+type+' on the form.');});
     value.on('backend',backend=>{if(ide.activeModule?.id===module.id)ide.statusBackend.textContent=backend;});value.on('position',p=>ide.statusPosition.textContent=p.x+', '+p.y);
     value.on('event',({control})=>ide.ensureEvent(control?.name||'Form',ide.controlRegistry?.describe?.(control?.type)?.defaultEvent||DEFAULT_EVENTS[control?.type||'Form']||'Click'));
+    value.on('error',error=>ide.status(error.message));
     value.on('contextmenu',e=>showMenu(ide.designerMenu(),e.x,e.y,id=>ide.command(id)));
     return value;
   }
