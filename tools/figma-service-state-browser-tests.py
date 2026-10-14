@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tool tab selection and Assets navigation state use their real UI owners."""
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 from playwright.sync_api import expect
@@ -9,6 +10,21 @@ base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
 base.base.REPORT=base.base.REPORT/'state'
 
 class ServiceState(base.ServicesAssets):
+    def setUp(self):
+        super().setUp()
+        if self._testMethodName in (
+                'test_failed_pointer_capture_reports_error_and_allows_next_placement',
+                'test_rejected_pointer_drop_restores_pan_and_releases_session'):
+            self.page.evaluate(Path(__file__).with_name('figma-gesture-trace.js').read_text())
+
+    def tearDown(self):
+        try:
+            records=self.page.evaluate('window.testAssetGestureRecords || null')
+            if records is not None:
+                (base.base.REPORT/(self._testMethodName+'-gesture.json')).write_text(json.dumps(records,indent=2))
+        finally:
+            super().tearDown()
+
     def test_expanded_tool_has_the_only_selected_and_highlighted_document_tab(self):
         self.enable();self.page.get_by_role('button',name='Agent',exact=True).click()
         self.page.get_by_role('button',name='Expand Agent to document',exact=True).click()
