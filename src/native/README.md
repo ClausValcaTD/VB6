@@ -28,7 +28,7 @@ hash-checked execution reports are distinct from portable emitted-code ABI tests
 
 This is not complete Microsoft VB6 compiler/runtime parity. Binary/Random file
 records, InputB, file locking statements, unrestricted COM/OCX hosting, additional
-control members, some fixed-String ByRef and whole-array call shapes, record
+control members, whole fixed-String arrays and other whole-array call shapes, record
 arrays and several independent-form features still have explicit boundaries.
 Do not remove a diagnostic merely to make an unsupported application compile;
 add lowering, ownership/error behavior and executable regressions together.

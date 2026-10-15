@@ -34,7 +34,7 @@ function build(fixture,errors){
  }else{
   check('WriteAnsi("input.txt","abc")','error fixture is independently created');
   add('On Error Resume Next\nErr.Clear\nOpen "missing.txt" For Input As #1');check('Err.Number=53 And GetFileAttributesW(StrPtr("missing.txt"))=-1','Input on a missing file raises 53 and never creates it');
-  add('Err.Clear\nOn Error GoTo 0\nOpen "input.txt" For Input As #1 Len=2\ns="keep"\nOn Error Resume Next\nErr.Clear\ns=Input$(4,#1)');check('Err.Number=62 And s="keep"','Input$ past EOF raises 62 and preserves the destination on failure');
+  add('Err.Clear\nOn Error GoTo 0\nOpen "input.txt" For Input As #1 Len=2\ns="keep"\nOn Error Resume Next\nErr.Clear\ns=Input$(4,#1)');check('Err.Number=62 And Err.Description="Input past end of file" And s="keep"','Input$ past EOF raises 62 and preserves the destination on failure');
   add('Err.Clear\nLine Input #1,s');check('Err.Number=62 And s="keep"','Line Input at EOF raises 62 without replacing its destination');
   add('Err.Clear\nSeek #1,1\ns=Input$(-1,#1)');check('Err.Number=5 And Seek(1)=1','a negative Input$ count fails before consuming data');
   add('Err.Clear\ns=Input$(0,#1)');check('s="" And Seek(1)=1','zero-count Input$ returns an empty String without consuming data');
