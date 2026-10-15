@@ -12,6 +12,7 @@ from io import BytesIO
 from PIL import Image
 import http.server
 import json
+import sys
 import os
 from pathlib import Path
 import shutil
@@ -60,15 +61,31 @@ class WinUI(unittest.TestCase):
   self.context.on('request',lambda request:self.requests.append(request.url))
   self.page=self.context.new_page();self.load(self.page,FIXTURE)
   self.page.wait_for_function('typeof vb6Application === "object"')
+ def settle_document(self,page):
+  # Test the rendered IDE only after its initial/current syntax job has reached
+  # a terminal state. Do not replace a document during an unrelated deferred
+  # Blob-worker startup, or silence any pageerror caused by navigation/close.
+  # The existing timeout still fails on a stuck scheduler.
+  page.wait_for_function('()=>{const s=globalThis.vb6Studio?.syntaxDiagnostics;return !s||(!s.pending&&!s.busy&&!s.timer)}')
  def tearDown(self):
-  self.context.close();self.assertEqual(self.errors,[])
+  try:self.settle_document(self.page)
+  finally:self.context.close()
+  self.assertEqual(self.errors,[])
   self.assertEqual([u for u in self.requests if u.startswith(('http:','https:')) and not u.startswith(self.base)],[])
  def load(self,page,path):
   if MEMORY:page.set_content(path.read_text())
   elif TRANSPORT == 'file':page.goto(path.as_uri())
   else:page.goto(self.base+str(path.relative_to(ROOT)))
+ def park_pointer(self):
+  # Keep press/release and hit testing inside the viewport. Two distinct
+  # interior movements send a real pointer transition even when already parked;
+  # callers re-park after enabling a control before measuring its normal state.
+  viewport=self.page.viewport_size
+  self.page.mouse.move(viewport['width']-16,viewport['height']-16)
+  self.page.mouse.move(viewport['width']-8,viewport['height']-8)
  def theme(self,theme):
-  self.page.mouse.move(0,0);self.page.evaluate('t=>vb6Application.setTheme(t,{reduceMotion:true})',theme)
+  self.page.evaluate('t=>vb6Application.setTheme(t,{reduceMotion:true})',theme)
+  self.park_pointer()
  def node(self,name):return self.page.locator(f'[data-control="{name}"]')
  def set(self,name,key,value):
   # BrowserControl coalesces refresh into rAF. Observe the completed refresh, not
@@ -141,7 +158,7 @@ class WinUI(unittest.TestCase):
   button=self.node('CommandButton1')
   for theme,r in RESOURCE.items():
    for accent in [False,True]:
-    self.theme(theme);self.set('CommandButton1','Default',-1 if accent else 0);self.set('CommandButton1','Enabled',-1)
+    self.theme(theme);self.set('CommandButton1','Default',-1 if accent else 0);self.set('CommandButton1','Enabled',-1);self.park_pointer()
     self.page.wait_for_function("!document.querySelector('[data-control=CommandButton1]').matches(':hover')")
     self.expect_color(button,'backgroundColor',r['accent' if accent else 'fill']);self.expect_color(button,'color',r['accentInk' if accent else 'ink'])
     self.assertEqual(self.css(button,'borderTopWidth'),'1px');self.assertEqual(self.css(button,'padding'),'5px 11px 6px')
@@ -151,10 +168,30 @@ class WinUI(unittest.TestCase):
      self.expect_color(button,'backgroundColor',f'color-mix(in srgb, {r["accent"]} 80%, transparent)' if accent else r['pressed'])
      self.expect_color(button,'color',r['accentPressedInk' if accent else 'pressedInk'])
      self.assertEqual(self.css(button,'padding'),'5px 11px 6px','pressed state must not move authored text')
-    finally:self.page.mouse.move(0,0);self.page.mouse.up()
+    finally:self.park_pointer();self.page.mouse.up()
     self.set('CommandButton1','Enabled',0)
     self.expect_color(button,'backgroundColor',r['accentDisabled' if accent else 'disabled']);self.expect_color(button,'color',r['accentDisabledInk' if accent else 'disabledInk'])
     self.record(theme=theme,accent=accent,states=['normal','hover','pressed','disabled'])
+ def test_hover_resets_after_cancelled_press_disable_and_live_palette_change(self):
+  button=self.node('CommandButton1')
+  caption=self.page.evaluate('vb6Application.forms[0].controls.find(c=>c.model.name==="Label1").get("Caption")')
+  for cycle in range(2):
+   for theme,r in RESOURCE.items():
+    self.theme(theme);self.set('CommandButton1','Enabled',-1);self.set('CommandButton1','Default',0)
+    button.hover();self.assertTrue(button.evaluate('e=>e.matches(":hover")'))
+    self.page.mouse.down()
+    try:self.expect_color(button,'backgroundColor',r['pressed'])
+    finally:self.park_pointer();self.page.mouse.up()
+    self.park_pointer()
+    self.page.wait_for_function("!document.querySelector('[data-control=CommandButton1]').matches(':hover,:active')")
+    self.set('CommandButton1','Enabled',0)
+    self.theme('fluent-dark' if theme=='fluent' else 'fluent')
+    self.theme(theme);self.set('CommandButton1','Enabled',-1);self.park_pointer()
+    self.page.wait_for_function("!document.querySelector('[data-control=CommandButton1]').matches(':hover,:active')")
+    self.expect_color(button,'backgroundColor',r['fill'])
+    self.expect_color(button,'color',r['ink'])
+    self.assertEqual(self.page.evaluate('vb6Application.forms[0].controls.find(c=>c.model.name==="Label1").get("Caption")'),caption,'Releasing outside must not execute the VB Click handler')
+    self.record(theme=theme,cycle=cycle,cancelledPress=True,hoverResetAfterReenable=True)
  def test_text_input_states_preserve_live_text_selection_and_host_alpha(self):
   text=self.node('TextBox1').locator('input')
   for theme,r in RESOURCE.items():
@@ -180,7 +217,7 @@ class WinUI(unittest.TestCase):
     self.expect_color(node,'backgroundColor','#996633');self.expect_color(node,'color','#fff');node.hover()
     self.page.mouse.down()
     try:self.expect_color(node,'backgroundColor','#996633');self.expect_color(node,'color','#fff')
-    finally:self.page.mouse.move(0,0);self.page.mouse.up()
+    finally:self.park_pointer();self.page.mouse.up()
    self.assertEqual(command.evaluate(snapshot),baseline)
    self.assertEqual(self.page.evaluate('JSON.stringify(vb6Application.project)'),original)
    self.record(theme=theme,authoredValuesPreserved=True)
@@ -192,7 +229,7 @@ class WinUI(unittest.TestCase):
    self.expect_color(check,'backgroundColor',r['check']);check.hover();self.expect_color(check,'backgroundColor',r['checkHover'])
    self.page.mouse.down()
    try:self.expect_color(check,'backgroundColor',r['checkPressed'])
-   finally:self.page.mouse.move(0,0);self.page.mouse.up()
+   finally:self.park_pointer();self.page.mouse.up()
    self.set('CheckBox1','Value',1);self.expect_color(check,'backgroundColor',r['accent'])
    self.assertEqual(check.evaluate('e=>[getComputedStyle(e,"::after").width,getComputedStyle(e,"::after").height]'),['12px','12px'])
    self.set('CheckBox1','Value',2);self.assertTrue(check.evaluate('e=>e.indeterminate'))
@@ -201,7 +238,7 @@ class WinUI(unittest.TestCase):
    self.set('OptionButton1','Value',-1);radio.hover();self.assertEqual(radio.evaluate('e=>getComputedStyle(e,"::after").top'),'2px')
    self.page.mouse.down()
    try:self.assertEqual(radio.evaluate('e=>getComputedStyle(e,"::after").top'),'4px')
-   finally:self.page.mouse.move(0,0);self.page.mouse.up()
+   finally:self.park_pointer();self.page.mouse.up()
    self.record(theme=theme,checkSize=20,mixedGlyph=[12,2],radioInsets=[3,2,4])
  def test_keyboard_focus_is_separate_from_default_state(self):
   button=self.node('CommandButton1')
@@ -221,7 +258,7 @@ class WinUI(unittest.TestCase):
    self.assertEqual(radio.evaluate('e=>getComputedStyle(e,"::after").backgroundColor'),expected)
    radio.hover();self.page.mouse.down()
    try:self.assertEqual(radio.evaluate('e=>getComputedStyle(e,"::after").backgroundColor'),expected)
-   finally:self.page.mouse.move(0,0);self.page.mouse.up()
+   finally:self.park_pointer();self.page.mouse.up()
    self.set('OptionButton1','Enabled',0)
    self.assertEqual(radio.evaluate('e=>getComputedStyle(e,"::after").backgroundColor'),expected)
    self.record(theme=theme,radioPrimaryInkRetained=True)
@@ -292,16 +329,25 @@ class WinUI(unittest.TestCase):
     self.assertEqual(*samples,theme+' disabled state '+str(checked))
    self.record(theme=theme,disabledGlyphsUnchanged=True)
  def ide(self,theme):
-  self.load(self.page,ROOT/'dist/VB6-Studio-Web.html')
-  self.page.wait_for_function('typeof vb6Studio === "object"')
+  # Exercise a real live palette switch instead of reloading an 11-MB IDE for
+  # every color scheme. Cancel the previous draft through its real UI first.
+  if self.page.evaluate('typeof vb6Studio === "object"'):
+   self.page.locator('.ide-dialog-footer').get_by_role('button',name='Cancel',exact=True).click()
+   self.page.wait_for_selector('.ide-dialog',state='detached')
+  else:
+   self.load(self.page,ROOT/'dist/VB6-Studio-Web.html')
+   self.page.wait_for_function('typeof vb6Studio === "object"')
+   self.page.evaluate('globalThis.winuiFixtureIdentity={studio:vb6Studio,project:vb6Studio.project}')
   self.page.evaluate('t=>{Object.assign(vb6Studio.appearance,{theme:t,reduceMotion:true});vb6Studio.applyAppearance();void vb6Studio.command("options");}',theme)
   self.page.wait_for_selector('.ide-dialog')
+  self.settle_document(self.page)
+  self.assertTrue(self.page.evaluate('vb6Studio===winuiFixtureIdentity.studio&&vb6Studio.project===winuiFixtureIdentity.project'),'Theme changes must retain the IDE and project identities')
  def test_ide_dialog_command_brushes_density_and_disabled_precedence(self):
   for theme,r in RESOURCE.items():
    self.ide(theme)
    for accent in [False,True]:
     button=self.page.locator('.ide-dialog-footer').get_by_role('button',name='OK' if accent else 'Cancel',exact=True)
-    self.page.mouse.move(0,0)
+    self.park_pointer()
     self.expect_color(button,'backgroundColor',r['accent' if accent else 'fill'])
     self.expect_color(button,'color',r['accentInk' if accent else 'ink'])
     self.assertEqual(button.evaluate('e=>e.getBoundingClientRect().height'),32)
@@ -311,22 +357,22 @@ class WinUI(unittest.TestCase):
     try:
      self.expect_color(button,'backgroundColor',f'color-mix(in srgb, {r["accent"]} 80%, transparent)' if accent else r['pressed'])
      self.expect_color(button,'color',r['accentPressedInk' if accent else 'pressedInk'])
-    finally:self.page.mouse.move(0,0);self.page.mouse.up()
+    finally:self.park_pointer();self.page.mouse.up()
     button.evaluate('e=>e.disabled=true')
     button.hover(force=True)
     self.expect_color(button,'backgroundColor',r['accentDisabled' if accent else 'disabled'])
     self.expect_color(button,'color',r['accentDisabledInk' if accent else 'disabledInk'])
     button.evaluate('e=>e.disabled=false')
     self.record(theme=theme,ide=True,accent=accent,controlHeight=32,states=['normal','hover','pressed','disabled-hover'])
-   self.page.mouse.move(0,0);self.page.screenshot(path=str(REPORT/f'{theme}-ide-options.png'))
+   self.park_pointer();self.page.screenshot(path=str(REPORT/f'{theme}-ide-options.png'))
  def test_ide_check_and_radio_state_metrics_do_not_leak_into_designer(self):
   for theme,r in RESOURCE.items():
    self.ide(theme)
    check=self.page.locator('.ide-dialog input[type=checkbox]:visible').first
-   check.uncheck();self.page.mouse.move(0,0)
+   check.uncheck();self.park_pointer()
    self.assertEqual(check.evaluate('e=>[e.getBoundingClientRect().width,e.getBoundingClientRect().height]'),[20,20])
    self.expect_color(check,'backgroundColor',r['check'])
-   check.check();self.page.mouse.move(0,0);self.expect_color(check,'backgroundColor',r['accent'])
+   check.check();self.park_pointer();self.expect_color(check,'backgroundColor',r['accent'])
    self.assertEqual(check.evaluate('e=>[getComputedStyle(e,"::after").width,getComputedStyle(e,"::after").height]'),['12px','12px'])
    check.evaluate('e=>{e.checked=false;e.indeterminate=true;}')
    self.expect_color(check,'backgroundColor',r['accent'])
@@ -388,4 +434,18 @@ class WinUI(unittest.TestCase):
      self.record(theme=theme,dpr=dpr,repeatCaptureIdentical=True,nativeReference=False)
    finally:context.close()
 
-if __name__=='__main__':unittest.main(verbosity=2)
+if __name__=='__main__':
+ program=unittest.main(verbosity=2,exit=False)
+ result=program.result
+ # A test can pass its paint assertions but fail in teardown. Retain the actual
+ # runner outcome, not just the per-state records written by the test bodies.
+ REPORT.mkdir(parents=True,exist_ok=True)
+ (REPORT/'results.json').write_text(json.dumps({
+  'engine':ENGINE,'transport':TRANSPORT,'nativePixelCertification':False,
+  'summary':{'successful':result.wasSuccessful(),'testsRun':result.testsRun,
+   'failures':len(result.failures),'errors':len(result.errors),'skipped':len(result.skipped)},
+  'failures':[{'test':str(test),'traceback':trace} for test,trace in result.failures],
+  'errors':[{'test':str(test),'traceback':trace} for test,trace in result.errors],
+  'cases':getattr(WinUI,'results',[])
+ },indent=2))
+ sys.exit(0 if result.wasSuccessful() else 1)

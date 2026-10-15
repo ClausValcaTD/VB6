@@ -198,3 +198,29 @@ Default-command elevation reads the WinUI shadow slot first so an X11 shared
 rule cannot erase Fluent's independent inner keyboard-focus stroke. The
 existing X11 state/pixel suite and WinUI focus/disabled-glyph suite are both
 retained: integration does not replace one family's assertions with the other.
+
+## Deterministic browser interaction and lifecycle
+
+The WinUI state harness parks the pointer at two interior viewport positions after
+palette and enabled-state changes, rather than relying on `(0, 0)` at the viewport edge. Normal
+states still require the real control to lose `:hover`/`:active`; the brush
+assertions remain exact. A dedicated regression cancels a pressed command by
+releasing outside it, changes the palette while disabled, re-enables it, and
+checks both normal ink/fill and that no VB Click handler executed.
+
+IDE palette cases operate on the same IDE and project instances. They dismiss the
+previous Options draft through Cancel before reopening it in the next palette and
+assert identity preservation. Before measuring the IDE or destroying a fixture,
+the harness observes the current diagnostics scheduler reaching its terminal
+state (no pending job, busy job, or scheduled timer). It neither disables workers
+nor suppresses page errors: errors raised during context closure still fail the
+suite. The existing bounded timeout also fails if diagnostics become stuck.
+This is fixture synchronization, not a claim to fix the WebKit engine's handling
+of requests started during document replacement.
+
+`reports/winui/<engine>/results.json` includes the actual unittest result: test
+count, success, failure/error/skip counts and failure tracebacks, in addition to
+per-state records. Passing paint assertions followed by a teardown failure can
+no longer be mistaken for a successful suite by reading only those records.
+The full integration browser matrix and all generated-output checks remain in
+the existing required Validate workflow.
