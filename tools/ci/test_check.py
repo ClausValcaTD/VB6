@@ -18,10 +18,11 @@ class WorkflowAuditTests(unittest.TestCase):
     def reject(self,mutate):
         value=copy.deepcopy(self.workflow);mutate(value);self.path.write_text(yaml.safe_dump(value,sort_keys=False))
         with self.assertRaises(ValueError):check.audit(self.root)
-    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],82)
+    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],86)
     def test_gate_omission_rejected(self):self.reject(lambda w:w['jobs']['test']['needs'].remove('macos-browser-native'))
     def test_skippable_gate_rejected(self):self.reject(lambda w:w['jobs']['test'].update({'if':'success()'}))
     def test_failure_suppression_rejected(self):self.reject(lambda w:w['jobs']['figma'].update({'continue-on-error':True}))
+    def test_missing_data_driver_rejected(self):self.reject(lambda w:w['jobs']['data-drivers']['strategy']['matrix']['driver'].remove('mssql'))
     def test_missing_engine_rejected(self):self.reject(lambda w:w['jobs']['figma']['strategy']['matrix']['browser'].remove('webkit'))
     def test_missing_origin_rejected(self):self.reject(lambda w:w['jobs']['figma']['strategy']['matrix']['transport'].remove('file'))
     def test_missing_gpu_display_rejected(self):self.reject(lambda w:w['jobs']['rendering-qualification']['strategy']['matrix']['display'].remove('headed'))

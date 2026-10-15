@@ -1,7 +1,9 @@
 {
   "core-runtime": [
     "browser-tests.py",
-    "browser-language-parity.py"
+    "browser-language-parity.py",
+    "browser-data-sources.py",
+    "browser-data-layout.py"
   ],
   "core-parity": [
     "browser-parity-tests.py",
@@ -17,7 +19,8 @@
     "browser-webbrowser-tests.py",
     "browser-com-ole-tests.py",
     "browser-common-automation-tests.py",
-    "browser-windows-tests.py"
+    "browser-windows-tests.py",
+    "browser-data-recordsets.py"
   ],
   "integration-authoring": [
     "browser-classic-export-tests.py",

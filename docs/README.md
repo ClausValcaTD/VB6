@@ -54,6 +54,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Native project interchange](NATIVE-PROJECTS.md) and
   [workspace, save recovery and interoperability](NATIVE-WORKSPACE-INTEROP.md).
 - [Data sources](DATA-SOURCES.md): providers, binding, credentials and deployment.
+- [Data client capabilities](DATA-CLIENT-CAPABILITIES.md): ADO/DAO/RDO cursor,
+  schema, ownership and binary-value contracts, with explicit native-provider limits.
 - [HTML5 WebBrowser](WEBBROWSER.md): classic navigation/events, isolated DOM automation,
   designer integration, HTML exports and native compatibility boundaries.
 - [Common Automation](COMMON-AUTOMATION.md): HTTP/XML/ADO stream objects, shared data

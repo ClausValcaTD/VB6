@@ -38,6 +38,12 @@ class RunnerTests(unittest.TestCase):
         for engine in run.ENGINES:
             t=next(t for t in run.plan('authoring-exports',engine,'http') if t['script']=='browser-designer-tests.py')
             self.assertEqual(t['argv'][-4:],['--browser',engine,'--origin','http'])
+    def test_data_recordsets_use_every_selected_engine(self):
+        for engine in run.ENGINES:
+            task=next(t for t in run.plan('integration-controls',engine,'http') if t['script']=='browser-data-recordsets.py')
+            self.assertEqual(task['argv'][-2:],['--browser',engine])
+        scripts={t['script'] for t in run.plan('core-runtime','chromium','http')}
+        self.assertTrue({'browser-data-sources.py','browser-data-layout.py'} <= scripts)
     def test_paths_duplicates_and_empty_groups_rejected(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);(root/'tools/ci').mkdir(parents=True)

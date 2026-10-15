@@ -74,6 +74,8 @@ def audit(root=ROOT):
         raise ValueError('Missing GPU/display combination')
     if set(jobs['native-com-ole']['strategy']['matrix']['architecture']) != {'x86', 'x64'}:
         raise ValueError('Missing Windows architecture')
+    if set(jobs['data-drivers']['strategy']['matrix']['driver']) != {'pg', 'mysql', 'mssql'}:
+        raise ValueError('Missing live database driver')
     if set(jobs['macos']['strategy']['matrix']['os']) != {'ubuntu-24.04', 'macos-14', 'macos-15', 'macos-26'}:
         raise ValueError('Missing native AOT platform')
     if jobs['macos-browser-native']['needs'] != ['authoring-exports']:

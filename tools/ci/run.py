@@ -46,6 +46,8 @@ def plan(group, engine, transport, root=ROOT):
             if not path.is_file() or path.is_symlink():
                 raise ValueError('Missing suite: ' + script)
             argv = [sys.executable, str(path)]
+            if script == 'browser-data-recordsets.py':
+                argv += ['--browser', engine]
             if script == 'browser-designer-tests.py':
                 argv += ['--browser', engine, '--origin', origin]
             if engine == 'firefox' and script == 'figma-retained-webgl-browser-tests.py':
