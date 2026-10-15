@@ -65,3 +65,18 @@ test('failure-only Automation trace reports source/clone sort and individual Get
  for(const assertion of assertions)assert.ok(traced.modules[0].code.includes(assertion));
  for(const text of ['ADO source Sort=[','Clone current: ID=','GetRows cells: (0,0)='])assert.ok(traced.modules[0].code.includes(text));
 });
+
+test('native control timeout diagnostics inspect the original process without altering its watchdog or result',()=>{
+ const script=fs.readFileSync(new URL('../tools/test-win32-controls.ps1',import.meta.url),'utf8');
+ const probe=fs.readFileSync(new URL('../tools/win32-process-diagnostics.ps1',import.meta.url),'utf8');
+ assert.match(script,/WaitForExit\(20000\)/);
+ assert.match(script,/\$report\.timeoutDiagnostics = Get-NativeProcessDiagnostics \$process/);
+ assert.match(script,/throw 'Native executable timed out/);
+ assert.match(script,/\$report\.elapsedMilliseconds = \$watch\.ElapsedMilliseconds/);
+ assert.match(script,/throw 'Native control execution failed; see execution.json and diagnostics.json'/);
+ assert.match(probe,/owner!=\(uint\)process/);
+ assert.match(probe,/remaining--<=0\|\|watch.ElapsedMilliseconds>=2000/);
+ assert.match(probe,/TextMessage\(window,13,\(IntPtr\)text.Capacity,text,2,100/);
+ assert.match(probe,/processorMilliseconds=\$Process.TotalProcessorTime.TotalMilliseconds/);
+ assert.doesNotMatch(probe,/\.Kill\(|ExitProcess|TerminateProcess/);
+});

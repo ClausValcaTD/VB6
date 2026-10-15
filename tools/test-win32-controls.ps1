@@ -1,5 +1,6 @@
 param([string]$Directory = 'reports/native-controls')
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'win32-process-diagnostics.ps1')
 # Only the test driver uses PowerShell. Each tested app is a freestanding PE32.
 $root = (Resolve-Path $Directory).Path
 $plans = Get-Content (Join-Path $root 'builds.json') -Raw | ConvertFrom-Json
@@ -14,6 +15,7 @@ foreach ($plan in $plans) {
   $report = [ordered]@{name=$plan.name;optimization=$plan.optimization;ok=$false;architecture='x86';platform=[Environment]::OSVersion.VersionString;sha256=$null;exitCode=$null;assertions=$plan.checks}
   $directory = Join-Path ([IO.Path]::GetTempPath()) ('vb6-controls-'+[Guid]::NewGuid().ToString('N'))
   $process = [Diagnostics.Process]::new()
+  $watch = [Diagnostics.Stopwatch]::StartNew()
   try {
     $source = Join-Path $root ($plan.name+'.exe')
     $report.sha256 = (Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -26,7 +28,10 @@ foreach ($plan in $plans) {
     $process.StartInfo.UseShellExecute=$false
     if (-not $process.Start()) { throw 'Could not start the native executable' }
     $null=$process.Handle
-    if (-not $process.WaitForExit(20000)) { throw 'Native executable timed out (possible runtime error dialog)' }
+    if (-not $process.WaitForExit(20000)) {
+      $report.timeoutDiagnostics = Get-NativeProcessDiagnostics $process
+      throw 'Native executable timed out (possible runtime error dialog)'
+    }
     $report.exitCode=$process.ExitCode
     if ($process.ExitCode -ne 0) {
       $index=$process.ExitCode
@@ -37,6 +42,7 @@ foreach ($plan in $plans) {
     $report.ok=$true
   } catch { $report.error=$_.Exception.Message }
   finally {
+    $watch.Stop();$report.elapsedMilliseconds = $watch.ElapsedMilliseconds
     try { if ($process.Id -and -not $process.HasExited) {$process.Kill();$process.WaitForExit(5000)|Out-Null} } catch {}
     $process.Dispose()
     Remove-Item $directory -Force -Recurse -ErrorAction SilentlyContinue
