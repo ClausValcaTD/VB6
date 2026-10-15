@@ -24,6 +24,7 @@
     "browser-theme-tests.py",
     "browser-layout-tests.py",
     "auto-layout-browser-tests.py",
+    "browser-diagnostics-navigation-tests.py",
     "browser-application-theme-tests.py",
     "browser-native-caption-tests.py",
     "browser-sample-exports.py",
