@@ -1,3 +1,4 @@
+import {nativeDataValue} from '../data/native-values.js';
 import {procedureLocalDeclarations} from './local-storage.js';
 import {bindReferenceParameter} from './parameter-binding.js';
 import {RecordTypeIndex} from '../language/record-resolution.js';
@@ -222,6 +223,7 @@ export class VirtualMachine extends Signal {
   /** Adapt one public JavaScript member back into a source value. Unknown
    * numeric adapters are Double; only documented built-ins receive a subtype. */
   nativeScalar(object,name,value){
+    value=nativeDataValue(object,value);
     if(value instanceof VBScalar||!scalarType(value))return value;
     const key=lower(name||''),raw=unbox(value);let type=scalarType(value),variant=false;
     if(hasDataDefault(object)&&['value','originalvalue'].includes(key)){const declared=lower(dataDefaultType(object)||'');return raw==null?storageScalar(raw,'Variant'):Object.hasOwn(SCALAR_TYPES,declared)?tagScalar(raw,declared,true):storageScalar(value,'Variant');}
@@ -437,7 +439,7 @@ export class VirtualMachine extends Signal {
     if(target instanceof VBCollection||target instanceof VBDictionary)return target.itemScalar(...actual);
     if(target?.__native)return await this.invokeScalar(target,actual,frame);
     if(typeof target==='function')return await this.invokeScalar(target,actual,frame);
-    if(target?.Item&&typeof target.Item==='function')return tagScalar(await this.debugAwait(target.Item(...actual.map(unbox))),undefined,true);
+    if(target?.Item&&typeof target.Item==='function')return tagScalar(this.nativeScalar(target,'Item',await this.debugAwait(target.Item(...actual.map(unbox)))),undefined,true);
     if(target?.__vbInstance){const getter=target.module.procedures.get('item:get');if(getter)return await this.callProcedure(target,getter,actual,frame,true);}
     throw new VBError('Expected array or callable procedure',13);
     }finally{leases.release();frame.activeArrayLeases=previousLeases;}

@@ -105,3 +105,70 @@ test('failed owned commands preserve the query failure if provider cleanup fails
   await assert.rejects(cmd.Execute(),error=>error===original&&error.cleanupError===cleanup);
   assert.equal(cmd._executing,false);assert.equal(f.context.connections.size,0);await f.context.close();
 });
+
+test('Recordset.Open serializes the entire owned connection opening phase',async()=>{
+  const pending=deferred(),f=fixture({open:()=>pending.promise}),rs=f.context.createObject('ADODB.Recordset');
+  const first=rs.Open('query',f.source);await tick();await assert.rejects(rs.Open('other',f.source),code(3219));assert.equal(f.instances.length,1);
+  pending.resolve();await first;assert.equal(rs.Item('value'),1);await rs.Close();assert.equal(f.context.connections.size,0);await f.context.close();
+});
+test('Recordset.Cancel rejects ignored cancellation during owned opening without leaking the provider',async()=>{
+  const pending=deferred(),f=fixture({open:()=>pending.promise}),rs=f.context.createObject('ADODB.Recordset');
+  const first=rs.Open('query',f.source),rejected=assert.rejects(first,code(-2147467260));await tick();rs.Cancel();pending.resolve();await rejected;
+  assert.equal(rs.State,0);assert.equal(rs._busy,false);assert.equal(f.instances[0].closes,1);assert.equal(f.context.connections.size,0);await f.context.close();
+});
+test('Recordset.Open cleans up an owned connection after malformed provider rows',async()=>{
+  const f=fixture({execute:()=>({columns:[{Name:'value',Type:999}],values:[]})}),rs=f.context.createObject('ADODB.Recordset');
+  await assert.rejects(rs.Open('query',f.source),code(3251));assert.equal(f.instances[0].closes,1);assert.equal(f.context.connections.size,0);assert.equal(rs.State,0);await f.context.close();
+});
+test('Recordset.Open honors its Source property and snapshots it across awaits',async()=>{
+  const pending=deferred(),f=fixture({open:()=>pending.promise}),rs=f.context.createObject('ADODB.Recordset');rs.Source='original';rs.ActiveConnection=f.source;
+  const first=rs.Open();await tick();rs.Source='changed';pending.resolve();await first;assert.equal(f.instances[0].calls[0][0],'original');assert.equal(rs.Source,'original');await rs.Close();await f.context.close();
+});
+test('Recordset.Open accepts a real parameterized Command source and owns its connection correctly',async()=>{
+  const f=fixture(),rs=f.context.createObject('ADODB.Recordset'),cmd=f.context.command();cmd.ActiveConnection=f.source;cmd.CommandText='parameterized';cmd.Parameters.Append(cmd.CreateParameter('p',3,1,0,42));
+  await rs.Open(cmd);assert.equal(rs.Item('value'),1);assert.deepEqual(f.instances[0].calls[0],['parameterized',[42],{}]);await rs.Close();assert.equal(f.context.connections.size,0);await f.context.close();
+});
+test('Recordset.Open cannot invoke a forged Command or a command from another context',async()=>{
+  const f=fixture(),other=fixture(),rs=f.context.createObject('ADODB.Recordset');let called=false;
+  await assert.rejects(rs.Open({__type:'ADODB.Command',execute(){called=true;}},f.source),code(13));assert.equal(called,false);
+  await assert.rejects(rs.Open(other.context.command()),code(3001));assert.equal(f.instances.length,0);await f.context.close();await other.context.close();
+});
+test('Recordset.Cancel reaches a Command source and never publishes its late result',async()=>{
+  const pending=deferred(),f=fixture({execute:()=>pending.promise}),cmd=f.context.command(),rs=f.context.createObject('ADODB.Recordset');cmd.ActiveConnection=f.source;
+  const first=rs.Open(cmd),rejected=assert.rejects(first,code(-2147467260));while(!f.instances[0]?.calls.length)await tick();rs.Cancel();pending.resolve(row(9));await rejected;
+  assert.equal(rs.State,0);assert.equal(f.context.connections.size,0);await f.context.close();
+});
+test('Connection.Cancel invalidates late results while allowing later queries on the same open connection',async()=>{
+  const pending=deferred(),f=fixture({execute:p=>p.calls.length===1?pending.promise:row(2)}),cn=f.connection();await cn.Open(f.source);
+  const first=cn.Execute('slow'),rejected=assert.rejects(first,code(-2147467260));cn.Cancel();pending.resolve(row(1));await rejected;
+  assert.equal(cn.State,1);assert.equal((await cn.Execute('next')).Item('value'),2);await f.context.close();
+});
+
+test('Close still disposes a provider after a throwing cancellation hook',async()=>{
+  const failure=dataError('Cancellation failed',7003),f=fixture({cancel:()=>{throw failure;}}),cn=f.connection();await cn.Open(f.source);
+  const closing=cn.Close();assert.equal(cn.Close(),closing);await assert.rejects(closing,error=>error===failure);
+  assert.equal(f.instances[0].closes,1);assert.equal(cn.adapter,null);assert.equal(f.context.connections.size,0);await f.context.close();
+});
+
+test('a reentrant cancel hook sees the same closing promise rather than recursing',async()=>{
+  let inner;const f=fixture({cancel:()=>{inner=cn.Close();}}),cn=f.connection();await cn.Open(f.source);
+  const closing=cn.Close();await closing;assert.equal(inner,closing);assert.equal(f.instances[0].closes,1);await f.context.close();
+});
+
+test('detached owned cursor and detached clones release their provider only after the last Close',async()=>{
+  const f=fixture(),rs=f.context.createObject('ADODB.Recordset');await rs.Open('rows',f.source);const cn=rs.ActiveConnection,clone=rs.Clone();
+  rs.ActiveConnection=null;clone.ActiveConnection=null;await rs.Close();assert.equal(cn.State,1);assert.equal(clone.Item('value'),1);
+  await clone.Close();assert.equal(cn.State,0);assert.equal(f.instances[0].closes,1);assert.equal(cn._clientCursors.size,0);await f.context.close();
+});
+
+test('closing a detached owned snapshot does not close a newly reopened provider session',async()=>{
+  const f=fixture(),rs=f.context.createObject('ADODB.Recordset');await rs.Open('rows',f.source);const cn=rs.ActiveConnection;rs.ActiveConnection=null;
+  await cn.Close();await cn.Open(f.source);await rs.Close();assert.equal(cn.State,1);assert.deepEqual(f.instances.map(p=>p.closes),[1,0]);await f.context.close();
+});
+
+test('SQLite cleanup releases a WASM database even when virtual-disk writes fail',async()=>{
+  const context=new DataContext(),cn=context.connection();await cn.Open('Provider=SQLite;Data Source=/failed.sqlite');
+  context.fs.writeBytes=()=>{throw Error('Disk quota exceeded');};
+  await assert.rejects(cn.Execute('CREATE TABLE t(id INTEGER)'));
+  await assert.rejects(cn.Close());assert.equal(context.databases.size,0);assert.equal(context.connections.size,0);await context.close();
+});

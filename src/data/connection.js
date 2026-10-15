@@ -1,4 +1,5 @@
-import {dataDefault} from './defaults.js';
+import {schemaRestrictions,restrictSchema} from './schema.js';
+import {dataDefault,registerDataCommand} from './defaults.js';
 import {assertData,dataError,connectionConfiguration,dataList,after} from './common.js';
 import {ConnectedRecordset} from './connected-recordset.js';
 import {fieldValue,fieldScalarType} from './recordset.js';
@@ -80,7 +81,8 @@ export class ADOConnection {
         assertData(['native','odbc'].includes(parameterStyle),'Invalid parameter style',5);
         result=await (parameterStyle==='odbc'&&adapter.executePositional?adapter.executePositional(String(text??''),parameters):adapter.execute(String(text??''),parameters,requestOptions));
       }
-      assertData(this.State===1&&this.adapter===adapter&&generation===this._generation&&!this.context.closed,'Connection closed before the query completed',3704);
+      assertData(this.State===1&&this.adapter===adapter&&!this.context.closed,'Connection closed before the query completed',3704);
+      assertData(generation===this._generation,'Query was cancelled',-2147467260);
       return result;
     });
   }
@@ -90,22 +92,37 @@ export class ADOConnection {
     // ADO action queries produce a closed recordset; schema-bearing empty SELECTs remain open.
     if(result.columns?.length){rs.load(result,1);this.recordsets.add(rs);}return rs;
   }
-  async OpenSchema(kind=20){const result=await this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);return this.adapter.schema(Number(kind));});const rs=new ConnectedRecordset(this.context);rs.ActiveConnection=this;rs.load(result,1);this.recordsets.add(rs);return rs;}
+  async OpenSchema(kind=20,criteria,schemaID){
+    return this.guard(async()=>{
+      assertData(this.State===1,'Connection is closed',3709);
+      kind=Number(kind);assertData(Number.isSafeInteger(kind),'Invalid schema kind',3001);
+      assertData(schemaID===undefined||schemaID===null||schemaID==='','Provider-specific schema IDs are not supported',3251);
+      const restrictions=schemaRestrictions(kind,criteria),adapter=this.adapter,generation=this._generation;
+      assertData(typeof adapter.schema==='function','Provider does not support schema discovery',3251);
+      const raw=await adapter.schema(kind);
+      assertData(this.State===1&&this.adapter===adapter&&generation===this._generation&&!this.context.closed,'Connection closed during schema discovery',3704);
+      const result=restrictSchema(raw,restrictions),rs=new ConnectedRecordset(this.context);
+      rs.ActiveConnection=this;rs.load(result,1);this.recordsets.add(rs);return rs;
+    });
+  }
   BeginTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.begin,'Provider does not support transactions',3251);return this.adapter.begin();});}
   CommitTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.commit,'Provider does not support transactions',3251);return this.adapter.commit();});}
   RollbackTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.rollback,'Provider does not support transactions',3251);return this.adapter.rollback();});}
-  Cancel(){this.adapter?.cancel?.();if(this._state===2){this._state=0;this._generation++;}}
+  Cancel(){this._generation++;this.adapter?.cancel?.();if(this._state===2)this._state=0;}
   Close(){
     if(this._closing)return this._closing;
     const adapter=this.adapter,opening=this._opening;
-    this._generation++;this._state=0;adapter?.cancel?.();
-    for(const rs of [...this.recordsets])rs.dispose();
-    // Let an opening adapter settle before disposing it: some providers acquire
-    // their handle after the first await and cannot be closed safely beforehand.
-    const closing=(async()=>{
-      try{if(opening)await opening.catch(()=>{});await this.closeAdapter(adapter);}
+    this._generation++;this._state=0;
+    // Install the closing promise before invoking provider/user callbacks. Even
+    // a throwing or reentrant cancel hook must not skip the disposal phase.
+    const closing=Promise.resolve().then(async()=>{
+      let failure;const remember=error=>{if(!failure)failure=error;};
+      try{adapter?.cancel?.();}catch(error){remember(error);}
+      for(const rs of [...this.recordsets])try{rs.dispose();}catch(error){remember(error);}
+      try{if(opening)await opening.catch(()=>{});await this.closeAdapter(adapter);}catch(error){remember(error);}
       finally{if(this.adapter===adapter)this.adapter=null;this.context.connections.delete(this);}
-    })();
+      if(failure){this.capture(failure);throw failure;}
+    });
     this._closing=closing;
     closing.then(()=>{if(this._closing===closing)this._closing=null;},()=>{if(this._closing===closing)this._closing=null;});
     return closing;
@@ -115,7 +132,7 @@ export class ADOConnection {
 export class ADOCommand {
   constructor(context){
     this.context=context;this.__type='ADODB.Command';this.CommandText='';this.CommandType=1;this._commandTimeout=30;this._timeoutExplicit=false;this.ActiveConnection=null;this.Prepared=0;
-    this._executing=false;this._executionConnection=null;this._executionGeneration=0;
+    this._executing=false;this._executionConnection=null;this._executionGeneration=0;registerDataCommand(this);
     this.Parameters=new DataCollection();
     this.Parameters.Append=parameter=>{assertData(parameter&&typeof parameter.Name==='string','Expected an ADO Parameter');assertData(!this.Parameters.items.some(p=>p.Name.toLowerCase()===parameter.Name.toLowerCase()),'Duplicate parameter');this.Parameters.items.push(parameter);};
     this.Parameters.Append.vbRawArgs=true;
@@ -127,7 +144,7 @@ export class ADOCommand {
   get CommandTimeout(){return this._commandTimeout;}
   set CommandTimeout(value){value=Number(value);assertData(Number.isFinite(value)&&value>=1&&value<=600,'CommandTimeout must be 1–600 seconds',5);this._commandTimeout=value;this._timeoutExplicit=true;}
   CreateParameter(name='',type=202,direction=1,size=0,value=null){const parameter={Name:String(name),Type:Number(type),Direction:Number(direction),Size:Number(size),Value:value};return dataDefault(parameter,()=>fieldScalarType(parameter.Type));}
-  async execute(affected,parameters,options=this.CommandType,target){
+  async execute(affected,parameters,options=this.CommandType,target,lock=1){
     assertData(!this._executing,'This command is already executing',3711);
     this._executing=true;
     const generation=++this._executionGeneration;
@@ -158,7 +175,7 @@ export class ADOCommand {
       affected?.ref?.set(Number(result.rowsAffected||0));
       const rs=target||new ConnectedRecordset(this.context);
       rs.ActiveConnection=cn;rs.Source=text;rs._options=Number(options);rs._parameters=values;rs._requestOptions=requestOptions;rs.RowsAffected=Number(result.rowsAffected||0);
-      if(result.columns?.length){rs.load(result,1);rs._ownedConnection=owned;cn.recordsets.add(rs);transferred=owned;}
+      if(result.columns?.length){rs.load(result,lock);rs._ownedConnection=owned;cn.recordsets.add(rs);transferred=owned;}
       return rs;
     }catch(error){failure=error;throw error;}
     finally{
