@@ -8,6 +8,8 @@ import {execFileSync} from 'node:child_process';
 import {runTool} from '../packages/macos-native/src/build-driver.mjs';
 import {compileMacOSAOT,emitAOTPortableTestSource} from '../packages/macos-native/src/aot-compiler.js';
 import {exportMacOSAOT,verifyMacOSAOTArchive} from '../packages/macos-native/src/aot-export.js';
+import {recordsetProject} from '../packages/macos-native/tests/recordsets.mjs';
+import {macOSDataSampleProject} from './macos-data-sample-fixture.mjs';
 import {resourceFormProject} from '../packages/macos-native/tests/resources.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
@@ -20,7 +22,7 @@ let transcript='';const log=text=>{process.stderr.write(text);transcript+=text;i
 const report={platform:process.platform,arch:process.arch,portableOracleVerified:false,arm64ExecutionVerified:false,nativeSignatureVerified:false,checks:[]};
 const run=(exe,args,options={})=>runTool(exe,args,{cwd:work,timeout:180000,log,...options});
 const markersForResource=output=>{for(const marker of ['NATIVE_RESOURCES_OK','NATIVE_RESOURCE_FORM_OK'])assert.ok(output.includes(marker),marker);};
-const markers=output=>{for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
+const markers=output=>{for(const marker of ['NATIVE_RECORDSETS_OK','NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing '+marker);};
 try{
   await fs.mkdir(artifacts,{recursive:true});
   const mac=process.platform==='darwin';if(mac)assert.equal(process.arch,'arm64','Native test requires actual Apple Silicon, not Rosetta');
@@ -32,6 +34,13 @@ try{
   const objects=sources.map((_,i)=>path.join(work,i+'.o'));let next=0;const errors=[];
   async function worker(){while(!errors.length){const i=next++;if(i>=sources.length)return;try{await run(compiler,[...flags,'-c',sources[i],'-o',objects[i]]);}catch(error){errors.push(error);}}}
   await Promise.all(Array.from({length:3},worker));if(errors.length)throw errors[0];
+  const records=path.join(work,'recordsets-core');
+  await run(compiler,[...flags,path.join(sdk,'tests/recordsets.cpp'),...objects,'-o',records]);
+  assert.match(await run(records,[]),/NATIVE_RECORDSETS_CORE_OK/);report.recordsetCoreVerified=true;
+  const notifications=path.join(work,'recordset-notifications');
+  await run(compiler,[...flags,path.join(sdk,'tests/recordset-notifications.cpp'),...objects,'-o',notifications]);
+  assert.match(await run(notifications,[]),/NATIVE_RECORDSET_NOTIFICATIONS_OK/);
+  report.recordsetNotificationsVerified=true;
   const ownership=path.join(work,'scope-ownership');
   await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
   assert.ok((await run(ownership,[])).includes('NATIVE_SCOPE_OWNERSHIP_OK'));
@@ -89,9 +98,9 @@ try{
     await run(compiler,['-std=c++17','-arch','arm64','-isysroot',await run('/usr/bin/xcrun',['--sdk','macosx','--show-sdk-path']),'-mmacosx-version-min=11.0','-fobjc-arc','-I',path.join(sdk,'native'),...uiSources,path.join(work,'cache',runtime.manifest.provenance.nativeRuntimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-o',ui]);
     await run('/usr/bin/codesign',['--sign','-','--timestamp=none',ui]);
     const uiOutput=await run(ui,[]);
-    for(const marker of ['APPKIT_PICTURE_FRAMES_OK','APPKIT_PICTURES_OK','APPKIT_CONFORMANCE_OK','APPKIT_EDIT_SELECTION_LIST_OK','APPKIT_RICH_SELECTION_OK'])assert.ok(uiOutput.includes(marker),marker);
-    report.pictureControlsVerified=true;report.multiResolutionPicturesVerified=true;
-    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))],['resources',resourceFormProject(),output=>{markersForResource(output);}]] ){
+    for(const marker of ['APPKIT_RECORDSETS_OK','APPKIT_PICTURE_FRAMES_OK','APPKIT_PICTURES_OK','APPKIT_CONFORMANCE_OK','APPKIT_EDIT_SELECTION_LIST_OK','APPKIT_RICH_SELECTION_OK'])assert.ok(uiOutput.includes(marker),marker);
+    report.recordsetControlsVerified=true;report.pictureControlsVerified=true;report.multiResolutionPicturesVerified=true;
+    for(const optimization of [0,1,2,3])for(const [label,p,validate]of [['recordsets',recordsetProject(),output=>assert.ok(output.includes('NATIVE_RECORDSETS_OK'))],['original-data',macOSDataSampleProject(),output=>assert.ok(output.includes('NATIVE_ORIGINAL_DATA_OK'))],['conformance',project,markers],['richtext',richTextProject(),output=>assert.ok(output.includes('NATIVE_RICH_FORM_OK'))],['large',largeAOTProject(),output=>assert.ok(output.includes('NATIVE_LARGE_AOT_OK'))],['roots',programLifetimeProject(),rootMarkers],['abrupt',abruptLifetimeProject(),abruptMarkers],['forms',formLifetimeProject(),output=>assert.ok(output.includes('NATIVE_FORM_LIFETIME_OK'))],['resources',resourceFormProject(),output=>{markersForResource(output);}]] ){
       const key=label+'-O'+optimization,options={optimization,name:p.name+(optimization===2?'':'-O'+optimization)};
       const result=await exportMacOSAOT(p,runtime,options);
       if(label==='large'){assert.ok(result.report.codeBytes>2097152,'Native large program must exceed old code cap');assert.ok(result.report.metadataBytes>2097152,'Native large program must exceed old metadata cap');}
@@ -108,7 +117,7 @@ try{
       report[key]={sha256:result.report.sha256,executableSha256:result.report.executableSha256,codeBytes:result.report.codeBytes,metadataBytes:result.report.metadataBytes,optimization:result.report.projectOptimization};
       if(optimization===2)report[label]=report[key];
     }
-    report.resourcesVerified=true;report.programLifetimeVerified=true;report.abruptExitVerified=true;
+    report.recordsetsVerified=true;report.resourcesVerified=true;report.programLifetimeVerified=true;report.abruptExitVerified=true;
     report.largeCapacityVerified=true;report.optimizationLevelsVerified=[0,1,2,3];
     report.arm64ExecutionVerified=true;report.nativeSignatureVerified=true;
   }

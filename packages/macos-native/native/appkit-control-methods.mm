@@ -1,5 +1,6 @@
 // Native AppKit control implementation. MIT.
 #include "appkit-control-utils.hpp"
+#include "appkit-recordsets.hpp"
 #include "appkit-edit.hpp"
 namespace vb6 {
 Value MacControl::invoke(Runtime&rt,const std::string&raw,Args args){
@@ -13,7 +14,7 @@ Value MacControl::invoke(Runtime&rt,const std::string&raw,Args args){
     size_t count=name=="textmatrix"?2:0;bool chart=name=="data"&&spec.type=="MSChart";if(chart)count=0;else if(name!="textmatrix")count=1;
     if(args.size()!=count+(put?1:0))fail(450);int64_t r=chart?int64_t(number("row",1))-1:name=="textmatrix"?args[0].value.integral():grid.empty()?0:args[0].value.integral()/int64_t(grid[0].size());int64_t c=chart?int64_t(number("column",1))-1:name=="textmatrix"?args[1].value.integral():grid.empty()?0:args[0].value.integral()%int64_t(grid[0].size());
     if(r<0||c<0||size_t(r)>=grid.size()||size_t(c)>=grid[size_t(r)].size())fail(381);
-    if(put){grid[size_t(r)][size_t(c)]=args[count].value.string();reloadList();return {};}return Value::string(grid[size_t(r)][size_t(c)]);
+    if(put){writeNativeRecordsetCell(*this,size_t(r),size_t(c),args[count].value);return {};}return Value::string(grid[size_t(r)][size_t(c)]);
   }
   if(name=="colwidth"||name=="rowheight"){
     if(args.size()!=(put?2:1))fail(450);int i=int(args[0].value.integral());if(i<0)fail(381);auto&map=name=="colwidth"?columnWidths:rowHeights;if(put){double n=args[1].value.floating();if(n<0||n>300000)fail(380);map[i]=n/15;updateColumns();reloadList();return {};}return Value::real((map.count(i)?map[i]:name=="colwidth"?90:20)*15);
@@ -30,7 +31,7 @@ Value MacControl::invoke(Runtime&rt,const std::string&raw,Args args){
   if(name=="removeitem"){if(args.size()!=1)fail(450);auto index=args[0].value.integral();rangeCheck(index,list.size());list.erase(list.begin()+index);itemData.erase(itemData.begin()+index);
     std::set<size_t> shifted;for(auto i:selected)if(i!=size_t(index))shifted.insert(i>size_t(index)?i-1:i);selected.swap(shifted);
     auto prior=property("listindex",Value::integer(-1)).integral();properties["listindex"]=Value::integer(prior==index?-1:prior>index?prior-1:prior);reloadList();return {};}
-  if(name=="clear"){if(!args.empty())fail(450);list.clear();itemData.clear();selected.clear();properties["listindex"]=Value::integer(-1);for(auto&row:grid)for(auto&cell:row)cell.clear();reloadList();return {};}
+  if(name=="clear"){if(dataBinding)fail(380,"Clear requires detaching the Recordset");if(!args.empty())fail(450);list.clear();itemData.clear();selected.clear();properties["listindex"]=Value::integer(-1);for(auto&row:grid)for(auto&cell:row)cell.clear();reloadList();return {};}
   if(name=="setfocus"){if(!args.empty())fail(450);if(!view||view.hidden||!flag("enabled",true))fail(5);auto window=view.window;auto selection=isNativeEdit(*this)?nativeEditSelection(*this):NSMakeRange(0,0);if(!window||![window makeFirstResponder:widget])fail(5);if(isNativeEdit(*this))nativeEditSelect(*this,selection);return {};}
   if(name=="refresh"){view.needsDisplay=YES;[view displayIfNeeded];return {};}
   if(name=="move"){if(args.size()<2||args.size()>4)fail(450);const char*names[]={"left","top","width","height"};for(size_t i=0;i<args.size();i++)if(args[i].value.type!=Type::Missing)properties[names[i]]=args[i].value;applyFrame();return {};}
@@ -78,7 +79,7 @@ void MacControl::resizeGrid(size_t rows,size_t cols){if(rows>100000||cols>10000|
 void MacControl::updateColumns(){
   auto table=tableView(*this);if(!table)return;for(NSTableColumn*column in table.tableColumns.copy)[table removeTableColumn:column];
   size_t count=!grid.empty()?grid[0].size():spec.type=="ListView"?std::max(size_t(1),items("columnheaders")->items.size()):1;
-  table.headerView=(spec.type=="ListBox"||spec.type=="FileListBox"||spec.type=="DirListBox"||spec.type=="TreeView")?nil:[NSTableHeaderView new];
+  table.headerView=(dataBinding||spec.type=="ListBox"||spec.type=="FileListBox"||spec.type=="DirListBox"||spec.type=="TreeView")?nil:[NSTableHeaderView new];
   for(size_t i=0;i<count;i++){
     auto column=[[NSTableColumn alloc]initWithIdentifier:[NSString stringWithFormat:@"%zu",i]];column.width=columnWidths.count(int(i))?columnWidths[int(i)]:90;
     column.title=spec.type=="ListView"&&i<items("columnheaders")->items.size()?ns(items("columnheaders")->items[i]->properties["text"].string()):[NSString stringWithFormat:@"%zu",i+1];
