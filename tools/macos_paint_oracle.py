@@ -14,6 +14,9 @@ def rasterize_css_layers(page, background, layers):
     No production selector, custom property, or sampled component pixel is used
     to derive the reference. The shadow subtree excludes global application CSS;
     explicit initial values isolate inherited geometry and rendering effects.
+    A string layer paints a solid color; {"image": CSS} paints an independently
+    specified gradient. Gradient color stops and solid backgrounds can follow
+    different premultiplied-alpha quantization paths in the same browser.
     The host is in the body, below the retained paint plane, like the controls.
     Its closed shadow root keeps it a browser-native island. Appending above that
     plane would introduce a different compositor group and another quantization.
@@ -28,11 +31,19 @@ def rasterize_css_layers(page, background, layers):
         surface.style.cssText = 'all:initial;display:block;position:relative;width:16px;height:16px';
         surface.style.backgroundColor = background;
         if (!surface.style.backgroundColor) throw Error('Invalid reference background');
-        for (const color of layers) {
+        for (const paint of layers) {
             const layer = document.createElement('div');
             layer.style.cssText = 'all:initial;display:block;position:absolute;inset:0';
-            layer.style.backgroundColor = color;
-            if (!layer.style.backgroundColor) throw Error('Invalid reference layer: '+color);
+            if (typeof paint === 'string') {
+                layer.style.backgroundColor = paint;
+                if (!layer.style.backgroundColor) throw Error('Invalid reference color: '+paint);
+            } else if (paint && Object.keys(paint).length === 1 && typeof paint.image === 'string'
+                    && /^linear-gradient\\(/i.test(paint.image) && !/url\\(/i.test(paint.image)) {
+                layer.style.backgroundImage = paint.image;
+                if (!layer.style.backgroundImage) throw Error('Invalid reference gradient: '+paint.image);
+            } else {
+                throw Error('Expected a color or a literal linear-gradient reference');
+            }
             surface.append(layer);
         }
         shadow.append(surface); document.body.append(host);

@@ -281,7 +281,13 @@ read colors from the tested component or its generated tokens. Canvas2D is not
 used as a CSS raster oracle: the WPE WebKit port quantizes those pipelines
 differently, which previously produced false one-level failures. A negative
 control injects a one-channel, one-level mutation into the real component and
-requires it to differ while the independent reference remains unchanged. The
+requires it to differ while the independent reference remains unchanged. Slider
+track samples use an independently specified hard-stop gradient, rather than
+a solid-color swatch: gradient stops and solid backgrounds can follow different
+premultiplied-alpha quantization paths even inside one engine. A second negative
+control injects a one-level mutation into the real native slider track and must
+also fail exact equality. Neither reference reads the production gradient or its
+custom properties, and neither changes behavior based on the browser name. The
 full 232-state native comparison remains unmasked, zero-tolerance, and reports
 its own exact-match/certification status; this portable layer check does not
 turn native/browser mismatches into passes.

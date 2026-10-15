@@ -43,6 +43,33 @@ class MacOSCompositeChecks:
                 control.evaluate('(e, value) => value===null ? e.removeAttribute("style") : e.setAttribute("style", value)', original)
         self.record('independent CSS reference rejects a one-channel, one-level production mutation')
 
+    def test_macos_gradient_oracle_rejects_one_level_track_mutations(self):
+        page = self.macos_reference()
+        control = page.locator('[data-control="specimen11"] input')
+        for theme in ('macos26', 'macos26-dark'):
+            self.theme(theme, {'reduceMotion': True})
+            page.evaluate('vb6Application.forms[0].node.classList.add("vb-inactive")')
+            ink = '#ffffff' if theme.endswith('-dark') else '#000000'
+            layers = [{'image': f'linear-gradient(to right, {ink}3a 75%, {ink}19 0)'}]
+            expected = self.composite_native_layers(page, theme, layers)
+            original = control.get_attribute('style')
+            try:
+                mutated = [expected[0], expected[1], expected[2]+1]
+                # Override the real native track's paint input, not its geometry,
+                # value, type, alpha reference or DOM identity. Both gradient
+                # halves are opaque so the one-byte mutation is unambiguous.
+                control.evaluate("""(e, rgb) => e.style.setProperty('--range-track-paint',
+                    'linear-gradient(to right, rgb('+rgb.join(',')+') 50%, rgb(1,2,3) 0)', 'important')""", mutated)
+                image = Image.open(io.BytesIO(control.screenshot())).convert('RGB')
+                actual = list(image.getpixel((40, image.height//2)))
+                self.assertEqual(actual, mutated)
+                self.assertNotEqual(actual, expected)
+                self.assertEqual(self.composite_native_layers(page, theme, layers), expected)
+            finally:
+                control.evaluate('(e, value) => value===null ? e.removeAttribute("style") : e.setAttribute("style", value)', original)
+                page.evaluate('vb6Application.forms[0].node.classList.remove("vb-inactive")')
+        self.record('independent gradient reference rejects a one-channel, one-level track mutation')
+
     def test_macos_inactive_controls_keep_values_and_restore_accent(self):
         page = self.macos_reference()
         for theme in ('macos26','macos26-dark'):
@@ -56,7 +83,7 @@ class MacOSCompositeChecks:
             ink = '#ffffff' if theme.endswith('-dark') else '#000000'
             neutral = ink+'14'
             samples = [((90,40),[neutral]), ((342,164),[ink+'24']),
-                       ((700,396),[ink+'3a']), ((80,512),['#aaaaaa']),
+                       ((700,396),[{'image':f'linear-gradient(to right, {ink}3a 75%, {ink}19 0)'}]), ((80,512),['#aaaaaa']),
                        ((350,390),[neutral,f'color-mix(in srgb, {ink} {30/235*100}%, transparent)'])]
             image = Image.open(io.BytesIO(page.locator('.vb-form-content').screenshot())).convert('RGB')
             for xy, layers in samples:
