@@ -58,7 +58,7 @@ export function languageClientCapabilities() {
 
 function providerMethod(method) {
   if (method.startsWith('textDocument/semanticTokens/')) return 'textDocument/semanticTokens';
-  const alias = {'textDocument/prepareRename':'textDocument/rename','textDocument/colorPresentation':'textDocument/documentColor',
+  const alias = {'workspace/diagnostic':'textDocument/diagnostic','textDocument/prepareRename':'textDocument/rename','textDocument/colorPresentation':'textDocument/documentColor',
     'completionItem/resolve':'textDocument/completion','codeAction/resolve':'textDocument/codeAction','codeLens/resolve':'textDocument/codeLens',
     'documentLink/resolve':'textDocument/documentLink','inlayHint/resolve':'textDocument/inlayHint','workspaceSymbol/resolve':'workspace/symbol',
     'callHierarchy/incomingCalls':'textDocument/prepareCallHierarchy','callHierarchy/outgoingCalls':'textDocument/prepareCallHierarchy',
