@@ -122,7 +122,7 @@ export function compileFormXaml(text, {form:previous,settings={},schema=createVb
   const previousNodes = [previous,...previous?.controls??[],...previous?.menus??[]].filter(Boolean);
   const previousById=new Map(previousNodes.map(n=>[n.id,n])),previousByName=new Map();
   for(const node of previousNodes){const key=JSON.stringify([node.name.toLowerCase(),node.type,node.properties?.Index]);const list=previousByName.get(key)??[];list.push(node);previousByName.set(key,list);}
-  let sequence = 0;
+  let sequence = 0, expandedLength = 0;
   const statics=createStaticValues(compilation);
   const constant=(value,scopes)=>jsonValue(statics.constant(value,scopes));
   const usedNames=new Set(compilation.nodes.map(n=>n.name??plain(n).Name?.value?.value).filter(n=>typeof n==='string').map(n=>n.toLowerCase()));
@@ -223,7 +223,8 @@ export function compileFormXaml(text, {form:previous,settings={},schema=createVb
           const dimension=key==='RowDefinitions'?'Height':'Width';
           if(p.value.kind!=='Collection')throw new Error('Grid definitions must be a collection.');
           const tracks=p.value.items.map(n=>{
-            const props=plain(n),size=constant(props[dimension]?.value??{kind:'Literal',value:{unit:'star',value:1}},scopes);
+            const props=plain(n),property=props[dimension];
+            const size=property?statics.convert(property.value,property.member,scopes):{unit:'star',value:1};
             if (Object.keys(props).some(k=>k!==dimension)) throw new Error('Grid definition min/max constraints are not yet lowered.');
             return size.unit==='star'?size.value+'fr':size.unit==='auto'?'hug':String(size.value*15);
           });set(key==='RowDefinitions'?'LayoutGridRows':'LayoutGridColumns',tracks.join(' '),p);continue;
@@ -308,6 +309,12 @@ export function compileFormXaml(text, {form:previous,settings={},schema=createVb
       const event=nativeEvent[p.member.name],expected=(root?'Form':name)+'_'+event;
       if(!event||p.value.kind!=='Literal'||p.value.value.toLowerCase()!==expected.toLowerCase())error('Use the VB6 event method '+expected+'; arbitrary handler forwarding is not silently generated.',p.source);
     }
+    // Count each flat native node once before adding it or descending further.
+    // Shared resources can expand far beyond the input length; waiting for the
+    // final document stamp would first allocate the entire oversized model.
+    // JSON encoding also accounts for escaped characters in persisted values.
+    expandedLength+=JSON.stringify(target).length+(root?',"controls":[],"menus":[]'.length:list.length?1:0);
+    if(expandedLength>MAX_XAML_LENGTH)throw new RangeError('Expanded XAML form exceeds the document limit.');
     if (root) { target.controls=controls;target.menus=menus; }
     else {list.push(target);orders.set(target,mapping.order);}
     for (const {child,menu} of children) lower(child,root?null:target,false,menu?menus:list,scopes);
@@ -321,6 +328,7 @@ export function compileFormXaml(text, {form:previous,settings={},schema=createVb
       const project = newProject(),module=project.modules[0];module.name=form.name;module.form=form;project.startup=form.name;project.settings={...project.settings,...settings};
       normalizeProject(project);validateLayout(project);
       if(settings.anchoring===true)arrangeFormEdit(clone(form),form,[]);
+      if(JSON.stringify(form).length>MAX_XAML_LENGTH)throw new RangeError('Expanded XAML form exceeds the document limit.');
     }
   } catch(e) {error(e.message,compilation.root?.source);}
   const success = !!form && !diagnostics.some(d=>d.severity==='error');

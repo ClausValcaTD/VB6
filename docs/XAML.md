@@ -68,6 +68,9 @@ revision, designer revision and writability after awaiting user/file activity.
 Document state validation is shared by editing and build/export preflight; source,
 applied source, backup and model stamp are bounded, revisions cannot overflow,
 and multi-form synchronization publishes no partial authoring-state updates.
+Lowering also counts each expanded native node before retaining it or visiting
+further children, including JSON escaping, so repeated resources stop at the
+model budget rather than first constructing an oversized complete model.
 
 ## Native vocabulary and persistence
 
@@ -143,7 +146,9 @@ Grid defaults to one row/column, with children in cell zero rather than native
 auto-placement. StackPanel defaults retain main-axis natural sizing, cross-axis
 fill and no flex shrink. Explicit fixed dimensions and supported Auto sizing,
 margin/container-padding thickness, cross-axis/grid alignment, gaps, tracks and
-cell/span metadata lower through the existing opt-in layout engine. Negative
+cell/span metadata lower through the existing opt-in layout engine. Resource-backed
+row/column definitions use the consuming GridLength converter, including star,
+auto and pixel values. Negative
 margins/padding, unsupported content padding and unrepresentable alignment are
 diagnostics. These mappings do not implement every WinUI measure/arrange rule.
 

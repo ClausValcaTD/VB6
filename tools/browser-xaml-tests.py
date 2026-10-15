@@ -242,6 +242,24 @@ class XamlAcceptance(unittest.TestCase):
         code=self.page.evaluate('vb6Studio.activeModule.code')
         self.assertIn('Confirm_Click',code);self.assertIn('Dim Button1 As String',code);self.assertIn('Me.Confirm.Caption',code)
         self.assertEqual(self.page.locator('.xaml-problems button').count(),0);self.done()
+    def test_resource_grid_tracks_use_typed_conversion(self):
+        self.page.evaluate('()=>{vb6Studio.project.settings.anchoring=true;}')
+        self.open()
+        source='<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="Form1"><Page.Resources><x:String x:Key="Column">2*</x:String><x:String x:Key="Row">40</x:String><x:String x:Key="Auto">Auto</x:String></Page.Resources><Grid x:Name="Grid1"><Grid.ColumnDefinitions><ColumnDefinition Width="{StaticResource Column}"/></Grid.ColumnDefinitions><Grid.RowDefinitions><RowDefinition Height="{StaticResource Row}"/><RowDefinition Height="{StaticResource Auto}"/></Grid.RowDefinitions><Button x:Name="Button1"/><TextBox x:Name="Text1" Grid.Row="1"/></Grid></Page>'
+        self.input.fill(source)
+        self.assertEqual(self.page.locator('.xaml-problems button').count(),0)
+        self.assertEqual(self.page.evaluate('(()=>{const p=vb6Studio.activeModule.form.controls.find(c=>c.name==="Grid1").properties;return [p.LayoutGridColumns,p.LayoutGridRows];})()'),['2fr','600 hug'])
+        self.done()
+    def test_expanded_model_limit_retains_source_draft_and_last_valid_form(self):
+        initial=self.open()
+        before=self.page.evaluate('JSON.stringify(vb6Studio.activeModule.form)')
+        source='<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="Form1"><Page.Resources><x:String x:Key="C">'+'a'*50000+'</x:String></Page.Resources><Canvas>'+''.join(f'<Button x:Name="B{i}" Content="{{StaticResource C}}"/>' for i in range(64))+'</Canvas></Page>'
+        self.input.fill(source)
+        self.assertIn('Expanded XAML form exceeds',self.page.locator('.xaml-problems').inner_text())
+        self.assertEqual(self.page.evaluate('JSON.stringify(vb6Studio.activeModule.form)'),before)
+        self.assertEqual(self.page.evaluate('vb6Studio.activeModule.xaml.text'),source)
+        self.assertEqual(self.page.evaluate('vb6Studio.activeModule.xaml.appliedText'),initial)
+        self.done()
     def test_export_runs_existing_runtime_with_edited_controls_and_events(self):
         text=self.open();self.input.fill(text.replace('Caption="Original"','Caption="Exported XAML"'));project=self.page.evaluate('vb6Studio.project')
         code="import {exportApplication} from './src/exporter/exporter.js';import fs from 'node:fs';process.stdout.write(exportApplication(JSON.parse(fs.readFileSync(0,'utf8')),{persist:false}));"

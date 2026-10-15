@@ -11,7 +11,7 @@ test('compact shared resources cannot publish an oversized expanded model stamp'
  const p=project(),m=p.modules[0],original=structuredClone(p),initial=readXamlDocument(m,{schema});
  const text='<Page xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Name="Form1"><Page.Resources><x:String x:Key="C">'+'c'.repeat(100000)+'</x:String></Page.Resources><Canvas>'+'<Button Content="{StaticResource C}"/>'.repeat(21)+'</Canvas></Page>';
  const r=prepareXamlEdit(p,m.id,text,{schema});assert.equal(r.applied,false);assert.equal(r.result.form,null);assert.deepEqual(r.module.form,m.form);assert.deepEqual(p,original);
- const state=readXamlDocument(r.module,{schema});assert.equal(state.text,text);assert.equal(state.appliedText,initial.text);assert.equal(state.base,initial.base);assert.equal(state.revision,1);assert.match(r.result.diagnostics.at(-1).message,/Invalid/);
+ const state=readXamlDocument(r.module,{schema});assert.equal(state.text,text);assert.equal(state.appliedText,initial.text);assert.equal(state.base,initial.base);assert.equal(state.revision,1);assert.match(r.result.diagnostics.at(-1).message,/Expanded XAML form exceeds/);
 });
 test('new authoring documents validate JSON-expanded stamps as well as source length',()=>{
  const p=project(),m=p.modules[0];m.form.properties.Caption='\\'.repeat(1050000);
