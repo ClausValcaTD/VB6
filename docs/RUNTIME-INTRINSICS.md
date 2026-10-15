@@ -48,7 +48,7 @@ Focused tests are `runtime-intrinsics.test.mjs`, `character-library.test.mjs`, `
 
 Run the Node suites using the repository's CI sharding, build with `npm run build`, and run `python tools/browser-compiler-runtime.py` for inline browser coverage or `python tools/browser-compiler-runtime.py --http` for actual HTTP navigation. Regenerate `tools/ide-artifacts.json` with the documented local `npm run build:update-ide-artifacts` command after intentional compiler/runtime changes; do not bypass its check in CI.
 
-The local change set completed 9,148 Node cases (9,108 passes, 40 platform/environment skips, zero failures), a successful generated build and all 20 inline Chromium scenarios. The subsequently added managed reference test was skipped locally because no .NET SDK was installed. HTTP navigation was blocked by the local browser policy before application startup; inline execution is not HTTP-launch certification. Pull-request CI results provide the independent environment evidence and must be inspected before merging.
+Pull-request CI artifacts retain revision-specific results. Inspect the Node shards, independent managed-reference result, generated fingerprint verification and HTTP browser checks before merging. Inline browser execution is not HTTP-launch certification, and an SDK-dependent skip is not an independent managed-reference pass.
 
 ## Primary references
 
