@@ -4,6 +4,7 @@
 #include <iostream>
 using namespace vb6;
 static int clicks=0;
+void checkNativeRecordsetsAppKit(Runtime&, MacHost&, const std::shared_ptr<Instance>&);
 void checkNativePictures(Runtime&, MacHost&, const std::shared_ptr<Instance>&);
 void checkNativeEditing(Runtime&, MacHost&, const std::shared_ptr<Instance>&);
 int main(){@autoreleasepool {
@@ -26,6 +27,7 @@ int main(){@autoreleasepool {
   auto tab=std::dynamic_pointer_cast<MacControl>(form->controls.at("c21"));tab->items("tabs")->invoke(rt,"add",{Arg(Value::missing()),Arg(Value::string(u"one")),Arg(Value::string(u"One"))});assert([(NSTabView*)tab->widget numberOfTabViewItems]==1);
   checkNativeEditing(rt,host,form);
   checkNativePictures(rt,host,form);
+  checkNativeRecordsetsAppKit(rt,host,form);
   int32_t old=edit->handle;rt.unload(form);assert(!host.handles.find(old));
   std::cout<<"APPKIT_CONFORMANCE_OK controls="<<types.size()<<"\n";
 }}

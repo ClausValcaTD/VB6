@@ -7,6 +7,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {buildMacOSPackage} from './build-macos-native.mjs';
 import {runTool,writeBuildKit,buildNativeKit} from '../packages/macos-native/src/build-driver.mjs';
+import {macOSDataSampleProject} from './macos-data-sample-fixture.mjs';
 import {resourceFormProject} from '../packages/macos-native/tests/resources.mjs';
 import {conformanceProject} from '../packages/macos-native/tests/conformance.mjs';
 import {programLifetimeProject,formLifetimeProject,abruptLifetimeProject} from '../packages/macos-native/tests/program-lifetime.mjs';
@@ -20,7 +21,7 @@ const log=text=>{process.stderr.write(text);transcript+=text;if(transcript.lengt
 const report={platform:process.platform,arch:process.arch,macOSExecutionVerified:false,checks:[]};
 const run=async(executable,args,options={})=>{console.log('RUN',path.basename(executable),args.slice(0,4).join(' '));return runTool(executable,args,{cwd:work,timeout:180000,...options});};
 const generatedPassed=output=>{
-  for(const marker of ['NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
+  for(const marker of ['NATIVE_RECORDSETS_OK','NATIVE_CONFORMANCE_OK','NATIVE_INTERFACES_OK','NATIVE_LIFETIMES_OK','NATIVE_ARRAYS_OK','NATIVE_SCOPES_OK','NATIVE_RESOURCES_OK'])assert.ok(output.includes(marker),'Missing native marker: '+marker);
 };
 // Compile SDK objects once; all sanitizer executables link the identical objects.
 // Settle every in-flight compiler before propagating a failure or removing work.
@@ -38,9 +39,16 @@ try {
   const flags=[...platformFlags,'-std=c++17','-O0','-g','-Wall','-Wextra','-Werror','-fsanitize=address,undefined','-I',native];
   const runtime=(await fs.readdir(native)).filter(n=>n.endsWith('.cpp')).sort().map(n=>path.join(native,n));
   const objects=await compileRuntime(compiler,flags,[...runtime,path.join(sdk,'tests/portable-host.cpp')]);
+  const records=path.join(work,'recordsets-core');
+  await run(compiler,[...flags,path.join(sdk,'tests/recordsets.cpp'),...objects,'-o',records]);
+  assert.match(await run(records,[]),/NATIVE_RECORDSETS_CORE_OK/);report.checks.push('sanitized-recordset-grid-core');
   const values=path.join(work,'values');
   await run(compiler,[...flags,path.join(sdk,'tests/values.cpp'),...objects,'-o',values]);
   assert.match(await run(values,[]),/native value contracts passed/);report.checks.push('sanitized-values');
+  const notifications=path.join(work,'recordset-notifications');
+  await run(compiler,[...flags,path.join(sdk,'tests/recordset-notifications.cpp'),...objects,'-o',notifications]);
+  assert.match(await run(notifications,[]),/NATIVE_RECORDSET_NOTIFICATIONS_OK/);
+  report.checks.push('sanitized-recordset-notifications');
   const ownership=path.join(work,'scope-ownership');
   await run(compiler,[...flags,path.join(sdk,'tests/scopes.cpp'),...objects,'-o',ownership]);
   assert.match(await run(ownership,[]),/NATIVE_SCOPE_OWNERSHIP_OK/);report.checks.push('sanitized-nested-scope-ownership');
@@ -90,7 +98,7 @@ try {
     const uiSources=(await fs.readdir(path.join(sdk,'tests'))).filter(name=>/^appkit(?:-[a-z-]+)?\.mm$/.test(name)).sort().map(name=>path.join(sdk,'tests',name));
     await run(compiler,['-std=c++17','-arch','arm64','-isysroot',sdkPath,'-mmacosx-version-min=11.0','-fobjc-arc','-I',native,...uiSources,path.join(cache,built.runtimeSha256,'libvb6-native.a'),'-framework','AppKit','-framework','Foundation','-framework','CoreGraphics','-framework','QuartzCore','-o',ui]);
     await run('/usr/bin/codesign',['--sign','-','--timestamp=none',ui]);
-    const uiOutput=await run(ui,[],{timeout:30000});assert.match(uiOutput,/APPKIT_CONFORMANCE_OK/);assert.match(uiOutput,/APPKIT_EDIT_SELECTION_LIST_OK/);assert.match(uiOutput,/APPKIT_RICH_SELECTION_OK/);assert.match(uiOutput,/APPKIT_PICTURES_OK/);report.checks.push('appkit-controls-events-api','appkit-live-edit-selection-lists','appkit-rich-selection-formatting');
+    const uiOutput=await run(ui,[],{timeout:30000});assert.match(uiOutput,/APPKIT_RECORDSETS_OK/);assert.match(uiOutput,/APPKIT_CONFORMANCE_OK/);assert.match(uiOutput,/APPKIT_EDIT_SELECTION_LIST_OK/);assert.match(uiOutput,/APPKIT_RICH_SELECTION_OK/);assert.match(uiOutput,/APPKIT_PICTURES_OK/);report.checks.push('appkit-controls-events-api','appkit-live-edit-selection-lists','appkit-rich-selection-formatting');
     const richKit=createMacOSBuildKit(richTextProject()),richDir=path.join(work,'rich-form-kit');
     await writeBuildKit(richDir,richKit.files);
     const richBuilt=await buildNativeKit(richDir,{out:path.join(work,'rich-form-out'),cache,jobs:3,log});
@@ -109,6 +117,10 @@ try {
     const pictureBuilt=await buildNativeKit(pictureDir,{out:path.join(work,'picture-out'),cache,jobs:3,log});
     assert.equal(pictureBuilt.signatureVerified,true);assert.equal(pictureBuilt.cacheHit,true);
     assert.match(await run(pictureBuilt.executable,[]),/NATIVE_RESOURCE_FORM_OK/);report.checks.push('signed-resource-form-execution');
+    const dataDir=path.join(work,'original-data-kit');await writeBuildKit(dataDir,createMacOSBuildKit(macOSDataSampleProject()).files);
+    const dataBuilt=await buildNativeKit(dataDir,{out:path.join(work,'original-data-out'),cache,jobs:3,log});
+    assert.equal(dataBuilt.signatureVerified,true);assert.match(await run(dataBuilt.executable,[]),/NATIVE_ORIGINAL_DATA_OK/);
+    report.checks.push('signed-original-data-sample');
     const reused=await buildNativeKit(kitDir,{out:path.join(work,'reused'),cache,jobs:3,log});assert.equal(reused.cacheHit,true);report.checks.push('native-cache-reuse');
     // Verify the exact signed bytes produced by ditto; do not repack the bundle.
     const archive=await verifyMacOSAppArchive(new Uint8Array(await fs.readFile(built.zip)),kit.options);

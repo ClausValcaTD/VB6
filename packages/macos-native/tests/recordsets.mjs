@@ -73,3 +73,5 @@ Sub Main()
   Err.Clear
   Debug.Print "NATIVE_RECORDSETS_OK"
 End Sub`}]};}
+
+export function recordsetModule(){const module=recordsetProject().modules[0];return {...module,name:'NativeRecordsetChecks',code:module.code.replace('Sub Main()', 'Public Sub CheckNativeRecordsets()')};}
