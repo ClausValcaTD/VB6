@@ -24,8 +24,9 @@ function pack(project,projects,activePath=projectManifestPath(project)){
 function nativeMember(project,path=projectManifestPath(project)){
   const result=checked(project);if(result.nativeWorkspace)fail('Nested project groups are not supported');
   path=manifestPath(path,'.vbp');
-  if(result.nativeProject){const old=projectManifestPath(result);result.references=(result.references||[]).map(r=>rebaseProjectReference(r,old,path));result.nativeProject.path=path;return result;}
-  result.nativeProject={path,entries:[]};
+  const old=projectManifestPath(result);result.references=(result.references||[]).map(r=>rebaseProjectReference(r,old,path));
+  if(result.nativeProject?.document){result.nativeProject.path=path;return result;}
+  result.nativeProject={...result.nativeProject,path,entries:result.nativeProject?.entries||[]};
   const files=sourceFiles(result),document=decodeNativeText(bytesOf(files[path])),meta=parseNativeProject(document.text);
   result.nativeProject={path,originalPath:path,document,entries:meta.rawEntries,
     files:meta.files.map(f=>{const resolved=resolveProjectPath(Object.keys(files),path,f.path),m=result.modules.find(m=>key(m.sourcePath||m.name+(m.form?'.frm':m.kind==='class'?'.cls':'.bas'))===key(resolved));return {...f,resolved,moduleId:m?.id||null,relocated:false};}),

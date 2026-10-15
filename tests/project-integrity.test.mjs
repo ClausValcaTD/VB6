@@ -68,3 +68,9 @@ test('group history identities are unique stable strings',async()=>{
 });
 
 test('fresh VBP settings cannot disguise reserved records with whitespace',()=>{const p=newProject();p.nativeProject={entries:[{key:' Name',value:'Injected'}]};assert.throws(()=>serializeVBP(p),/Invalid project setting/);});
+
+test('grouping a browser project with generated native metadata materializes its manifest',async()=>{
+  const b=await load({'B.vbp':'Name="B"\r\nRelatedDoc=docs\\note.txt\r\n','docs/note.txt':'note'}),p=mergedProject(newProject(),b),path=p.name+'.vbp';
+  assert.equal(p.nativeProject.document,undefined);const g=createProjectWorkspace(p);assert.ok(g.nativeProject.document);assert.equal(g.nativeProject.originalPath,path);
+  const files=sourceFiles(moveWorkspaceProject(g,path,'moved/New.vbp'));assert.equal(files[path],undefined);assert.match(text(files['moved/New.vbp']),/RelatedDoc=..\\docs\\note.txt/);await load(files);
+});
