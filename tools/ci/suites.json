@@ -1,7 +1,8 @@
 {
   "core-runtime": [
     "browser-tests.py",
-    "browser-language-parity.py"
+    "browser-language-parity.py",
+    "browser-compiler-runtime.py"
   ],
   "core-parity": [
     "browser-parity-tests.py",
