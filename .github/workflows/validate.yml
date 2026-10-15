@@ -226,6 +226,7 @@ jobs:
           - integration-controls
           - integration-authoring
           - intelligent-ui
+          - project-authoring
     steps:
       - uses: actions/checkout@v4
         with:

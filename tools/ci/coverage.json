@@ -55,6 +55,7 @@
     "tools/interop/test-container-contracts.mjs",
     "tools/interop/test-native.mjs",
     "tools/native-fixtures.mjs",
+    "tools/native-project-browser-tests.py",
     "tools/pack-intelligent-ui.mjs",
     "tools/pack-layout.mjs",
     "tools/pack-vbnet-migration.mjs",

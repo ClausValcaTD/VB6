@@ -60,5 +60,8 @@
   ],
   "code-gpu": [
     "figma-editor-browser-tests.py"
+  ],
+  "project-authoring": [
+    "native-project-browser-tests.py"
   ]
 }
