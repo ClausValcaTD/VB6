@@ -34,7 +34,9 @@ export function installResourceRanges(adapter) {
     if (build) {
       const args = build[2] ? queryNumbers(build[3]||'',['offset','count']) : {count:1};
       const data = await invoke('vb6.build.read',{artifactId:build[1],...args},context);
-      const {data:blob,encoding,offset,count,nextOffset,hasMore,...metadata} = data;
+      // The tool envelope has live revision/event counters. Do not leak those into
+      // an immutable artifact manifest or its range metadata.
+      const {data:blob,encoding,offset,count,nextOffset,hasMore,revision,eventSequence,...metadata} = data;
       if (!build[2]) return [{uri,mimeType:'application/json',text:JSON.stringify({...metadata,chunks:{uriTemplate:'vb6://build/'+build[1]+'/bytes{?offset,count}',unit:'bytes',defaultCount:65536,maxCount:262144}},null,2)}];
       return [{uri,mimeType:'application/octet-stream',blob,_meta:{'io.vb6/range':{...metadata,offset,count,nextOffset,hasMore,...(hasMore?{nextUri:'vb6://build/'+build[1]+'/bytes?offset='+nextOffset+'&count='+(args.count||65536)}:{})}}}];
     }

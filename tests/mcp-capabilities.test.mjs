@@ -69,7 +69,11 @@ test('build results link to protected manifests and byte resources reproduce che
   const f=fixture(t),build=await f.call('build.create',{target:'project',expectedRevision:f.adapter.revision});assert.equal(build.error,undefined);
   const artifact=build.result.structuredContent.artifact,uri=artifact.manifestUri;
   assert.equal(build.result.content[0].type,'resource_link');assert.equal(build.result.content[0].uri,uri);
-  const manifest=JSON.parse((await f.request('resources/read',{uri})).result.contents[0].text);assert.equal(manifest.sha256,artifact.sha256);assert.equal(manifest.chunks.maxCount,262144);
+  const manifestText=(await f.request('resources/read',{uri})).result.contents[0].text;
+  const manifest=JSON.parse(manifestText);assert.equal(manifest.sha256,artifact.sha256);assert.equal(manifest.chunks.maxCount,262144);
+  assert.equal(manifest.revision,undefined);assert.equal(manifest.eventSequence,undefined);
+  f.ide.markDirty();
+  assert.equal((await f.request('resources/read',{uri})).result.contents[0].text,manifestText,'Manifest bytes must not change with live revision/event counters');
   assert.equal((await f.request('resources/read',{uri},'B')).error.code,-32602);
   let next=uri+'/bytes?count=113',chunks=[];
   do{const reply=await f.request('resources/read',{uri:next});assert.equal(reply.error,undefined);const value=reply.result.contents[0];chunks.push(Buffer.from(value.blob,'base64'));next=value._meta['io.vb6/range'].nextUri;}while(next);
