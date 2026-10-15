@@ -120,9 +120,9 @@ export async function sha256(data, subtle = globalThis.crypto?.subtle) {
   if (subtle == null) return new Sha256().update(bytes).digest();
   if (typeof subtle.digest !== 'function') throw new TypeError('Invalid SubtleCrypto provider.');
   // Do not disguise a native provider rejection as a successful fallback.
-  const result = new Uint8Array(await subtle.digest('SHA-256', bytes));
+  const result = bytesOf(await subtle.digest('SHA-256', bytes));
   if (result.byteLength !== 32) throw new Error('Invalid SHA-256 digest length.');
-  return result;
+  return result.slice();
 }
 export async function sha256Hex(data, subtle = globalThis.crypto?.subtle) { return toHex(await sha256(data, subtle)); }
 

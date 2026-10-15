@@ -52,7 +52,7 @@ export class Signal {
   clear(type) {
     const lists = arguments.length ? [this.listeners.get(type)] : [...this.listeners.values()];
     for (const list of lists) for (const record of [...(list?.values() ?? [])]) record.off();
-    for (const waiter of [...this.#waiters]) if (!arguments.length || waiter.type === type) waiter.cancel();
+    for (const waiter of [...this.#waiters]) if (!arguments.length || waiter.type === type || Object.is(waiter.type, type)) waiter.cancel();
   }
 
   /** Resolve the first value accepted by predicate, or reject on abort/timeout.
