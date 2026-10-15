@@ -5,6 +5,7 @@
  */
 import {planNativeArguments} from './call-plan.js';
 import {nativePrintImage} from './print.js';
+import {nativeWriteImage} from './file-write.js';
 import {mem32} from './x86-operands.js';
 const P='native:file:',key=v=>String(v).toLowerCase(),at=(base,displacement=0)=>mem32({base,displacement});
 const local=o=>at('ebp',o.offset),arg=argument=>({argument}),lit=value=>({kind:'literal',value});
@@ -44,11 +45,10 @@ export function nativeFileInstruction(c,ins){
     else for(const handle of ins.handles){c.numeric(handle);x.push().call(P+'close');}
     return true;
   }
-  if(ins.csv)c.fail('Native Write # serialization is not yet lowered; use Print # for display text');
   c.numeric(ins.handle);x.push().call(P+'resolve');const entry=save(c,'file-entry');
   x.mov('eax',at('eax',12));const generation=save(c,'file-generation');
   x.mov('eax',local(entry)).mov('eax',at('eax',16));const column=save(c,'file-column');
-  const image=nativePrintImage(c,ins,arg(column.offset));
+  const image=ins.csv?nativeWriteImage(c,ins):nativePrintImage(c,ins,arg(column.offset));
   const ansi=c.temporaryString();c.nativeConvertString(ansi,'to-ansi');const buffer=save(c,'file-bytes');
   x.push(arg(image.position.offset)).push(arg(buffer.offset)).push(arg(generation.offset)).push(arg(entry.offset)).call(P+'write');return true;
 }
