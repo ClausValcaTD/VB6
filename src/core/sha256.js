@@ -142,11 +142,16 @@ export async function sha256Stream(source, {signal, onProgress, yieldEvery = 4 *
   else if (typeof source?.[Symbol.asyncIterator] === 'function') iterator = source[Symbol.asyncIterator]();
   else if (typeof source?.[Symbol.iterator] === 'function') iterator = source[Symbol.iterator]();
   else throw new TypeError('A byte stream or iterable of byte chunks is required.');
-  let rejectAbort, complete = false, work = 0, chunks = 0;
-  const interrupted = signal ? new Promise((_, reject) => { rejectAbort = reject; }) : null;
-  // Attach rejection handling before calling potentially reentrant iterators.
-  interrupted?.catch(() => {});
-  const abort = () => rejectAbort(signal.reason);
+  let rejectRead, complete = false, work = 0, chunks = 0;
+  // Own only the current read. Racing every chunk against one never-settled
+  // abort promise would retain a reaction and its closure for every chunk.
+  const abort = () => rejectRead?.(signal.reason);
+  const waitForRead = pending => !signal ? pending : new Promise((resolve, reject) => {
+    rejectRead = reject;
+    Promise.resolve(pending).then(resolve, reject);
+    // A synchronous producer can abort inside next(), before this read exists.
+    if (signal.aborted) reject(signal.reason);
+  }).finally(() => { rejectRead = undefined; });
   const check = () => { if (signal?.aborted) throw signal.reason; };
   signal?.addEventListener('abort', abort, {once: true});
   const hash = new Sha256();
@@ -154,7 +159,7 @@ export async function sha256Stream(source, {signal, onProgress, yieldEvery = 4 *
     while (true) {
       check();
       const pending = reader ? reader.read() : iterator.next();
-      const step = interrupted ? await Promise.race([pending, interrupted]) : await pending;
+      const step = await waitForRead(pending);
       check();
       if (!step || typeof step !== 'object') throw new TypeError('Invalid byte iterator result.');
       if (step.done) { complete = true; break; }

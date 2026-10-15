@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {runInNewContext} from 'node:vm';
 import {getEventListeners} from 'node:events';
+import {spawnSync} from 'node:child_process';
 import {Sha256, sha256, sha256Hex, sha256Stream, sha256Blob} from '../src/core/sha256.js';
 const hex = bytes => Buffer.from(bytes).toString('hex');
 const expected = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -127,4 +128,41 @@ test('SHA-256 detached buffers are rejected and cleanup cannot mask the producer
   const original = new Error('read failed');
   const source = {getReader() { return {read() { throw original; }, cancel() { throw new Error('cancel'); }, releaseLock() { throw new Error('release'); }}; }};
   await assert.rejects(sha256Stream(source), error => error === original);
+});
+
+
+test('SHA-256 cancellation does not retain one promise reaction per processed chunk', () => {
+  // Isolate forced GC from the test runner. Compare retained heap while the
+  // stream is still open, not after completion has released all its closures.
+  const moduleUrl = new URL('../src/core/sha256.js', import.meta.url).href;
+  const probe = `
+    import {sha256Stream} from ${JSON.stringify(moduleUrl)};
+    async function growth(signal) {
+      let count = 0, baseline = 0, retained = 0;
+      const empty = new Uint8Array();
+      function* source() { for (let i = 0; i < 50000; i++) yield empty; }
+      await sha256Stream(source(), {signal, onProgress() {
+        if (++count === 1000) { globalThis.gc(); baseline = process.memoryUsage().heapUsed; }
+        if (count === 50000) { globalThis.gc(); retained = process.memoryUsage().heapUsed; }
+      }});
+      return retained - baseline;
+    }
+    console.log(JSON.stringify({plain: await growth(), cancelable: await growth(new AbortController().signal)}));
+  `;
+  const result = spawnSync(process.execPath, ['--expose-gc', '--input-type=module', '-e', probe], {encoding: 'utf8', timeout: 20000});
+  assert.equal(result.status, 0, result.stderr || result.error?.message);
+  const memory = JSON.parse(result.stdout);
+  assert.ok(memory.cancelable < Math.max(0, memory.plain) + 4 * 1024 * 1024,
+    'Cancellation retains per-chunk promise reactions: ' + JSON.stringify(memory));
+});
+
+test('SHA-256 observes abort inside a synchronous next before awaiting a stuck result', async () => {
+  const controller = new AbortController(); let closed = 0;
+  const source = {
+    [Symbol.asyncIterator]() { return this; },
+    next() { controller.abort('inside next'); return new Promise(() => {}); },
+    return() { closed++; return {done: true}; }
+  };
+  await assert.rejects(sha256Stream(source, {signal: controller.signal}), reason => reason === 'inside next');
+  assert.equal(closed, 1); assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
 });

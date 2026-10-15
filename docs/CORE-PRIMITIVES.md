@@ -222,7 +222,9 @@ finalization throws. `clone()` forks an unfinished prefix or finalized result.
 `bytesHashed` is an exact BigInt. Input length must remain below 2^64 bits.
 
 `sha256Stream` accepts a ReadableStream, synchronous iterable or async iterable of
-byte chunks. It never buffers the complete source. It yields after the byte budget
+byte chunks. It never buffers the complete source or retains an abort-promise
+reaction for every processed chunk; cancellation owns only the current read.
+It yields after the byte budget
 or 128 chunks, keeping timer-driven abort responsive even with empty chunks. Abort
 interrupts a pending read/next; failure cancels/closes the source and releases reader
 ownership without awaiting a permanently stuck producer. It cannot force arbitrary
