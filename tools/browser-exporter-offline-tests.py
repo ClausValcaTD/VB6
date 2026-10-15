@@ -14,6 +14,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, quote
 import zipfile
 from playwright.sync_api import sync_playwright
+from exporter_browser_wait import wait_for_export
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / 'reports/exporter-offline'
@@ -77,13 +78,13 @@ def new_page(context):
     page.add_init_script("globalThis.policyViolations=[];addEventListener('securitypolicyviolation',e=>policyViolations.push(e.violatedDirective));")
     return page
 def ready(page, phase='ready'):
-    page.wait_for_function('(phase)=>globalThis.vb6ApplicationStatus?.phase===phase', arg=phase)
+    wait_for_export(page, '(phase)=>globalThis.vb6ApplicationStatus?.phase===phase', arg=phase)
     if phase == 'ready':
         check(page.evaluate('vb6Application.vm.state !== "error"'), 'VM failed despite ready status')
         check(page.locator('#vb6-startup').is_hidden(), 'Startup banner did not hide')
 def installed(page):
-    page.wait_for_function('globalThis.vb6OfflineStatus?.phase === "ready"')
-    page.wait_for_function('navigator.serviceWorker.getRegistration().then(r=>r?.active?.state === "activated")')
+    wait_for_export(page, 'globalThis.vb6OfflineStatus?.phase === "ready"')
+    wait_for_export(page, 'navigator.serviceWorker.getRegistration().then(r=>r?.active?.state === "activated")')
     check(not page.evaluate('policyViolations'), 'Generated export violated external-script CSP')
 def binary(page):
     return page.evaluate('fetch("./assets/raw.bin").then(r=>r.arrayBuffer()).then(b=>Array.from(new Uint8Array(b)))')
@@ -93,7 +94,7 @@ def calculator(page):
     page.get_by_role('button', name='+', exact=True).click()
     page.get_by_role('button', name='8', exact=True).click()
     page.get_by_role('button', name='=', exact=True).click()
-    page.wait_for_function('document.querySelector("[data-control=txtDisplay] input")?.value === "15"')
+    wait_for_export(page, 'document.querySelector("[data-control=txtDisplay] input")?.value === "15"')
 
 try:
     with sync_playwright() as p:
@@ -129,14 +130,14 @@ try:
         passed('same-origin-sibling-cache-isolation')
         state['a'] = 'two'
         a.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
-        a.wait_for_function('navigator.serviceWorker.getRegistration().then(r=>r?.waiting?.state === "installed")')
+        wait_for_export(a, 'navigator.serviceWorker.getRegistration().then(r=>r?.waiting?.state === "installed")')
         check(a.evaluate('releaseMarker') == 'one', 'Update replaced live application code')
         check(a.evaluate('fetch("./assets/version.txt").then(r=>r.text())') == 'one', 'Live release mixed new assets')
         check(cache_key('a', 'one') in a.evaluate('caches.keys()'), 'Waiting update removed active cache')
         calculator(a)
         passed('update-waits-without-reloading-or-mixing-live-release')
         a.close()
-        b.wait_for_function('(url)=>navigator.serviceWorker.getRegistration(url).then(r=>r?.active?.state === "activated" && !r.waiting)', arg=base + '/apps/a/')
+        wait_for_export(b, '(url)=>navigator.serviceWorker.getRegistration(url).then(r=>r?.active?.state === "activated" && !r.waiting)', arg=base + '/apps/a/')
         keys = b.evaluate('caches.keys()')
         check(cache_key('a', 'one') not in keys and cache_key('a', 'two') in keys, 'Update did not retire only the old release')
         check(cache_key('b', 'one') in keys, 'Update deleted sibling cache')
@@ -154,23 +155,23 @@ try:
         check(a.evaluate('fetch("./adapter.js").then(r=>r.status)') == 503, 'Eviction silently mixed a mismatched server code')
         passed('evicted-code-rejects-mismatched-server-release')
         broken = new_page(context); broken.goto(base + '/apps/broken/index.html'); ready(broken)
-        broken.wait_for_function('globalThis.vb6OfflineStatus?.phase === "error"')
+        wait_for_export(broken, 'globalThis.vb6OfflineStatus?.phase === "error"')
         check(broken.evaluate('vb6OfflineReady.then(()=>false,()=>true)'), 'Failed installation promise falsely resolved')
         check(cache_key('broken', 'one') not in broken.evaluate('caches.keys()'), 'Partial release was left cached')
         passed('corrupt-upload-fails-install-with-no-partial-cache')
         state['corrupt'] = False; broken.reload(); ready(broken); installed(broken)
         passed('repaired-upload-installs-on-explicit-page-reload')
         failed = new_page(context); failed.goto(base + '/apps/failed/index.html'); ready(failed, 'error')
-        failed.wait_for_function('globalThis.vb6OfflineStatus?.phase === "error"')
+        wait_for_export(failed, 'globalThis.vb6OfflineStatus?.phase === "error"')
         check(failed.evaluate('navigator.serviceWorker.getRegistration().then(r=>!r)'), 'Failed application installed an offline worker')
         passed('failed-startup-never-registers-broken-application')
         local = new_page(context); local.goto((REPORT / 'fixtures/one/index.html').as_uri()); ready(local)
-        local.wait_for_function('globalThis.vb6OfflineStatus?.phase === "unavailable"')
+        wait_for_export(local, 'globalThis.vb6OfflineStatus?.phase === "unavailable"')
         passed('file-origin-runs-normally-without-offline-registration')
         local.close()
         # Independent menu download, ZIP metadata/byte verification and Node parity.
         ide = new_page(context); ide.goto(base + '/dist/index.html')
-        ide.wait_for_function('Boolean(globalThis.vb6Studio?.applicationExportInstalled)')
+        wait_for_export(ide, 'Boolean(globalThis.vb6Studio?.applicationExportInstalled)')
         source = json.loads((ROOT / 'examples/calculator.vb6web').read_text())
         ide.evaluate('project=>vb6Studio.loadProject(project)', source)
         expected = ide.evaluate('vb6Studio.project')
