@@ -1,3 +1,4 @@
+import {compileFilePattern,FILE_PATTERN_BUDGET} from './file-pattern.js';
 import {readInputField} from './sequential-codec.js';
 import {openTextStream,fileSystemObject} from './text-stream.js';
 import { VBError } from '../language/lexer.js';
@@ -38,11 +39,9 @@ export class VirtualFileSystem {
   find(pattern,attributes=0){
     pattern=this.normalize(pattern);const i=pattern.lastIndexOf('/'),parent=this.canonical(pattern.slice(0,i)||'/'),leaf=pattern.slice(i+1);
     if(!this.directories.has(parent))return [];
-    const escape=text=>text.replace(/[.+^${}()|[\]\\]/g,'\\$&').replace(/\*/g,'.*').replace(/\?/g,'.');
-    const expression=leaf==='*.*'?'.*':leaf.endsWith('.*')?escape(leaf.slice(0,-2))+'(?:\\..*)?':escape(leaf);
-    const re=new RegExp('^'+expression+'$','i'),prefix=parent==='/'?'/':parent+'/';
+    const matches=compileFilePattern(leaf),budget={remaining:FILE_PATTERN_BUDGET},prefix=parent==='/'?'/':parent+'/';
     return [...this.files.keys(),...(attributes&16?this.directories:[])].filter(path=>{
-      if(path===parent||!path.startsWith(prefix))return false;const name=path.slice(prefix.length);if(name.includes('/')||!re.test(name))return false;
+      if(path===parent||!path.startsWith(prefix))return false;const name=path.slice(prefix.length);if(name.includes('/')||!matches(name,budget))return false;
       const flags=this.getAttributes(path);return !(flags&2)&&!(flags&4)||(!(flags&2)||!!(attributes&2))&&(!(flags&4)||!!(attributes&4));
     }).sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:a.toLowerCase()>b.toLowerCase()?1:0);
   }
