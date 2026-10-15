@@ -9,7 +9,7 @@ export {formStamp};
 export function readXamlDocument(module,options={}) {
   if(!module?.form)throw new TypeError('XAML authoring requires a form module.');
   const state=module.xaml;
-  if(state===undefined)return {version:1,revision:0,text:formToXaml(module.form,options),appliedText:null,base:formStamp(module.form),conflict:false};
+  if(state===undefined)return validateXamlDocument({version:1,revision:0,text:formToXaml(module.form,options),appliedText:null,base:formStamp(module.form),conflict:false});
   validateXamlDocument(state);
   return clone(state);
 }
@@ -49,7 +49,10 @@ export function prepareXamlEdit(project,moduleId,text,{expectedRevision,expected
     for(const m of next.modules)Object.assign(m,renamed.get(m.id));
     // Validate the whole renamed project before publishing any part of it.
     normalizeProject(next);
-    Object.assign(nextState,{appliedText:text,base:formStamp(module.form),conflict:false});
+    // A compact resource can expand into a much larger native model. Validate
+    // the complete persisted result BEFORE marking the retained draft applied.
+    const applied=validateXamlDocument({...nextState,appliedText:text,base:formStamp(module.form),conflict:false});
+    Object.assign(nextState,applied);
     return {project:next,module,result,applied:true,conflict:false};
   } catch(error) {
     // Whole-project normalization can fail after touching more than the form.
@@ -67,7 +70,7 @@ export function synchronizeXamlProject(before,after,{schema}={}) {
   if(!xamlEnabled(after))return;
   const pending=[],beforeById=new Map(before.modules.map(m=>[m.id,m]));
   for(const module of after.modules) {
-    if(!module.form||!module.xaml)continue;
+    if(!module.form||module.xaml===undefined)continue;
     const old=beforeById.get(module.id),stamp=formStamp(module.form),state=readXamlDocument(module,{schema});
     if(state.base===stamp)continue;
     const baseline=old?.form??module.form,hadDraft=state.conflict||state.text!==(state.appliedText??state.text);
@@ -76,7 +79,7 @@ export function synchronizeXamlProject(before,after,{schema}={}) {
     const next={...state,revision:nextXamlRevision(state),base:stamp,appliedText:sync.text,conflict:hadDraft};
     if(hadDraft)next.text=state.text;
     else {next.text=sync.text;if(sync.regenerated&&sync.previousText!==sync.text)next.previousText=sync.previousText;}
-    pending.push([module,next]);
+    pending.push([module,validateXamlDocument(next)]);
   }
   // Publish only after every module has synchronized successfully.
   for(const [module,state] of pending)module.xaml=state;
@@ -86,6 +89,6 @@ export function synchronizeXamlProject(before,after,{schema}={}) {
 export function useDesignerXaml(project,moduleId,{schema}={}) {
   if(!xamlEnabled(project))throw new Error('XAML authoring is disabled.');
   const next=clone(project),module=moduleFor(next,moduleId),state=readXamlDocument(module,{schema}),text=formToXaml(module.form,{schema});
-  module.xaml={version:1,revision:nextXamlRevision(state),text,appliedText:text,base:formStamp(module.form),conflict:false,previousText:state.text};
+  module.xaml=validateXamlDocument({version:1,revision:nextXamlRevision(state),text,appliedText:text,base:formStamp(module.form),conflict:false,previousText:state.text});
   return next;
 }
