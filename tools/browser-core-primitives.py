@@ -63,6 +63,7 @@ class CorePrimitives(unittest.TestCase):
         self.context = self.browser.new_context(accept_downloads=True)
         self.context.set_default_timeout(6000)
         self.errors = []
+        self.addCleanup(self.close_context)
         self.context.on('page', lambda p: p.on('pageerror', lambda error: self.errors.append(str(error))))
         self.page = self.context.new_page()
         if self.transport == 'memory':
@@ -73,7 +74,9 @@ class CorePrimitives(unittest.TestCase):
             self.page.goto(self.url)
         self.page.wait_for_function('typeof CoreTest === "object"')
 
-    def tearDown(self):
+    def close_context(self):
+        # unittest also runs cleanups when setUp fails; tearDown alone leaks
+        # contexts after a navigation or initialization error.
         self.context.close()
         self.assertEqual(self.errors, [], 'Uncaught browser errors')
 
@@ -83,14 +86,24 @@ class CorePrimitives(unittest.TestCase):
     def popup(self):
         self.js('''() => document.body.append(CoreTest.el('button',{id:'open',onclick:()=>{
             window.child=window.open('about:blank','core-test');
-            child.document.body.innerHTML='<button id="focus">Focus popup</button>';
-            window.releaseA=CoreTest.registerUIDocument(child.document);
-            window.releaseB=CoreTest.registerUIDocument(child.document);
         }},'Open popup'))''')
         with self.page.expect_popup() as opened:
             self.page.locator('#open').click()
         popup = opened.value
+        # The open() navigation can replace the initial empty document. Initialize
+        # and register the committed document, not the transient one returned in
+        # the click task (Firefox otherwise loses both the button and listeners).
+        # This is a lifecycle barrier, not a sleep, retry or larger timeout.
+        popup.wait_for_load_state('load')
+        popup.evaluate('''() => {
+            const core=opener.CoreTest;
+            opener.popupDocument=document;
+            document.body.append(core.el('button',{id:'focus',document},'Focus popup'));
+            opener.releaseA=core.registerUIDocument(document);
+            opener.releaseB=core.registerUIDocument(document);
+        }''')
         popup.locator('#focus').click()
+        self.assertTrue(self.js('() => popupDocument===child.document'))
         return popup
 
     def test_01_text_safe_dom_and_initial_values(self):
