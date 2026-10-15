@@ -275,8 +275,21 @@ width/column geometry and visible system paint.
 `tools/macos_composite_checks.py` runs in the existing three-engine application
 suite. It checks state transitions, nested boundary reset, inner/outer geometry,
 1x/2x paint extents, real popup/keyboard selection, disabled behavior, and input
-identity through Style changes. Translucent-state sample tests use the original
-native RGBA inputs in an independent host Canvas2D compositing oracle. Those
-portable checks do **not** hide the one-level quantization differences between
-AppKit and browser compositing. The full 232-state native comparison remains
-unmasked, zero-tolerance, and reports its own exact-match/certification status.
+identity through Style changes. Translucent-state sample tests use literal native
+RGBA inputs in an independent, style-isolated CSS source-over swatch. They do not
+read colors from the tested component or its generated tokens. Canvas2D is not
+used as a CSS raster oracle: the WPE WebKit port quantizes those pipelines
+differently, which previously produced false one-level failures. A negative
+control injects a one-channel, one-level mutation into the real component and
+requires it to differ while the independent reference remains unchanged. The
+full 232-state native comparison remains unmasked, zero-tolerance, and reports
+its own exact-match/certification status; this portable layer check does not
+turn native/browser mismatches into passes.
+
+The served IDE now loads its fingerprint-verified diagnostic worker from the
+same directory and HTTP origin as `studio.js`. That avoids a document-owned
+Blob URL fetch racing navigation in WebKit. File/inline standalone exports
+still contain the identical worker source and use one bounded document-owned
+Blob URL. Cross-origin scripts never select an external worker; worker failures
+still take the existing yielding parser fallback. Cancellation, stale-message
+rejection, pagehide suspension and restoration remain covered by lifecycle tests.

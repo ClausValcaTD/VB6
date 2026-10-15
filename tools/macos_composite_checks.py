@@ -3,20 +3,15 @@ import io
 import subprocess
 from pathlib import Path
 from PIL import Image
+from macos_paint_oracle import rasterize_css_layers
 
 ROOT = Path(__file__).resolve().parents[1]
 
 class MacOSCompositeChecks:
     def composite_native_layers(self, page, theme, layers):
-        # Independent native sRGB/alpha inputs, composited by the host canvas.
-        # CSS and AppKit quantize translucent pixels differently; the separate
-        # unmasked native comparator continues to report those differences.
-        return page.evaluate("""([background,layers])=>{
-            const c=document.createElement('canvas').getContext('2d');
-            c.fillStyle=background;c.fillRect(0,0,1,1);
-            for(const value of layers){c.fillStyle=value;c.fillRect(0,0,1,1);}
-            return [...c.getImageData(0,0,1,1).data].slice(0,3);
-        }""", ['#1e1e1e' if theme.endswith('-dark') else '#ffffff',layers])
+        # Literal AppKit-derived layers rendered by CSS in an isolated swatch,
+        # not by a different Canvas2D alpha pipeline. Equality remains exact.
+        return rasterize_css_layers(page, '#1e1e1e' if theme.endswith('-dark') else '#ffffff', layers)
 
     def macos_reference(self, page=None):
         subprocess.run(['node', 'tools/build-macos-theme-fixture.mjs'], cwd=ROOT, check=True)
@@ -26,6 +21,27 @@ class MacOSCompositeChecks:
         page.evaluate('window.identity = vb6Application.forms[0].controls.map(c => c.node)')
         page.mouse.move(1050, 980)
         return page
+
+    def test_macos_layer_oracle_is_independent_and_rejects_one_level_mutations(self):
+        page = self.macos_reference()
+        control = page.locator('[data-control="specimen9"] input')
+        for theme in ('macos26', 'macos26-dark'):
+            self.theme(theme, {'reduceMotion': True})
+            ink = '#ffffff' if theme.endswith('-dark') else '#000000'
+            expected = self.composite_native_layers(page, theme, [ink+'14'])
+            original = control.get_attribute('style')
+            try:
+                # Replace the source with one opaque channel that is exactly
+                # one byte off the reference. No tolerance may accept it.
+                mutated = [expected[0], expected[1], expected[2]+1]
+                control.evaluate('(e, rgb) => e.style.setProperty("background", "rgb("+rgb.join(",")+")", "important")', mutated)
+                image = Image.open(io.BytesIO(control.screenshot())).convert('RGB')
+                self.assertEqual(list(image.getpixel((100, 3))), mutated)
+                self.assertNotEqual(list(image.getpixel((100, 3))), expected)
+                self.assertEqual(self.composite_native_layers(page, theme, [ink+'14']), expected)
+            finally:
+                control.evaluate('(e, value) => value===null ? e.removeAttribute("style") : e.setAttribute("style", value)', original)
+        self.record('independent CSS reference rejects a one-channel, one-level production mutation')
 
     def test_macos_inactive_controls_keep_values_and_restore_accent(self):
         page = self.macos_reference()
@@ -37,11 +53,11 @@ class MacOSCompositeChecks:
             page.evaluate('vb6Application.forms[0].node.classList.add("vb-inactive")')
             # Sample literal native alpha layers in an independent paint oracle.
             # No sampling mask is applied to the full native comparison.
-            rgb = '255,255,255' if theme.endswith('-dark') else '0,0,0'
-            neutral = f'rgba({rgb},{20/255})'
-            samples = [((90,40),[neutral]), ((342,164),[f'rgba({rgb},{36/255})']),
-                       ((700,396),[f'rgba({rgb},{58/255})']), ((80,512),['#aaaaaa']),
-                       ((350,390),[neutral,f'rgba({rgb},{30/235})'])]
+            ink = '#ffffff' if theme.endswith('-dark') else '#000000'
+            neutral = ink+'14'
+            samples = [((90,40),[neutral]), ((342,164),[ink+'24']),
+                       ((700,396),[ink+'3a']), ((80,512),['#aaaaaa']),
+                       ((350,390),[neutral,f'color-mix(in srgb, {ink} {30/235*100}%, transparent)'])]
             image = Image.open(io.BytesIO(page.locator('.vb-form-content').screenshot())).convert('RGB')
             for xy, layers in samples:
                 self.assertEqual(list(image.getpixel(xy)), self.composite_native_layers(page,theme,layers), (theme, xy))
@@ -83,8 +99,8 @@ class MacOSCompositeChecks:
                     self.assertEqual(arrow.evaluate('e=>getComputedStyle(e).backgroundColor'), 'rgba(0, 0, 0, 0)')
                     for pseudo in ('::before','::after'):
                         self.assertEqual(arrow.evaluate('(e,p)=>getComputedStyle(e,p).content',pseudo), '""')
-                    ink='255,255,255' if theme.endswith('-dark') else '0,0,0'
-                    body=self.composite_native_layers(page,theme,[f'rgba({ink},{20/255})'])[0]
+                    ink='#ffffff' if theme.endswith('-dark') else '#000000'
+                    body=self.composite_native_layers(page,theme,[ink+'14'])[0]
                     image = Image.open(io.BytesIO(root.screenshot())).convert('RGB')
                     for y, color in [(0,background),(1,background),(3,body),(24,body),(26,background),(27,background)]:
                         self.assertEqual(image.getpixel((100*scale, y*scale)), (color,)*3, (theme, scale, y))
