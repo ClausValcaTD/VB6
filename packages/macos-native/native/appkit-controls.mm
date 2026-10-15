@@ -151,7 +151,7 @@ void MacControl::refresh(){
   refreshNativePictures(*this);
   view.needsDisplay=YES;
 }
-void MacControl::dispose(){if(disposed)return;disposed=true;if(cursorTracking){[view removeTrackingArea:cursorTracking];cursorTracking=nil;}[timer invalidate];timer=nil;[view removeFromSuperview];[menu.menu removeItem:menu];host->handles.remove(handle);for(auto&entry:collections)entry.second->owner.reset();if(delegate)delegate->model.reset();if(tableDelegate)tableDelegate->model.reset();if(outlineDelegate)outlineDelegate->model.reset();}
+void MacControl::dispose(){if(disposed)return;disposed=true;if(dataBinding){dataBinding->detach();dataBinding.reset();}boundEdit.reset();if(cursorTracking){[view removeTrackingArea:cursorTracking];cursorTracking=nil;}[timer invalidate];timer=nil;[view removeFromSuperview];[menu.menu removeItem:menu];host->handles.remove(handle);for(auto&entry:collections)entry.second->owner.reset();if(delegate)delegate->model.reset();if(tableDelegate)tableDelegate->model.reset();if(outlineDelegate)outlineDelegate->model.reset();}
 void MacControl::event(const std::string&name,Args args){
   if(disposed||eventSuppression)return;auto object=owner.lock();if(!object||!object->loaded)return;
   std::string prefix=spec.type=="Form"?"form":spec.type=="MDIForm"?"mdiform":lower(spec.name);

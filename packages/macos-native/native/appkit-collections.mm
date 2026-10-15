@@ -1,5 +1,6 @@
 // Native collection-backed controls: tables, outline trees, tabs and command bars.
 #include "appkit.hpp"
+#include "appkit-recordsets.hpp"
 namespace vb6 {
 std::shared_ptr<MacItems>MacControl::items(const std::string&raw){auto name=lower(raw);auto found=collections.find(name);if(found!=collections.end())return found->second;auto collection=std::make_shared<MacItems>(name);collection->owner=self();collections[name]=collection;return collection;}
 static Text itemText(const MacItem&item,const std::string&name="text"){auto it=item.properties.find(name);return it==item.properties.end()?Text():it->second.string();}
@@ -119,11 +120,25 @@ Value MacItem::invoke(Runtime&rt,const std::string&raw,Args args){
   c->host->event([&]{if(c->spec.type=="ListView"){auto items=c->items("listitems");if(r<items->items.size()){auto item=items->items[r];result=col==0?vb6::ns(item->get(*c->host->runtime,"text").string()):vb6::ns(item->invoke(*c->host->runtime,"subitems",{vb6::Arg(vb6::Value::integer(col))}).string());}}
     else if(!c->grid.empty()){if(r<c->grid.size()&&col<c->grid[r].size())result=vb6::ns(c->grid[r][col]);}else if(r<c->list.size())result=vb6::ns(c->list[r]);});return result;
 }
+-(BOOL)tableView:(NSTableView*)table shouldEditTableColumn:(NSTableColumn*)column row:(NSInteger)row{
+  (void)table;auto c=model.lock();if(!c||row<0||c->disposed)return NO;
+  if(!c->dataBinding)return c->spec.type=="DataGrid";
+  BOOL accepted=NO;c->host->event([&]{
+    if(c->spec.type!="DataGrid"||c->flag("locked")||!c->flag("enabled",true))return;
+    auto col=column.identifier.integerValue;if(row==0||col<0)return;
+    c->boundEdit=c->dataBinding->begin(size_t(row),size_t(col));accepted=YES;
+  });return accepted;
+}
 -(void)tableView:(NSTableView*)table setObjectValue:(id)value forTableColumn:(NSTableColumn*)column row:(NSInteger)row{
-  (void)table;if(auto c=model.lock())c->host->event([c,value,column,row]{auto col=column.identifier.integerValue;if(row<0||col<0||size_t(row)>=c->grid.size()||size_t(col)>=c->grid[size_t(row)].size())vb6::fail(381);c->grid[size_t(row)][size_t(col)]=vb6::text([value description]);c->event("aftercoledit",{vb6::Arg(vb6::Value::integer(col,vb6::Type::Integer))});});
+  (void)table;if(auto c=model.lock())c->host->event([c,value,column,row]{auto col=column.identifier.integerValue;if(row<0||col<0||size_t(row)>=c->grid.size()||size_t(col)>=c->grid[size_t(row)].size())vb6::fail(381);if(c->dataBinding||c->boundEdit){
+      auto token=c->boundEdit;c->boundEdit.reset();
+      if(!token||!c->dataBinding)vb6::fail(3218,"Native grid editor is stale");
+      c->dataBinding->commit(*token,vb6::Value::string(vb6::text([value description])));
+    }else c->grid[size_t(row)][size_t(col)]=vb6::text([value description]);
+    c->event("aftercoledit",{vb6::Arg(vb6::Value::integer(col,vb6::Type::Integer))});});
 }
 -(CGFloat)tableView:(NSTableView*)table heightOfRow:(NSInteger)row{if(auto c=model.lock()){auto found=c->rowHeights.find(int(row));if(found!=c->rowHeights.end())return found->second;}return table.rowHeight;}
--(void)tableViewSelectionDidChange:(NSNotification*)notification{auto c=model.lock();if(c&&!(c->spec.type=="ListBox"||c->spec.type=="FileListBox"||c->spec.type=="DirListBox"||c->spec.type=="ListView"))c->host->event([c,notification]{auto table=(NSTableView*)notification.object;c->properties["row"]=vb6::Value::integer(std::max(NSInteger(0),table.selectedRow));c->event("selchange");});}
+-(void)tableViewSelectionDidChange:(NSNotification*)notification{auto c=model.lock();if(c&&!(c->spec.type=="ListBox"||c->spec.type=="FileListBox"||c->spec.type=="DirListBox"||c->spec.type=="ListView"))c->host->event([c,notification]{auto table=(NSTableView*)notification.object;if(c->eventSuppression)return;if(c->dataBinding){auto row=table.selectedRow;c->boundSelection=row>0&&size_t(row)<=c->dataBinding->rowIds.size()?c->dataBinding->rowIds[size_t(row)-1]:0;}c->properties["row"]=vb6::Value::integer(std::max(NSInteger(0),table.selectedRow));c->event("selchange");});}
 @end
 @implementation VB6OutlineDelegate
 -(NSInteger)outlineView:(NSOutlineView*)outline numberOfChildrenOfItem:(id)token{
