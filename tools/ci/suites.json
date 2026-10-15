@@ -17,7 +17,8 @@
     "browser-webbrowser-tests.py",
     "browser-com-ole-tests.py",
     "browser-common-automation-tests.py",
-    "browser-windows-tests.py"
+    "browser-windows-tests.py",
+    "browser-core-primitives.py"
   ],
   "integration-authoring": [
     "browser-classic-export-tests.py",

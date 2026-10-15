@@ -186,3 +186,7 @@ No proprietary fonts, icons or runtime binaries are redistributed.
 [INTELLIGENT-UI.md](INTELLIGENT-UI.md) documents the reusable streaming UI library,
 MCP tools and App resource, coding-agent conversation rendering, permission
 boundaries, standalone packaging, and integration validation.
+
+## Shared infrastructure
+
+- [Core primitives](CORE-PRIMITIVES.md): event and timer lifetimes, transactional history, UI document ownership, DOM/download helpers and streaming artifact integrity.

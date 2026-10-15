@@ -11,6 +11,7 @@
     "tools/browser-classic-export-tests.py",
     "tools/browser-com-ole-tests.py",
     "tools/browser-common-automation-tests.py",
+    "tools/browser-core-primitives.py",
     "tools/browser-designer-tests.py",
     "tools/browser-disabled-graphics.py",
     "tools/browser-exporter-tests.py",
