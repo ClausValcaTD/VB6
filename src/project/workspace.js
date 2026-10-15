@@ -69,6 +69,9 @@ export function removeWorkspaceProject(project,path,{startupPath,activePath}={})
   const next=checked(project),w=next.nativeWorkspace;if(!w)fail('No project group is open');
   const removed=member(next,path),removedPath=projectManifestPath(removed),projects=workspaceProjects(next).filter(p=>key(projectManifestPath(p))!==key(removedPath));
   if(!projects.length)fail('A project group must retain at least one project');
+  // Validate all authors before detaching; removal must not hide an existing
+  // conflict or discard the only edited copy of a shared source/resource.
+  const originalOutput=sourceFiles(next);
   // Keep the latest bytes of detached, exclusively owned files. Do not change
   // the shared-file baseline: that would make an unchanged peer undo an edit.
   const owned=new Set(projects.flatMap(p=>Object.keys(sourceFiles(p)).map(key)));
@@ -76,7 +79,12 @@ export function removeWorkspaceProject(project,path,{startupPath,activePath}={})
   w.order=w.order.filter(p=>key(p)!==key(removedPath));w.membershipEdited=true;
   w.startupPath=startupPath||(key(w.startupPath)===key(removedPath)?w.order[0]:w.startupPath);
   const active=activePath||(key(projectManifestPath(next))===key(removedPath)?w.startupPath:projectManifestPath(next));
-  const result=pack(next,projects,active);sourceFiles(result);return result;
+  const result=pack(next,projects,active),output=sourceFiles(result);
+  const remaining=new Map(Object.entries(output).map(([p,b])=>[key(p),b]));
+  for(const [p,bytes]of Object.entries(originalOutput))if(owned.has(key(p))&&!equalBytes(bytes,remaining.get(key(p)))){
+    fail('Cannot remove '+removed.name+': edits to shared file '+p+' would be lost. Save and reopen the group to synchronize shared copies before removing this project.');
+  }
+  return result;
 }
 
 export function reorderWorkspaceProjects(project,order){

@@ -62,6 +62,7 @@
     "figma-editor-browser-tests.py"
   ],
   "project-authoring": [
-    "native-project-browser-tests.py"
+    "native-project-browser-tests.py",
+    "project-workspace-review-browser-tests.py"
   ]
 }

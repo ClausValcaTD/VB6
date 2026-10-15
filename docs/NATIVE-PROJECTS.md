@@ -55,6 +55,15 @@ folder saves remain non-destructive and may leave the old on-disk VBP behind.
 Unknown VBG records, unresolved memberships, comments and vendor sections survive.
 A no-op reorder preserves the original manifest bytes.
 
+Removal also preflights the whole group's shared output. It cannot discard the
+only edited copy of a shared source, RES or opaque FRX, or hide an existing
+conflict by removing one author. Such a removal is rejected without changing
+workspace or history; save and reopen the group to synchronize shared copies
+before detaching that project. Identical shared edits, and edits already owned
+by a surviving member, do not prevent removal. Generated relative reference
+paths are quoted when needed, including names containing whitespace-delimited
+apostrophes, so relocation survives native export and reimport.
+
 The dialog shows a stable dependency order derived from explicit `*\A` project
 references, with separate diagnostics for missing group members, actual cycles
 and projects blocked by cycles. This is planning metadata, not a multi-project

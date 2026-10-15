@@ -1,6 +1,6 @@
 /** Known VBP reference paths; unknown vendor records remain opaque. No resolution I/O. */
 import {cleanProjectPath,relativeProjectPath} from './frx.js';
-import {unquote,quote} from './native-text.js';
+import {unquote,quote,nativePathValue} from './native-text.js';
 const guid='\\{[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\}';
 const library=new RegExp('^(\\*\\\\G'+guid+'#[^#]*#[^#]*#)([^#]*)(#.*)$','i');
 const component=new RegExp('^("?'+guid+'#[^;"\\r\\n]+"?\\s*;\\s*)(.+)$','i');
@@ -32,7 +32,7 @@ export function rebaseProjectReference(reference,from,to,{movedFrom,movedTo}={})
   if(!resolved){if(from!==to)throw new Error('Cannot rebase reference outside the selected workspace: '+parsed.path);return result;}
   const target=parsed.type==='project'&&movedFrom&&resolved.toLowerCase()===movedFrom.toLowerCase()?movedTo:resolved;
   if(from===to&&target===resolved)return result;
-  const path=relativeProjectPath(to,target),value=parsed.prefix+(parsed.pathQuoted?quote(path):path)+parsed.suffix;
+  const path=relativeProjectPath(to,target),value=parsed.prefix+(parsed.pathQuoted?quote(path):nativePathValue(path))+parsed.suffix;
   result.value=parsed.type!=='object'&&reference.value.trim().startsWith('"')?quote(value):value;
   return result;
 }
