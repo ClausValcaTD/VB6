@@ -58,9 +58,9 @@ export function installNativeProjects(ide){
       if(ide.runState!=='design')throw new Error('Stop execution before switching projects.');
       if(path.toLowerCase()===projectFile(ide.project).toLowerCase())return;
       const old=ide.project,dirty=ide.dirty,next=selectWorkspaceProject(old,path);let saved=ide.savedJSON;try{saved=JSON.stringify(selectWorkspaceProject(JSON.parse(saved),path));}catch{}
-      sessions.set(projectFile(old),{undo:ide.history.undoStack.slice(),redo:ide.history.redoStack.slice(),breakpoints:clone(ide.breakpoints),watches:clone(ide.watches),docs:clone(ide.docs),active:ide.activeDoc?.key});
+      sessions.set(projectFile(old),{history:ide.history.capture(),breakpoints:clone(ide.breakpoints),watches:clone(ide.watches),docs:clone(ide.docs),active:ide.activeDoc?.key});
       groupSwitch=true;try{ide.loadProject(next);}finally{groupSwitch=false;}
-      const state=sessions.get(projectFile(next));if(state){ide.history.undoStack=state.undo;ide.history.redoStack=state.redo;ide.breakpoints=state.breakpoints;ide.watches=state.watches;for(const doc of state.docs)ide.openDocument(doc.id,doc.view);const active=state.docs.find(d=>d.key===state.active);if(active)ide.openDocument(active.id,active.view);}
+      const state=sessions.get(projectFile(next));if(state){ide.history.restore(state.history);ide.breakpoints=state.breakpoints;ide.watches=state.watches;for(const doc of state.docs)ide.openDocument(doc.id,doc.view);const active=state.docs.find(d=>d.key===state.active);if(active)ide.openDocument(active.id,active.view);}
       // Old whole-project undo snapshots cannot replace freshly edited peers.
       ide.savedJSON=saved;ide.dirty=dirty||JSON.stringify(ide.project)!==saved;ide.updateTitle();ide.persist();ide.status('Active project: '+next.name+'; all projects remain in the workspace.');
     }catch(error){if(!interactive)throw error;ide.nativeGroupSelect.value=projectFile(ide.project);alertDialog(error.message,'Project Group');}
