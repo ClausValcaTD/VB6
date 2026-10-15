@@ -90,7 +90,7 @@ export class ProviderRecordset extends DisconnectedRecordset {
   moveTo(position){if(this._updatePromise)return this._updatePromise.then(()=>this.moveTo(position));this.guard();this.requireOpen();return after(this.Update(),()=>{this.position=Math.max(-1,Math.min(this.RecordCount,position));this.notify('move');});}
   MoveFirst(){return this.moveTo(0);}MoveLast(){return this.moveTo(this.RecordCount-1);}
   MoveNext(){return this.moveTo(this.position+1);}MovePrevious(){return this.moveTo(this.position-1);}
-  Move(count,start){count=dataInteger(count);const position=start===undefined?this.position:this.bookmarkPosition(start);return this.moveTo(position+count);}
+  Move(count,start){count=dataInteger(count);if(start!==undefined)this.bookmarkPosition(start);return after(this.Update(),()=>{const position=start===undefined?this.position:this.bookmarkPosition(start);return this.moveTo(position+count);});}
   ensurePropertyEdit(){this.guard();assertData(!this._pending||!this._writer,'Call Update or CancelUpdate before changing a connected cursor property',3219);}
   get Filter(){return super.Filter;}set Filter(value){this.ensurePropertyEdit();super.Filter=value;}
   get Sort(){return super.Sort;}set Sort(value){this.ensurePropertyEdit();super.Sort=value;}

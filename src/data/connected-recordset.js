@@ -106,14 +106,14 @@ export class ConnectedRecordset extends ProviderRecordset {
   cursorRow(){this.requireOpen();const row=this.view()[this.position];assertData(row,'Either BOF or EOF is True',3021);return row;}
   get Status(){return statusOf(this._family.batch.get(this.cursorRow()));}
   get Bookmark(){return this._bookmarks.get(this.cursorRow());}
-  set Bookmark(value){this.ensurePropertyEdit();this.requireOpen();const index=this.bookmarkPosition(value);this.Update();this.moveTo(index);}
+  set Bookmark(value){this.ensurePropertyEdit();this.requireOpen();this.bookmarkPosition(value);this.Update();this.moveTo(this.bookmarkPosition(value));}
   get Filter(){return Array.isArray(this._filter)?this._filter.slice():this._filter;}
   set Filter(value){
     this.ensurePropertyEdit();this.requireOpen();let predicate=null;
     if(value===0)value='';
     if(typeof value==='string')predicate=this.compileFilter(value);
     else if(typeof value==='number')assertData([1,2,3,5].includes(value),'Unknown filter group',3001);
-    else{value=dataList(value);const bookmarks=new Set(this.rows.map(row=>this._bookmarks.get(row)));assertData(value.length<=100000&&value.every(n=>typeof n==='number'&&Number.isSafeInteger(n)&&bookmarks.has(n)),'Invalid bookmark filter',3001);}
+    else{value=dataList(value);const bookmarks=new Set(this.rows.map(row=>this._bookmarks.get(row)));assertData(value.length<=100000&&value.every(n=>typeof n==='number'&&Number.isSafeInteger(n)&&bookmarks.has(n)),'Invalid bookmark filter',3001);value=value.slice();}
     if(value===1||value===5)assertData(this.LockType===4,'Batch filters require batch optimistic locking',3251);
     this.Update();this._filter=value;this._bookmarkFilter=Array.isArray(value)?new Set(value):null;this._predicate=predicate;this._deletedCurrent=null;this._cache=null;this.position=0;this.notify('filter');
   }

@@ -21,7 +21,7 @@ export class ADOConnection {
   set CommandTimeout(value){value=Number(value);assertData(Number.isFinite(value)&&value>=1&&value<=600,'CommandTimeout must be 1–600 seconds',5);this._commandTimeout=value;this._timeoutExplicit=true;}
   capture(error){
     const e=error?.number!==undefined?error:dataError(error?.message||'Provider operation failed',3001);
-    this.Errors.items.splice(0,this.Errors.Count,{Number:e.number,Description:e.message,Source:e.source||'VB6.Data',SQLState:e.SQLState||e.sqlState||'',NativeError:e.NativeError??e.nativeError??e.number});return e;
+    this.Errors.items.splice(0,this.Errors.Count,{Number:e.number,Description:e.message,Source:e.source||'VB6.Data',SQLState:error?.SQLState||error?.sqlState||e.SQLState||e.sqlState||'',NativeError:error?.NativeError??error?.nativeError??e.NativeError??e.nativeError??e.number});return e;
   }
   async guard(action){this.Errors.Clear();try{return await action();}catch(error){throw this.capture(error);}}
   closeAdapter(adapter){
@@ -108,7 +108,7 @@ export class ADOConnection {
   BeginTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.begin,'Provider does not support transactions',3251);return this.adapter.begin();});}
   CommitTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.commit,'Provider does not support transactions',3251);return this.adapter.commit();});}
   RollbackTrans(){return this.guard(()=>{assertData(this.State===1,'Connection is closed',3709);assertData(this.adapter.rollback,'Provider does not support transactions',3251);return this.adapter.rollback();});}
-  Cancel(){this._generation++;this.adapter?.cancel?.();if(this._state===2)this._state=0;}
+  Cancel(){this._generation++;if(this._state===2)this._state=0;this.adapter?.cancel?.();}
   Close(){
     if(this._closing)return this._closing;
     const adapter=this.adapter,opening=this._opening;

@@ -103,7 +103,7 @@ export class DisconnectedRecordset {
   get AbsolutePosition(){this.requireOpen();return this.BOF?-2:this.EOF?-3:this.position+1;}
   set AbsolutePosition(v){this.requireOpen();v=integer(v);if(v<1||v>this.RecordCount)fail('Invalid absolute position');this.moveTo(v-1);}
   get Bookmark(){const row=this.current();return this._bookmarks.get(row);}
-  set Bookmark(v){this.requireOpen();const index=this.bookmarkPosition(v);this.Update();this.position=index;this.notify('move');}
+  set Bookmark(v){this.requireOpen();this.bookmarkPosition(v);this.Update();this.position=this.bookmarkPosition(v);this.notify('move');}
   Open(source,connection,cursor,lock,options){
     if(this.State)fail('Operation is not allowed when the object is open',3705);
     if(source!==undefined&&source!==''||connection!==undefined&&connection!==null&&connection!==''||options!==undefined&&Number(options)!==0)fail('Database connections, SQL, and persisted recordsets are not implemented',3251);
@@ -128,7 +128,7 @@ export class DisconnectedRecordset {
   CancelUpdate(){this.requireOpen();if(!this._pending)return;const pending=this._pending;this._pending=null;if(pending.isNew)this.rows.splice(this.rows.indexOf(pending.row),1);else for(const col of this.columns)pending.row[col.Name]=pending.before[col.Name];this._cache=null;const row=pending.isNew?pending.previous:pending.row;this.position=row?this.view().indexOf(row):0;this.notify('cancel');}
   Delete(affect=1){this.requireWrite();if(Number(affect)!==1)fail('Only deletion of the current row is implemented',3251);const row=this.current(),position=this.position;this._pending=null;this.rows.splice(this.rows.indexOf(row),1);this._cache=null;this.position=Math.min(position,this.RecordCount);this.notify('delete');}
   moveTo(position){this.requireOpen();this.Update();this.position=Math.max(-1,Math.min(this.RecordCount,position));this.notify('move');}
-  MoveFirst(){this.moveTo(0);}MoveLast(){this.moveTo(this.RecordCount-1);}MoveNext(){this.moveTo(this.position+1);}MovePrevious(){this.moveTo(this.position-1);}Move(n,start){n=integer(n);const position=start===undefined?this.position:this.bookmarkPosition(start);return this.moveTo(position+n);}
+  MoveFirst(){this.moveTo(0);}MoveLast(){this.moveTo(this.RecordCount-1);}MoveNext(){this.moveTo(this.position+1);}MovePrevious(){this.moveTo(this.position-1);}Move(n,start){n=integer(n);if(start!==undefined)this.bookmarkPosition(start);this.Update();const position=start===undefined?this.position:this.bookmarkPosition(start);return this.moveTo(position+n);}
   get Filter(){return this._filter;}
   set Filter(value){this.requireOpen();if(value===0)value='';if(typeof value!=='string')fail('Only criteria-string filters and adFilterNone are implemented',3251);const predicate=this.compileFilter(value);this.Update();this._filter=value;this._predicate=predicate;this._cache=null;this.position=0;this.notify('filter');}
   compileFilter(text,options){return compileADOFilter(text,key=>this.column(key),fieldValue,col=>TYPES.get(col.Type)==='String',options);}
