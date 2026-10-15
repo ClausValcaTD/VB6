@@ -34,6 +34,7 @@
     "tools/build-windows.mjs",
     "tools/build.mjs",
     "tools/check-decimal-automation.mjs",
+    "tools/coding-agents-browser-tests.py",
     "tools/compare-win32-system.mjs",
     "tools/decimal-automation-reference.ps1",
     "tools/embed-macos-aot-runtime.mjs",

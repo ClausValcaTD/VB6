@@ -805,6 +805,43 @@ jobs:
           name: macos-direct-browser-native-execution-${{ matrix.os }}
           path: reports/macos-aot-browser-native
           retention-days: 14
+  coding-agents:
+    name: Coding agents (${{ matrix.browser }}, ${{ matrix.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          - chromium
+          - firefox
+          - webkit
+        mode:
+          - http
+          - standalone-http
+          - file
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup-browser
+        with:
+          browser: ${{ matrix.browser }}
+      - name: Validate every coding-agent scenario on the real origin
+        env:
+          ENGINE: ${{ matrix.browser }}
+          MODE: ${{ matrix.mode }}
+        run: python tools/coding-agents-browser-tests.py --browser "$ENGINE" --mode "$MODE"
+      - name: Assert generated fingerprints are unchanged
+        run: git diff --exit-code -- tools/ide-artifacts.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coding-agents-${{ matrix.browser }}-${{ matrix.mode }}
+          path: reports/coding-agents
+          if-no-files-found: error
+          retention-days: 7
   test:
     name: test
     runs-on: ubuntu-latest
@@ -826,6 +863,7 @@ jobs:
       - migration
       - macos
       - macos-browser-native
+      - coding-agents
     if: always()
     steps:
       - uses: actions/checkout@v4
@@ -838,4 +876,4 @@ jobs:
         run: node tools/ci/gate.mjs
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
-          CI_EXPECTED: hygiene,node,packages,core-browser,browser,figma,authoring-exports,advanced-build,advanced-editor,rendering-qualification,win32-system-contracts,native-com-ole,native-compiler,migration,macos,macos-browser-native
+          CI_EXPECTED: hygiene,node,packages,core-browser,browser,figma,authoring-exports,advanced-build,advanced-editor,rendering-qualification,win32-system-contracts,native-com-ole,native-compiler,migration,macos,macos-browser-native,coding-agents
