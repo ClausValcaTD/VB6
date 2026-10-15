@@ -69,8 +69,8 @@
  .vb-form-title .vb-window-button:active:not(:disabled),.vb-combo-arrow:active:not(:disabled),.vb-spin-button:active:not(:disabled) {box-shadow:var(--app-pressed-shadow,var(--vb-bevel-pressed));}
  .vb-scroll-arrow {box-shadow:var(--app-control-shadow,var(--vb-bevel-raised))!important;}
  .vb-scroll-arrow:active:not(:disabled) {box-shadow:var(--app-pressed-shadow,var(--vb-bevel-pressed))!important;}
- .vb-control input:not([type=checkbox]):not([type=radio]):not([type=range]),.vb-control textarea,.vb-control select,.vb-dialog input:not([type=checkbox]):not([type=radio]) {box-shadow:var(--app-input-shadow,var(--vb-bevel-sunken));}
- .vb-control input:not([type=checkbox]):not([type=radio]):not([type=range]):focus-visible,.vb-control textarea:focus-visible,.vb-control select:focus-visible {box-shadow:var(--app-input-focus-shadow,var(--vb-bevel-sunken));}
+ .vb-control input:not([type=checkbox]):not([type=radio]):not([type=range]),.vb-control textarea,.vb-control select,.vb-dialog input:not([type=checkbox]):not([type=radio]) {box-shadow:var(--winui-input-shadow,var(--app-input-shadow,var(--vb-bevel-sunken)));}
+ .vb-control input:not([type=checkbox]):not([type=radio]):not([type=range]):focus-visible,.vb-control textarea:focus-visible,.vb-control select:focus-visible {box-shadow:var(--winui-input-shadow,var(--app-input-focus-shadow,var(--vb-bevel-sunken)));}
  .vb-control :is(input,textarea):read-only {outline-color:var(--app-border,var(--vb-shadow));}
  .vb-form ::-webkit-scrollbar-thumb,.vb-dialog ::-webkit-scrollbar-thumb,.vb-combo-popup::-webkit-scrollbar-thumb {border-radius:var(--detail-scrollbar-radius,0);border:var(--detail-scrollbar-border,0);background:var(--detail-scrollbar-thumb,var(--vb-face));box-shadow:var(--detail-scrollbar-shadow,var(--vb-bevel-raised));}
 }

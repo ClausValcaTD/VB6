@@ -239,3 +239,10 @@ checks do not certify native macOS/Linux behavior or pixel equivalence.
 build and verified against a mandatory, locally reviewed SHA-256/length entry in
 `tools/ide-artifacts.json`. Edit the source styles, not the derivative. CI never
 refreshes its own expected fingerprints.
+
+## WinUI resource-backed fidelity
+
+Fluent light/dark now use pinned Microsoft.UI.Xaml semantic colors, state brushes
+and component metrics. See [WinUI rendering and validation](WINUI-PARITY.md) for
+the exact reference, authored-color/geometry boundaries, tests and remaining
+native-pixel certification requirements.
