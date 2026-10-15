@@ -1,6 +1,7 @@
 // Native module lifetime, startup, forms and host boundary. MIT.
 #include "vb6.hpp"
 #include "lifetime.hpp"
+#include "recordset.hpp"
 #include "resources.hpp"
 #include <iostream>
 namespace vb6 {
@@ -28,7 +29,7 @@ std::shared_ptr<Instance> Runtime::instance(const std::string&raw,bool fresh){
     if(!fresh){auto it=instances.find(name);if(it!=instances.end()&&it->second==object)instances.erase(it);}throw;}
   return object;
 }
-Value Runtime::create(const std::string&raw){auto name=lower(raw);if(modules.count(name))return Value::object(instance(name,true));return createLibraryObject(*this,name);}
+Value Runtime::create(const std::string&raw){auto name=lower(raw);if(name=="adodb.recordset")return createNativeRecordset(*this);if(modules.count(name))return Value::object(instance(name,true));return createLibraryObject(*this,name);}
 Value Runtime::invoke(const std::shared_ptr<Instance>&object,const std::string&raw,Args args,bool internal){
   auto name=lower(raw);auto found=object->module->procedures.find(name);if(found==object->module->procedures.end())fail(438,"Unknown procedure: "+raw);
   auto&proc=found->second;if(!internal&&proc.scope=="private")fail(438);if(!proc.code)fail(453);

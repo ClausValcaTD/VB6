@@ -6,6 +6,7 @@
 #include "library.hpp"
 #include "calendar.hpp"
 #include "handles.hpp"
+#include "recordset-grid.hpp"
 #include <exception>
 #include <unordered_map>
 @class VB6Canvas;@class VB6ControlDelegate;@class VB6WindowDelegate;@class VB6ApplicationDelegate;@class VB6TableDelegate;@class VB6OutlineDelegate;
@@ -32,6 +33,9 @@ struct MacControl:Object {
   NSView*view=nil;NSView*widget=nil;NSMenuItem*menu=nil;VB6ControlDelegate*delegate=nil;VB6TableDelegate*tableDelegate=nil;VB6OutlineDelegate*outlineDelegate=nil;NSTimer*timer=nil;NSTrackingArea*cursorTracking=nil;
   int32_t handle=0;bool initialized=false,disposed=false,eventActive=false,editSelectionPending=false;std::vector<Text>list;std::vector<int32_t>itemData;std::set<size_t>selected;
   std::map<std::string,std::shared_ptr<MacItems>>collections;std::vector<std::vector<Text>>grid;std::map<int,double>columnWidths,rowHeights;std::vector<GraphicCommand>graphics;
+  std::shared_ptr<NativeRecordsetGrid> dataBinding;
+  std::optional<RecordsetGridEdit> boundEdit;
+  uint64_t boundSelection=0;bool boundColumnsReady=false;
   std::map<uint64_t,id>outlineTokens;double currentX=0,currentY=0;size_t suspendLayout=0,eventSuppression=0;NSSize originalParentSize=NSZeroSize;NSRect originalFrame=NSZeroRect;
   MacControl(MacHost&h,std::shared_ptr<Instance>f,ControlSpec s):host(&h),owner(f),spec(std::move(s)){}
   std::string className()const override{return spec.type;}

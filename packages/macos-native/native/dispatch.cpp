@@ -10,6 +10,7 @@ Value scalar(Runtime& runtime,Value value) {
 void ErrorState::clear(){number=0;description.clear();source.clear();helpFile.clear();helpContext=0;erl=0;}
 
 void assign(Runtime& rt,Ref ref,Value value,bool objectSet){
+  if(ref.type=="__native_datasource"){ref.set(std::move(value),true);return;}
   if(objectSet){if(value.type!=Type::Object)fail(424);ref.set(value,true);return;}
   value=scalar(rt,std::move(value));
   const auto current=ref.get();

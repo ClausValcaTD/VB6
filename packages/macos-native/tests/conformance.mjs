@@ -1,10 +1,11 @@
+import {recordsetModule} from './recordsets.mjs';
 import {resourceModule,resourceModel} from './resources.mjs';
 import {scopeModules} from './scopes.mjs';
 import {arrayModules} from './arrays.mjs';
 import {lifetimeModules} from './lifetimes.mjs';
 import {interfaceModules} from './interfaces.mjs';
 export function conformanceProject() {
-  return {schema:1,name:'NativeConformance',startup:'Sub Main',settings:{resourceLanguage:1045},resources:resourceModel(),modules:[resourceModule(),...scopeModules(),...interfaceModules(),...lifetimeModules(),...arrayModules(),
+  return {schema:1,name:'NativeConformance',startup:'Sub Main',settings:{resourceLanguage:1045},resources:resourceModel(),modules:[recordsetModule(),resourceModule(),...scopeModules(),...interfaceModules(),...lifetimeModules(),...arrayModules(),
     {name:'Counter',kind:'class',code:`Option Explicit
 Private n As Long
 Public Property Get Value() As Long
@@ -53,6 +54,7 @@ Public Sub Main()
   Close #file
   Kill "native-conformance.bin"
   Debug.Assert value = 11
+  CheckNativeRecordsets
   CheckNativeResources
   CheckNativeArrays
   CheckNativeScopes

@@ -1,11 +1,13 @@
 // Native AppKit control implementation. MIT.
 #include "appkit-control-utils.hpp"
+#include "appkit-recordsets.hpp"
 #include "appkit-edit.hpp"
 #include "appkit-pictures.hpp"
 #include "appkit-richtext.hpp"
 namespace vb6 {
 Value MacControl::get(Runtime&rt,const std::string&raw){
   if(disposed)fail(91,"Control has been unloaded");auto name=lower(raw.empty()?defaultMember():raw);
+  if(name=="datasource"&&nativeRecordsetGridControl(*this))return Value::object(dataBinding?dataBinding->source:nullptr);
   if(name=="hwnd"||name=="handle")return Value::integer(handle);
   if(name=="font")return createNativeFont(self());
   if(name=="container"||name=="parent"){auto f=owner.lock();if(!f)fail(91);if(spec.parent.empty())return Value::object(f);return f->get(rt,spec.parent);}
@@ -44,6 +46,8 @@ Value MacControl::get(Runtime&rt,const std::string&raw){
 }
 void MacControl::set(Runtime&rt,const std::string&raw,Value value,bool){
   if(disposed)fail(91);auto name=lower(raw.empty()?defaultMember():raw);
+  if(name=="datasource"){bindNativeRecordset(*this,std::move(value));return;}
+  if(dataBinding&&(name=="rows"||name=="cols"||name=="rowcount"||name=="columncount"||(name=="fixedrows"&&value.integral()!=1)||(name=="fixedcols"&&value.integral()!=0)))fail(380,"Bound grid shape is owned by its Recordset");
   if(name=="name"||name=="index"||name=="hwnd"||name=="handle"||name=="listcount")fail(383,"Property is read-only");
   if(name=="font"){auto font=value.asObject();for(const auto&entry:std::map<std::string,std::string>{{"name","fontname"},{"size","fontsize"},{"bold","fontbold"},{"italic","fontitalic"},{"underline","fontunderline"},{"strikethrough","fontstrikethru"}})set(rt,entry.second,font->get(rt,entry.first));return;}
   if(name=="listindex"){
@@ -65,7 +69,7 @@ void MacControl::set(Runtime&rt,const std::string&raw,Value value,bool){
     else{auto collection=items(spec.type=="ListView"?"listitems":"tabs");auto it=std::find(collection->items.begin(),collection->items.end(),item);if(it==collection->items.end())fail(380);size_t i=size_t(it-collection->items.begin());if(spec.type=="ListView")[(NSTableView*)widget selectRowIndexes:[NSIndexSet indexSetWithIndex:i]byExtendingSelection:NO];else [(NSTabView*)widget selectTabViewItemAtIndex:i];}return;
   }
   if(name=="tab"&&spec.type=="SSTab"){auto i=value.integral();auto tabs=(NSTabView*)widget;if(i<0||i>=tabs.numberOfTabViewItems)fail(380);[tabs selectTabViewItemAtIndex:i];properties[name]=Value::integer(i,Type::Integer);return;}
-  if(name=="text"&&!grid.empty()){auto r=size_t(number("row",0)),c=size_t(number("col",0));if(r>=grid.size()||c>=grid[r].size())fail(381);grid[r][c]=value.string();reloadList();return;}
+  if(name=="text"&&!grid.empty()){auto r=size_t(number("row",0)),c=size_t(number("col",0));if(r>=grid.size()||c>=grid[r].size())fail(381);writeNativeRecordsetCell(*this,r,c,std::move(value));return;}
   if(name=="rows"||name=="cols"||name=="rowcount"||name=="columncount"){
     auto n=value.integral();if(n<0||n>100000)fail(380);auto rows=(name=="rows"||name=="rowcount")?size_t(n):grid.size(),cols=(name=="cols"||name=="columncount")?size_t(n):(grid.empty()?0:grid[0].size());resizeGrid(rows,cols);properties[name]=Value::integer(n);updateColumns();reloadList();return;
   }
@@ -95,6 +99,14 @@ void MacControl::set(Runtime&rt,const std::string&raw,Value value,bool){
   }catch(...){properties[name]=previous;throw;}
 }
 Ref MacControl::reference(Runtime&rt,const std::string&raw,Args args){
+  if(lower(raw)=="datasource"&&args.empty()&&nativeRecordsetGridControl(*this)){
+    auto control=self();return {[control]{if(control->disposed)fail(91);return Value::object(control->dataBinding?control->dataBinding->source:nullptr);},
+      [control](Value value,bool){if(control->disposed)fail(91);bindNativeRecordset(*control,std::move(value));},"__native_datasource",false,false};
+  }
+  if(dataBinding&&lower(raw)=="textmatrix"&&args.size()==2){
+    auto row=args[0].value.integral(),column=args[1].value.integral();if(row<0||column<0)fail(381);
+    return nativeRecordsetCellReference(*this,size_t(row),size_t(column));
+  }
   auto c=self();auto name=lower(raw);if(args.empty())return Object::reference(rt,name,args);
   return {[c,&rt,name,args]{return c->invoke(rt,name,args);},[c,&rt,name,args](Value v,bool){auto all=args;all.emplace_back(v);c->invoke(rt,"let:"+name,all);},"variant",false,false};
 }
