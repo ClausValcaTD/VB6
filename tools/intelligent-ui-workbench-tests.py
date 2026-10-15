@@ -7,6 +7,7 @@ import argparse, functools, http.server, json, os, shutil, threading
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from intelligent_ui_workbench_cases import run_workbench_cases
+from intelligent_ui_ordering_cases import run_surface_ordering_cases
 
 ROOT=Path(__file__).resolve().parents[1]
 parser=argparse.ArgumentParser()
@@ -49,6 +50,7 @@ try:
         try:
             for mode in (['opaque'] if args.opaque else ['modules','standalone','file']):
                 run_workbench_cases(browser,mode,load,check,passed,REPORT)
+                run_surface_ordering_cases(browser,mode,load,check,passed,REPORT)
         finally:browser.close()
 finally:
     server.shutdown()

@@ -88,7 +88,26 @@ export class UISurface {
     finally{this.inflight=false;if(this.pending&&!this.disposed)void this.flush();else void this.flushResize();}
   }
   apply(result){this.renderer.apply(result.operations);this.version=result.version;this.result=result;this.fallback.textContent=result.fallbackMarkdown||this.viewport.textContent;const diagnostics=[...result.diagnostics,...result.recoveryDiagnostics];this.diagnosticTitle.textContent=diagnostics.length+' diagnostics';this.diagnosticText.textContent=diagnostics.map(d=>d.code+': '+d.message).join('\n');this.diagnostics.hidden=!diagnostics.length;this.status.textContent=(this.latest?.options.partial?'Streaming':'Interactive')+' · '+this.client.backend;try{this.options.onUpdate(result,this);}catch{/* Observers do not roll back successful renders. */}}
-  event(id,args){const generation=this.generation;const action=this.eventQueue.then(async()=>{if(this.disposed||generation!==this.generation)throw new UIError('stale_event','UI changed before this interaction.');const client=this.client;const result=await client.request('event',{id,args,version:this.version});if(this.disposed||client!==this.client||generation!==this.generation)return;this.apply(result);for(const action of result.actions){if(this.disposed||generation!==this.generation)return;await this.action(action);}return result;});this.eventQueue=action.catch(error=>{if(!this.disposed&&generation===this.generation)this.error(error);});return action;}
+  event(id,args){
+    const generation=this.generation;
+    const action=this.eventQueue.then(async()=>{
+      if(this.disposed||generation!==this.generation)throw new UIError('stale_event','UI changed before this interaction.');
+      if(this.pending||this.inflight)throw new UIError('stale_event','Wait for the current UI update before using this interaction.');
+      const client=this.client,result=await client.request('event',{id,args,version:this.version});
+      if(this.disposed||client!==this.client)return;
+      // The interpreter has committed this delta. Later update/resize deltas
+      // are relative to it, even when the source generation now forbids its
+      // host effects. Consume the FIFO render delta to keep both trees aligned.
+      this.apply(result);
+      for(const action of result.actions){
+        if(this.disposed||generation!==this.generation)return;
+        await this.action(action);
+      }
+      return result;
+    });
+    this.eventQueue=action.catch(error=>{if(!this.disposed&&generation===this.generation)this.error(error);});
+    return action;
+  }
   error(error){if(this.disposed)return;this.status.textContent=error.message+' Last valid UI retained.';try{this.options.onError?.(error,this);}catch{}}
   snapshot(){return this.client.snapshot();}
   restart(){if(this.disposed)return;this.actionScope.invalidate();this.eventQueue=Promise.resolve();this.client.dispose();this.renderer.dispose();this.client=new UIClient({workerSource:this.options.workerSource,window:this.doc.defaultView,catalog:this.options.catalog});this.makeRenderer();this.generation++;this.version=0;if(this.latest)void this.enqueue(this.latest.method,this.latest.value,this.latest.options).catch(e=>this.error(e));}
