@@ -3,7 +3,8 @@
  * embedded quotation marks are preserved, not doubled into a different format.
  * https://learn.microsoft.com/office/vba/language/reference/user-interface-help/writestatement
  */
-import {mem32} from './x86-operands.js';
+import {MAX_NATIVE_STRING} from './storage.js';
+import {mem16,mem32} from './x86-operands.js';
 const arg=argument=>({argument}),slot=v=>mem32({base:'ebp',displacement:v.offset});
 export const NATIVE_WRITE_SOURCE=`Option Explicit
 Private Declare Function VariantChangeTypeEx Lib "oleaut32" (ByVal destination As Long, ByVal source As Long, ByVal locale As Long, ByVal flags As Integer, ByVal target As Integer) As Long
@@ -51,16 +52,23 @@ Private Function Field(ByVal value As Variant) As String
 End Function`;
 function kernel(c){return c.nativeWriteKernel ||= c.privateNativeKernel('NativeWriteRecord',NATIVE_WRITE_SOURCE);}
 export function nativeWriteImage(c,instruction){
- const x=c.x,out=c.temporaryString(),position=c.arrayWorkspace(4,'write-column');
- c.clearStringStorage(out);
- const append=()=>{
-  x.push().push(arg(out.offset)).call('native:string:concat');c.ownString();
-  x.push();c.rawStorageAddress(out);x.push().call('native:string:assign');
- };
+ const x=c.x,parts=c.arrayWorkspace(Math.max(4,instruction.exprs.length*8),'write-fields'),position=c.arrayWorkspace(4,'write-column');
+ c.nativeWriteUsed=true;
+ // Field results already have independent statement-scoped BSTR owners. Keep
+ // those snapshots until every expression succeeds, then size/copy exactly once.
  for(const [index,expr] of instruction.exprs.entries()){
-  if(index){x.value(c.string(','));append();}
-  c.invokePrivateNative(kernel(c),'Field',[expr]);append();
+  c.invokePrivateNative(kernel(c),'Field',[expr]);
+  x.mov(mem32({base:'ebp',displacement:parts.offset+index*8}),'eax');
  }
- x.value(c.string('\r\n'));append();x.mov(slot(position),0).value(arg(out.offset));
- return {out,position};
+ c.rawStorageAddress(parts);x.push(instruction.exprs.length).push({address:parts.offset}).call('native:file:write-image');
+ const out=c.ownString();x.mov(slot(position),0).value(arg(out.offset));return {out,position};
+}
+export function emitNativeWriteImage(c){
+ if(!c.nativeWriteUsed)return;const x=c.x,at=(base,displacement=0)=>mem32({base,displacement});
+ const sized=x.unique(),sizing=x.unique(),empty=x.unique(),copy=x.unique(),end=x.unique();
+ x.label('native:file:write-image').enter(4).value(arg(12)).compare(MAX_NATIVE_STRING-1).branch('a','error:7').mov('ebx','eax').mov('edi','eax').inc('edi').testOperand('ebx','ebx').branch('e',empty).value(arg(8)).mov('esi','eax');
+ x.label(sizing).pushOperand(at('esi')).invoke('oleaut32.dll','SysStringLen').mov(at('esi',4),'eax').add('edi','eax').branch('c','error:7').cmp('edi',MAX_NATIVE_STRING).branch('a','error:7').add('esi',8).dec('ebx').branch('ne',sizing).jump(sized);
+ x.label(empty).mov('edi',2).label(sized).pushOperand('edi').push(0).invoke('oleaut32.dll','SysAllocStringLen').test().branch('e','error:7').mov(at('ebp',-4),'eax').mov('edi','eax').value(arg(12)).mov('ebx','eax').test().branch('e',end).value(arg(8)).mov('esi','eax');
+ x.label(copy).mov('ecx',at('esi',4)).pushOperand('esi').mov('esi',at('esi')).emit(0xfc,0x66,0xf3,0xa5).popOperand('esi').dec('ebx').branch('e',end).mov(mem16({base:'edi'}),44).add('edi',2).add('esi',8).jump(copy);
+ x.label(end).mov(at('edi'),0x000a000d).mov('eax',at('ebp',-4)).leave(8);
 }
