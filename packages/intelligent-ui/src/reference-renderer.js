@@ -13,7 +13,7 @@ export function createReferenceFactories({resolveReference=async()=>null,allowRe
       const url=safeUrl(record.src);
       const load=()=>{if(disposed||generation!==token)return;const img=document.createElement('img');img.alt=record.alt||props.alt||record.title||'';img.referrerPolicy='no-referrer';img.loading='lazy';img.style.maxWidth='100%';img.style.aspectRatio=String(props.aspectRatio||'auto').replace(':','/');img.style.objectFit=props.objectFit||'contain';img.onerror=()=>{if(generation===token)caption.textContent='Image unavailable: '+caption.textContent;};img.src=url;button.replaceWith(img);};
       if(allowResource(url)===true)load();
-      else button.onclick=async()=>{button.disabled=true;try{if(await approveResource(url)!==true)throw new UIError('resource_denied','Image loading was declined.');load();}catch(error){if(generation===token){button.disabled=false;caption.textContent=error.message;}}};
+      else button.onclick=async()=>{button.disabled=true;try{if(await approveResource(url,{signal:controller?.signal})!==true)throw new UIError('resource_denied','Image loading was declined.');load();}catch(error){if(generation===token){button.disabled=false;caption.textContent=error.message;}}};
       if(record.url){const link=document.createElement('button');link.type='button';link.textContent='Open source';link.onclick=()=>action({type:'link',args:[safeUrl(record.url)]});figure.append(link);}
     };
     const render=async()=>{
