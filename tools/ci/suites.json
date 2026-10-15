@@ -1,0 +1,62 @@
+{
+  "core-runtime": [
+    "browser-tests.py",
+    "browser-language-parity.py"
+  ],
+  "core-parity": [
+    "browser-parity-tests.py",
+    "browser-features-04.py"
+  ],
+  "core-recovery": [
+    "recovery-browser-tests.py",
+    "browser-finalization-05.py",
+    "browser-boundaries-06.py"
+  ],
+  "integration-controls": [
+    "browser-html-retention.py",
+    "browser-webbrowser-tests.py",
+    "browser-com-ole-tests.py",
+    "browser-common-automation-tests.py",
+    "browser-windows-tests.py"
+  ],
+  "integration-authoring": [
+    "browser-classic-export-tests.py",
+    "browser-theme-tests.py",
+    "browser-layout-tests.py",
+    "auto-layout-browser-tests.py",
+    "browser-application-theme-tests.py",
+    "browser-native-caption-tests.py",
+    "browser-sample-exports.py",
+    "browser-exporter-tests.py",
+    "browser-winui-tests.py"
+  ],
+  "intelligent-ui": [
+    "intelligent-ui-browser-tests.py",
+    "intelligent-ui-host-browser-tests.py"
+  ],
+  "authoring-exports": [
+    "browser-xaml-tests.py",
+    "browser-macos-export-tests.py",
+    "browser-macos-aot-tests.py",
+    "browser-designer-tests.py"
+  ],
+  "figma-authoring": [
+    "figma-browser-tests.py",
+    "figma-presentation-browser-tests.py",
+    "figma-retained-webgl-browser-tests.py",
+    "figma-navigation-browser-tests.py",
+    "figma-editor-browser-tests.py"
+  ],
+  "figma-services": [
+    "figma-property-keyboard-browser-tests.py",
+    "figma-services-browser-tests.py",
+    "figma-service-state-browser-tests.py"
+  ],
+  "advanced-editor": [
+    "browser-advanced-editor-tests.py",
+    "figma-advanced-editor-browser-tests.py"
+  ],
+  "code-gpu": [
+    "figma-editor-browser-tests.py"
+  ]
+}

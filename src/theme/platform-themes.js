@@ -1,3 +1,4 @@
+import {WINUI_RESOURCES} from './winui-resources.js';
 /** Shared immutable platform palettes. Original browser-rendered artwork and colors;
  * no native toolkit, proprietary font or OS resource dependencies. */
 const freeze = value => {
@@ -38,10 +39,20 @@ const darkTokens = {
   pressedShadow:'inset 0 1px 2px #00000055',material:'#202020',scrim:'#00000066',thumb:'#adadad',
   success:'#9ccc8a',warning:'#ffd58a'
 };
+// Fluent uses native semantic brushes; other platform palettes remain unchanged.
+function fluentTokens(scheme, base) {
+  const r=WINUI_RESOURCES[scheme];
+  return {...base,size:'14px',border:r.ControlStrokeColorDefault,separator:r.DividerStrokeColorDefault,
+    control:r.ControlFillColorDefault,hover:r.ControlFillColorSecondary,pressed:r.ControlFillColorTertiary,
+    surface:r.SolidBackgroundFillColorTertiary,material:r.SolidBackgroundFillColorBase,
+    controlShadow:'none',pressedShadow:'none',scrim:r.SmokeFillColorDefault,
+    thumb:r.ControlStrongFillColorDefault,error:r.SystemFillColorCritical,
+    success:r.SystemFillColorSuccess,warning:r.SystemFillColorCaution};
+}
 const profile = (id,name,family,scheme,colors,tokens) => ({id,name,family,scheme,colors,tokens});
 export const PLATFORM_THEMES = freeze({
-  fluent:profile('fluent','Fluent WinUI 3 — Light','fluent','light',light,lightTokens),
-  'fluent-dark':profile('fluent-dark','Fluent WinUI 3 — Dark','fluent','dark',dark,darkTokens),
+  fluent:profile('fluent','Fluent WinUI 3 — Light','fluent','light',light,fluentTokens('light',lightTokens)),
+  'fluent-dark':profile('fluent-dark','Fluent WinUI 3 — Dark','fluent','dark',{...dark,selectionText:'#000000'},fluentTokens('dark',darkTokens)),
   macos26:profile('macos26','macOS 26 — Light','macos26','light',{
     ...light,face:'#ececf0',title:'#ececf0',titleEnd:'#ececf0',text:'#1d1d1f',titleText:'#1d1d1f',
     windowText:'#1d1d1f',selection:'#005ec4',workspace:'#dfe1e9',desktop:'#d9ddeb',link:'#0057b8',
@@ -61,17 +72,17 @@ export const PLATFORM_THEMES = freeze({
     window:'#fffff4',selection:'#365762',selectionText:'#ffffff',workspace:'#777970',desktop:'#526872',
     gray:'#505047',info:'#ffffdf',link:'#1d477f',keyword:'#233b83',comment:'#285e2d'
   },{...lightTokens,font:'"Liberation Sans", "DejaVu Sans", Arial, sans-serif',size:'11px',radius:'0px',windowRadius:'0px',
-    border:'#66665c',separator:'#929287',control:'#bdbdb3',surface:'#bdbdb3',hover:'#cecec4',pressed:'#a6a69c',
+    border:'#66665c',separator:'#929287',control:'#bdbdb3',surface:'#bdbdb3',hover:'#bdbdb3',pressed:'#a6a69c',
     focus:'#233b83',gutter:'#e7e7db',gutterText:'#44443d',thumb:'#bdbdb3',material:'#bdbdb3',shadow:'3px 3px 0 #00000066',
-    controlShadow:'inset 1px 1px #f2f2e8, inset -1px -1px #66665c',pressedShadow:'inset 1px 1px #66665c, inset -1px -1px #f2f2e8'}),
+    controlShadow:'inset 2px 2px #f2f2e8, inset -2px -2px #66665c',pressedShadow:'inset 2px 2px #66665c, inset -2px -2px #f2f2e8'}),
   'x11-dark':profile('x11-dark','X11 — Dark','x11','dark',{
-    ...dark,face:'#343c3e',light:'#858f90',highlight:'#576265',shadow:'#99a4a6',dark:'#b5bfc0',
+    ...dark,face:'#343c3e',light:'#858f90',highlight:'#576265',shadow:'#151d20',dark:'#0b1214',
     title:'#385861',titleEnd:'#385861',titleText:'#ffffff',inactive:'#343c3e',inactiveEnd:'#343c3e',
     window:'#202729',windowText:'#f4f4e9',selection:'#b6d5dd',selectionText:'#192528',workspace:'#1c2527',desktop:'#273f47'
   },{...darkTokens,font:'"Liberation Sans", "DejaVu Sans", Arial, sans-serif',size:'11px',radius:'0px',windowRadius:'0px',
-    border:'#99a4a6',separator:'#5a686b',control:'#343c3e',surface:'#343c3e',hover:'#48575c',pressed:'#263033',
+    border:'#99a4a6',separator:'#5a686b',control:'#343c3e',surface:'#343c3e',hover:'#343c3e',pressed:'#263033',
     focus:'#b6d5dd',gutter:'#2d3537',gutterText:'#bcc4c4',thumb:'#75878c',material:'#343c3e',shadow:'3px 3px 0 #00000099',
-    controlShadow:'inset 1px 1px #858f90, inset -1px -1px #151d20',pressedShadow:'inset 1px 1px #151d20, inset -1px -1px #858f90'})
+    controlShadow:'inset 2px 2px #858f90, inset -2px -2px #151d20',pressedShadow:'inset 2px 2px #151d20, inset -2px -2px #858f90'})
 });
 
 /** Migrate stored choices without exposing duplicate Linux themes. Never coerce input. */

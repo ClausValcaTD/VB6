@@ -132,7 +132,8 @@ export function createFigmaCodePanel(workspace) {
       focusAt(event.key==='Home'?0:event.key==='End'?rows.length-1:focused+(event.key==='ArrowDown'?1:-1));
     }else if(event.key==='Enter'&&event.target===list&&rows[focused]){event.preventDefault();navigate(rows[focused]);}
   });
-  list.addEventListener('scroll',()=>{if(!frame)frame=view.requestAnimationFrame(()=>{frame=0;paint();});});
-  const observer=new view.ResizeObserver(paint);observer.observe(list);
+  const schedulePaint=()=>{if(!disposed&&!frame)frame=view.requestAnimationFrame(()=>{frame=0;if(!disposed)paint();});};
+  list.addEventListener('scroll',schedulePaint);
+  const observer=new view.ResizeObserver(schedulePaint);observer.observe(list);
   return {root,sync,dispose(){disposed=true;for(const off of subscriptions)off();observer.disconnect();view.cancelAnimationFrame(frame);root.remove();}};
 }

@@ -6,6 +6,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 ## Build, test and architecture
 
+- [Validation and deployment](CI.md): consolidated workflows, parallel suite ownership, failure gates and publication security.
+
 - [Architecture and SDK embedding](ARCHITECTURE.md): module boundaries, execution,
   persistence and extension points.
 - [Application export](APPLICATION-EXPORT.md): deployment APIs, modular output, CSP and validation.
@@ -17,6 +19,8 @@ These guides describe the implemented system, not complete native VB6 parity.
   approved local builds, source kits, reusable APIs and compatibility boundaries.
 - [Native macOS resources and pictures](MACOS-RESOURCES.md): RES/FRX imports,
   resource functions, picture ownership, cursor metadata and sealed bundle data.
+- [Native macOS Recordsets](MACOS-RECORDSETS.md): disconnected typed records,
+  clone/edit ownership, stable grid binding and native qualification requirements.
 - [Native macOS arrays](MACOS-ARRAYS.md): typed result storage, value ownership,
   ReDim, helper ABI and executable acceptance.
 - [Native macOS lifetime and editing](MACOS-LIFETIME-EDITING.md): reference release,
@@ -82,6 +86,10 @@ These guides describe the implemented system, not complete native VB6 parity.
   live diagnostics, saved-policy retry and environment limitations.
 - [IDE themes](IDE-THEMES.md), [application themes](APPLICATION-THEMES.md) and
   [matching icon packs](THEME-ICON-PACKS.md).
+- [WinUI 3 resource fidelity](WINUI-PARITY.md): pinned resources, component states,
+  boundary isolation, validation and native-pixel limits.
+- [X11 fidelity](X11-THEME-FIDELITY.md): Motif-inspired paint/state contracts,
+  pixel checks, isolation and native-reference certification boundaries.
 - [Classic icons](ICON-AUDIT.md), [classic HTML rendering and attribution](CLASSIC-HTML-RENDERING.md)
   and [visual validation](VISUAL-AUDIT.md).
 

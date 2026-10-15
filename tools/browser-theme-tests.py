@@ -11,6 +11,7 @@ import shutil
 import threading
 import unittest
 from playwright.sync_api import sync_playwright
+from x11_theme_checks import X11IdeChecks
 
 ROOT = Path(__file__).resolve().parents[1]
 ENGINE = os.environ.get('VB6_BROWSER', 'chromium')
@@ -31,7 +32,7 @@ SNAPSHOT = '''() => {
 class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, *args): pass
 
-class Themes(unittest.TestCase):
+class Themes(X11IdeChecks, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         REPORT.mkdir(parents=True, exist_ok=True)
@@ -203,7 +204,7 @@ class Themes(unittest.TestCase):
             self.assertNotEqual(checkbox.is_checked(),was_checked)
             self.assertGreaterEqual(float(checkbox.evaluate('(e)=>parseFloat(getComputedStyle(e).outlineOffset)')),1)
             primary.evaluate('(e)=>e.disabled=true')
-            self.assertEqual(primary.evaluate('(e)=>getComputedStyle(e).color'),self.page.locator('.ide-theme-note').evaluate('(e)=>{const p=e.ownerDocument.createElement("span");p.style.color="var(--vb-gray)";e.append(p);const c=getComputedStyle(p).color;p.remove();return c;}'))
+            self.assertEqual(primary.evaluate('(e)=>getComputedStyle(e).color'),self.page.locator('.ide-theme-note').evaluate('(e)=>{const p=e.ownerDocument.createElement("span");p.style.color="var(--winui-AccentButtonForegroundDisabled,var(--vb-gray))";e.append(p);const c=getComputedStyle(p).color;p.remove();return c;}'))
             primary.evaluate('(e)=>e.disabled=false')
             self.record(theme,primaryFocusContrast=True,pressedTextContrast=True,checkedFocusOutside=True)
         self.page.locator('.ide-dialog').get_by_role('button',name='Cancel',exact=True).click()
