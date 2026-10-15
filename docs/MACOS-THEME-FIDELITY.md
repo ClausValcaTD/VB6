@@ -247,3 +247,36 @@ sheet and requires identical non-WinUI computed paints and disabled glyphs.
 An additional literal-resource field test checks normal/disabled stroke paint
 and unchanged authored bounds. Existing X11 assertions and captured-pixel
 requirements are retained without changing their thresholds.
+
+### Non-key windows, popup buttons and segmented strips
+
+The continuation after `4b6c481c` uses that head's native **non-key** AppKit
+captures (artifact `11954783994`), not just active-window colors. Independent
+RGBA samples and original PNG SHA-256s are retained in
+`tests/fixtures/macos26-inactive-measurements.json`. Default buttons, checked and
+mixed indicators, radio dots, sliders, progress and selected segments now become
+neutral when the owning form loses activation. Removing that state restores the
+accent without changing props, values, focus targets or runtime/control identity.
+The state roles are rebound at each nested theme boundary, so an independent
+active application does not inherit the outer form's inactive paint. The old
+Classic mixed-checkbox inset is also removed in macOS only.
+
+List-only ComboBox (`Style=2`) now paints a 24px body inside the original 28px
+reference box, uses paired popup chevrons and a transparent arrow hit target,
+and has separate pressed, disabled and keyboard-focus paint. Editable and simple
+combos retain their existing presentation and the same real input, virtual list,
+keyboard selection and VB events. Literal RGB still passes through `comboPaint`.
+Top-oriented TabStrip headers remove the extra rectangular frame and padding,
+use intrinsic-label-aware column tracks and a two-pixel top inset, and separate
+unselected neighbors. SSTab's authored page/client origin and vertical strips are
+not redirected into this segmented layout. Forced colors restores ordinary strip
+width/column geometry and visible system paint.
+
+`tools/macos_composite_checks.py` runs in the existing three-engine application
+suite. It checks state transitions, nested boundary reset, inner/outer geometry,
+1x/2x paint extents, real popup/keyboard selection, disabled behavior, and input
+identity through Style changes. Translucent-state sample tests use the original
+native RGBA inputs in an independent host Canvas2D compositing oracle. Those
+portable checks do **not** hide the one-level quantization differences between
+AppKit and browser compositing. The full 232-state native comparison remains
+unmasked, zero-tolerance, and reports its own exact-match/certification status.

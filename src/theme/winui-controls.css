@@ -117,9 +117,9 @@
  .vb-check input[type=checkbox]:is(:checked,:indeterminate,:disabled) {background-image:none;}
  .vb-check input:hover:not(:disabled) {--winui-check-fill:var(--winui-CheckBackgroundPointerOver);}
  .vb-check input:active:not(:disabled) {--winui-check-fill:var(--winui-CheckBackgroundPressed);--winui-check-stroke:var(--winui-CheckBorderPressed);}
- .vb-check input:is(:checked,:indeterminate) {--winui-check-fill:var(--winui-AccentButtonBackground);--winui-check-stroke:var(--winui-AccentButtonBackground);background-color:var(--winui-check-fill,var(--app-check-background,var(--vb-window)));border-color:var(--winui-check-stroke,var(--app-check-border,var(--vb-shadow) var(--vb-light) var(--vb-light) var(--vb-shadow)));box-shadow:var(--app-check-shadow,none);}
+ .vb-check input:is(:checked,:indeterminate) {--winui-check-fill:var(--winui-AccentButtonBackground);--winui-check-stroke:var(--winui-AccentButtonBackground);background-color:var(--winui-check-fill,var(--detail-state-check-fill,var(--app-check-background,var(--vb-window))));border-color:var(--winui-check-stroke,var(--app-check-border,var(--vb-shadow) var(--vb-light) var(--vb-light) var(--vb-shadow)));box-shadow:var(--app-check-shadow,none);}
  .vb-check input[type=checkbox]:indeterminate:not(:checked) {border-color:var(--winui-check-stroke,transparent);}
- .vb-check input:indeterminate {background-color:var(--winui-check-fill,var(--app-check-background,var(--vb-face)));}
+ .vb-check input:indeterminate {background-color:var(--winui-check-fill,var(--detail-state-check-fill,var(--app-check-background,var(--vb-face))));}
  .vb-check input:is(:checked,:indeterminate):hover:not(:disabled) {--winui-check-fill:var(--winui-AccentButtonBackgroundPointerOver);--winui-check-stroke:var(--winui-AccentButtonBackgroundPointerOver);}
  .vb-check input:is(:checked,:indeterminate):active:not(:disabled) {--winui-check-fill:var(--winui-AccentButtonBackgroundPressed);--winui-check-stroke:var(--winui-AccentButtonBackgroundPressed);--winui-check-glyph:var(--winui-CheckGlyphPressed);}
  .vb-check input:disabled {--winui-check-fill:var(--winui-CheckBackgroundDisabled);--winui-check-stroke:var(--winui-CheckBorderDisabled);--winui-check-glyph:var(--winui-CheckGlyphDisabled);background-color:var(--winui-check-fill,var(--detail-check-disabled-fill,var(--vb-face)));}
@@ -127,7 +127,7 @@
  .vb-check input[type=checkbox]:checked:not(:indeterminate)::after {
   inset:var(--winui-CheckGlyphInset,var(--detail-check-mark-inset,2px auto auto 2px));
   width:var(--winui-CheckGlyphWidth,var(--detail-check-mark-width,8px));height:var(--winui-CheckGlyphHeight,var(--detail-check-mark-height,8px));
-  background:var(--winui-check-glyph,var(--app-check-mark,var(--vb-window-text)));
+  background:var(--winui-check-glyph,var(--detail-state-check-ink,var(--app-check-mark,var(--vb-window-text))));
  }
  .vb-check input[type=checkbox]:indeterminate::after {
   left:var(--winui-CheckGlyphInset,var(--detail-mixed-left,3px));top:var(--winui-CheckMixedTop,var(--detail-mixed-top,3px));

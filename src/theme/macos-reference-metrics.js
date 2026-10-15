@@ -28,7 +28,9 @@ export const MACOS_REFERENCE = freeze({
     neutral: '#00000014', neutralDisabled: '#0000000a', checkOff: '#00000019',
     separator: '#00000019', fieldBorder: '#e5e5e5', group: '#00000008',
     progressTrack: '#0000000f', focus: '#0067f47f',
-    inactiveSelection: '#dddddd', inactiveSelectionText: '#272727'
+    inactiveSelection: '#dddddd', inactiveSelectionText: '#272727',
+    // Actual non-key captures: 4b6c481c, artifact 11954783994 (see inactive fixture).
+    inactiveCheck: '#00000024', inactiveRange: '#0000003a', inactiveSegment: '#00000032'
   },
   dark: {
     background: '#1e1e1e', text: '#ffffff', label: '#dddddd', disabledLabel: '#565656',
@@ -37,7 +39,8 @@ export const MACOS_REFERENCE = freeze({
     neutral: '#ffffff14', neutralDisabled: '#ffffff0a', checkOff: '#ffffff19',
     separator: '#ffffff19', fieldBorder: '#3a3a3a', group: '#ffffff08',
     progressTrack: '#ffffff14', focus: '#1aa9ff7f',
-    inactiveSelection: '#484848', inactiveSelectionText: '#dddddd'
+    inactiveSelection: '#484848', inactiveSelectionText: '#dddddd',
+    inactiveCheck: '#ffffff24', inactiveRange: '#ffffff3a', inactiveSegment: '#ffffff32'
   }
 });
 

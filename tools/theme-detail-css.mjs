@@ -118,6 +118,23 @@ export function themeDetailTokens(theme) {
     'stepper-glyph-down':'rotate(45deg)','stepper-glyph-up':'rotate(225deg)',
     'stepper-glyph-left':'rotate(135deg)','stepper-glyph-right':'rotate(-45deg)',
     'stepper-fill':m.neutral,'stepper-radius':'6px','stepper-border':m.separator,
+    // Inactive state is inherited from the owning form. Every nested theme
+    // boundary rebinds these state roles, including an active nested app.
+    'inactive-command-fill':m.neutral,'inactive-command-ink':m.label,
+    'inactive-check-fill':m.inactiveCheck,'inactive-range-fill':m.inactiveRange,
+    // Native selected alpha (50/255) includes the neutral header (20/255).
+    // Apply the residual alpha over that header instead of compositing twice.
+    'inactive-progress-fill':'#aaaaaa','inactive-segment-fill':`color-mix(in srgb, ${m.inactiveSegment.slice(0,7)} ${(50-20)/(255-20)*100}%, transparent)`,
+    'state-check-fill':m.selectedControl,'state-check-ink':'#ffffff','state-progress-fill':m.accent,
+    // A list-only combo is a popup button, not an editable field plus a well.
+    'popup-button-height':'max(0px, calc(100% - 4px))','popup-button-align':'center',
+    'popup-button-shadow':'none','popup-button-padding':'3px 28px 3px 12px',
+    'popup-button-arrow-fill':'transparent','popup-button-arrow-right':'1px',
+    'popup-button-chevron-visibility':'hidden','popup-button-chevron-content':'""',
+    'popup-button-disabled':m.neutralDisabled,'popup-button-pressed':t.pressed,
+    'strip-border':'transparent','strip-left':'-1px','strip-top':'1px',
+    'strip-width':'calc(100% + 2px)','strip-padding':'0px','strip-fill':m.neutral,
+    'strip-column':'auto','strip-radius':'6px','strip-separator-content':'""','strip-separator':m.separator,
     'dialog-actions':'flex-end'
   };
   for(const [key,value] of Object.entries(macPaint))if(mac||!(key in values))values[key]=mac?value:'initial';

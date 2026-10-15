@@ -29,7 +29,7 @@ export function renderApplicationThemeTokens(){
         statusBorder:x?`${p.colors.shadow} ${p.colors.light} ${p.colors.light} ${p.colors.shadow}`:t.separator,
         headerBorder:x?`${p.colors.light} ${p.colors.shadow} ${p.colors.shadow} ${p.colors.light}`:t.separator,
         calendarLabel:x?p.colors.gray:'initial',auxShadow:x?t.controlShadow:'initial',auxPressedShadow:x?t.pressedShadow:'initial',
-        auxBorder:x?'transparent':'initial',checkMixedShadow:x?t.pressedShadow:'initial',
+        auxBorder:x?'transparent':'initial',checkMixedShadow:mac?'none':x?t.pressedShadow:'initial',
         inputFocusOutline:x?`2px solid ${t.focus}`:'initial',checkRestImage:x?'none':'initial',checkWidth:x?'0px':'initial'};
       for(const key of keys)css+=` --app-${kebab(key)}: ${values[key]};\n`;
     }

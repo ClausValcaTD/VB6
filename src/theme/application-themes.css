@@ -351,3 +351,77 @@
  .vb-updown.horizontal .vb-spin-button.up i {transform:var(--detail-stepper-glyph-left,rotate(90deg));}
  .vb-updown.horizontal .vb-spin-button.down i {transform:var(--detail-stepper-glyph-right,rotate(-90deg));}
 }
+
+/* AppKit key-window state is a form-local inheritance boundary, not a
+ * descendant selector that recolors an independent nested application. These
+ * roles are initial in other palettes; WinUI's own state brushes keep priority.
+ * Disabled controls continue to use their separate disabled state.
+ */
+@media(forced-colors:none) {
+ .vb-inactive {
+  --detail-default-fill:var(--detail-inactive-command-fill);
+  --detail-default-ink:var(--detail-inactive-command-ink);
+  --detail-state-check-fill:var(--detail-inactive-check-fill);
+  --detail-state-check-ink:var(--detail-inactive-command-ink);
+  --detail-range-accent:var(--detail-inactive-range-fill);
+  --detail-state-progress-fill:var(--detail-inactive-progress-fill);
+  --detail-tab-active-fill:var(--detail-inactive-segment-fill);
+  --detail-tab-active-ink:var(--detail-inactive-command-ink);
+ }
+ .vb-check input:is(:checked,:indeterminate):not(:disabled) {
+  background-color:var(--winui-check-fill,var(--detail-state-check-fill,var(--app-check-background,var(--vb-window))));
+ }
+ .vb-check input:indeterminate:not(:disabled) {background-color:var(--winui-check-fill,var(--detail-state-check-fill,var(--app-check-background,var(--vb-face))));}
+ .vb-check input[type=checkbox]:checked:not(:disabled)::after,
+ .vb-check input[type=checkbox]:indeterminate:not(:disabled)::after {
+  background:var(--winui-check-glyph,var(--detail-state-check-ink,var(--detail-indeterminate-fill,var(--app-check-mark,var(--vb-gray)))));
+ }
+ .vb-check input[type=radio]:checked:not(:disabled)::after {
+  background:var(--winui-RadioGlyph,var(--detail-state-check-ink,var(--app-check-mark,var(--vb-window-text))));
+ }
+ .vb-progress-fill {background:var(--detail-state-progress-fill,var(--app-progress-fill,repeating-linear-gradient(90deg,var(--vb-selection) 0px,var(--vb-selection) 8px,transparent 8px,transparent 10px)));}
+
+ /* readonly is reflected by ClassicCombo.refresh for Style=2. The live input,
+  * focus target, virtual popup, keyboard handling and authored RGB stay intact.
+  */
+ .vb-control.vb-classic-combo:not(.simple)>.vb-combo-field[readonly] {
+  height:var(--detail-popup-button-height,100%);align-self:var(--detail-popup-button-align,auto);
+  padding:var(--detail-popup-button-padding,3px 3px 3px 5px);
+  box-shadow:var(--winui-input-shadow,var(--detail-popup-button-shadow,var(--app-input-shadow,var(--vb-bevel-sunken))));
+ }
+ .vb-control.vb-classic-combo:not(.simple)>.vb-combo-field[readonly]:focus-visible {
+  box-shadow:var(--winui-input-shadow,var(--detail-field-focus-shadow,var(--app-input-focus-shadow,var(--app-input-shadow,var(--vb-bevel-sunken)))));
+ }
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow {
+  background:var(--detail-popup-button-arrow-fill,var(--detail-combo-fill,var(--vb-face)));
+  right:var(--detail-popup-button-arrow-right,var(--detail-combo-arrow-inset,auto));
+ }
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow i {visibility:var(--detail-popup-button-chevron-visibility,visible);}
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow::before,
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow::after {
+  content:var(--detail-popup-button-chevron-content,none);position:absolute;
+  width:5px;height:5px;left:calc(50% - 2.5px);border-right:1.5px solid currentColor;
+  border-bottom:1.5px solid currentColor;box-sizing:border-box;pointer-events:none;
+ }
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow::before {top:calc(50% - 4px);transform:rotate(225deg);}
+ .vb-classic-combo:has(>.vb-combo-field[readonly])>.vb-combo-arrow::after {top:calc(50% - 1px);transform:rotate(45deg);}
+ .vb-classic-combo:has(>.vb-combo-field[readonly]):has(>.vb-combo-field:active:not(:disabled),>.vb-combo-arrow:active:not(:disabled)) {--detail-popup-button-fill:var(--detail-popup-button-pressed);}
+ .vb-classic-combo:has(>.vb-combo-field[readonly]:disabled) {--detail-popup-button-fill:var(--detail-popup-button-disabled);}
+
+ /* Standalone TabStrip uses a segmented header. SSTab page/client coordinates
+  * and vertical/multirow tab layouts retain their own geometry contract. */
+ .vb-tabs:not(.vb-sstab)[data-tab-orientation="0"] {border-color:var(--detail-strip-border,var(--app-separator,var(--vb-shadow)));}
+ .vb-tabs:not(.vb-sstab)[data-tab-orientation="0"]>.vb-tab-header {
+  left:var(--detail-strip-left,0px);top:var(--detail-strip-top,0px);
+  padding:var(--detail-strip-padding,0px 3px);background:var(--detail-strip-fill,var(--detail-tab-header-fill,transparent));
+  border-radius:var(--detail-strip-radius,var(--detail-tab-radius,0));
+ }
+ .vb-tabs:not(.vb-sstab)[data-tab-orientation="0"]>.vb-tab-header>.vb-tab-button:not(.active):not(:has(+.active)):not(:last-child)::after {
+  content:var(--detail-strip-separator-content,none);position:absolute;right:0;top:5px;bottom:5px;
+  width:1px;background:var(--detail-strip-separator,transparent);pointer-events:none;
+ }
+}
+
+@media(forced-colors:active) {
+ [data-vb-theme-family="macos26"] {--detail-strip-width:100%;--detail-strip-column:minmax(0, 1fr);}
+}
