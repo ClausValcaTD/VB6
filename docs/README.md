@@ -183,3 +183,7 @@ No proprietary fonts, icons or runtime binaries are redistributed.
 [INTELLIGENT-UI.md](INTELLIGENT-UI.md) documents the reusable streaming UI library,
 MCP tools and App resource, coding-agent conversation rendering, permission
 boundaries, standalone packaging, and integration validation.
+
+[Workbench editing and lifetimes](INTELLIGENT-UI-WORKBENCH.md) covers multi-document
+drafts, JSON data, undo/redo, imports/exports, gallery inspection, cancellation,
+keyboard commands and memory/deployment limits.
