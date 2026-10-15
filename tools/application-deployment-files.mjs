@@ -6,7 +6,11 @@ import {readZip} from '../src/project/zip.js';
 import {DEPLOYMENT_LIMITS, deploymentPath} from '../src/exporter/deployment-assets.js';
 
 export async function readBoundedFile(file, limit = DEPLOYMENT_LIMITS.bytes) {
-  if ((await fs.lstat(file)).isSymbolicLink()) throw new Error('Symbolic links are not accepted: ' + file);
+  const before = await fs.lstat(file);
+  if (before.isSymbolicLink()) throw new Error('Symbolic links are not accepted: ' + file);
+  // Opening a FIFO can block before fstat can diagnose it. Reject nonregular
+  // inputs before open, then check again on the actual descriptor.
+  if (!before.isFile()) throw new Error('Expected a regular file: ' + file);
   const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
   try {
     const stat = await handle.stat();

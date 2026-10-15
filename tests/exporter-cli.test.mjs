@@ -120,3 +120,17 @@ test('IDE exposes offline command and async APIs without opening an export while
   assert.equal(ide.lastApplicationExport.diagnostics[0].code, 'EXPORT_INVALID_MODEL');
   assert.equal(ide.menu('File').find(i => i.id === 'exportDeployment').enabled, true);
 });
+
+
+test('CLI rejects directories and named pipes before opening input streams', temporary((root, input) => {
+  const directory = run([root, '--check']);
+  assert.equal(directory.status, 1); assert.match(directory.stderr, /Expected a regular file/);
+  if (process.platform !== 'win32') {
+    const pipe = path.join(root, 'input-pipe');
+    const created = spawnSync('mkfifo', [pipe], {encoding: 'utf8'});
+    assert.equal(created.status, 0, created.stderr);
+    const result = spawnSync(process.execPath, [fileURLToPath(cli), pipe, '--check'], {encoding: 'utf8', timeout: 5000});
+    assert.equal(result.error, undefined, 'Nonregular input must be rejected before a blocking open');
+    assert.equal(result.status, 1); assert.match(result.stderr, /Expected a regular file/);
+  }
+}));
