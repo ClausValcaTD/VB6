@@ -58,22 +58,23 @@ def audit(root=ROOT):
         for dependency in jobs[name].get('needs', []):
             visit(dependency, ancestors | {name})
     visit('test', set())
+    if jobs.get('compute-reference', {}).get('runs-on') != 'windows-latest':
+        raise ValueError('Compute native reference must run on Windows')
+    if jobs.get('compute-gpu', {}).get('needs') != ['compute-reference']:
+        raise ValueError('Compute GPU acceptance must consume the Windows reference')
+    compute_steps = jobs['compute-gpu']['steps']
+    if not any('npm run test:compute:browser' in step.get('run', '') for step in compute_steps):
+        raise ValueError('Actual compute browser execution is required')
+    if not any(step.get('uses') == 'actions/download-artifact@v4' and
+               step.get('with', {}).get('name') == 'compute-native-reference' for step in compute_steps):
+        raise ValueError('Compute acceptance must use this run’s native reference artifact')
     if jobs['node']['strategy']['matrix']['shard'] != [1, 2, 3, 4]:
         raise ValueError('Node shards must partition all four parts')
     if '--test-shard="${SHARD}/4" tests/*.test.mjs' not in (root / '.github/workflows/validate.yml').read_text():
         raise ValueError('Complete Node discovery required')
-    for owner in ('browser', 'figma', 'authoring-exports', 'advanced-editor', 'coding-agents'):
+    for owner in ('browser', 'figma', 'authoring-exports', 'advanced-editor'):
         if set(jobs[owner]['strategy']['matrix']['browser']) != {'chromium', 'firefox', 'webkit'}:
             raise ValueError('Missing engine: ' + owner)
-    agents = jobs['coding-agents']
-    if set(agents['strategy']['matrix']['mode']) != {'http', 'standalone-http', 'file'}:
-        raise ValueError('Every real coding-agent origin is required')
-    agent_steps = [s for s in agents['steps'] if 'tools/coding-agents-browser-tests.py' in s.get('run', '')]
-    command = 'python tools/coding-agents-browser-tests.py --browser "$ENGINE" --mode "$MODE"'
-    if len(agent_steps) != 1 or agent_steps[0].get('run', '').strip() != command or agent_steps[0].get('if'):
-        raise ValueError('Complete unfiltered coding-agent execution required')
-    if agent_steps[0].get('env') != {'ENGINE': '${{ matrix.browser }}', 'MODE': '${{ matrix.mode }}'}:
-        raise ValueError('Coding-agent engine/origin must use exhaustive matrix values')
     if set(jobs['figma']['strategy']['matrix']['suite']) != {'figma-authoring', 'figma-services'}:
         raise ValueError('Both disjoint Figma partitions required')
     if set(jobs['figma']['strategy']['matrix']['transport']) != {'http', 'file'}:

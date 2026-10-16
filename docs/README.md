@@ -48,6 +48,8 @@ These guides describe the implemented system, not complete native VB6 parity.
   property accessors, exact optional defaults, binary layouts and dispatch boundaries.
 - [Native-first VB.NET output and support policies](VBNET-NATIVE-FIRST.md).
 - [Compiler/runtime](COMPILER-RUNTIME.md) and [scalar/Variant semantics](SCALAR-COMPATIBILITY.md).
+- [Portable runtime intrinsics and file I/O](RUNTIME-INTRINSICS.md): random state, formatting,
+  character conversion, project settings, file metadata and TextStream contracts.
 - [Source debugger](DEBUGGER.md), [extended debugger contracts](DEBUGGER-COMPATIBILITY.md),
   [native break lifecycle](NATIVE-DEBUGGER-BREAK-LIFECYCLE.md) and
   [preview lifecycle](NATIVE-PREVIEW-LIFECYCLE.md).
@@ -64,6 +66,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 - [Form designer and SSTab editing](DESIGNER-SUPPORT.md): native tab imports,
   atomic property/collection editors, shared control capabilities and explicit boundaries.
+- [Browser control compatibility](CONTROLS-COMPATIBILITY.md): collection ordering, selection identity, keyboard behavior and explicit native-control boundaries.
 
 - [Optional Figma workspace](figma-workspace.md): real VB6 Assets/Layers/Design,
   reversible workspace profiles, canvas navigation, auto layout and anchoring.
@@ -115,6 +118,7 @@ These guides describe the implemented system, not complete native VB6 parity.
 - [Native drawing surfaces](WIN32-SURFACES.md): Form/PictureBox hDC ownership, retained backing, painting, scaling and failure cleanup.
 - [Native RichEdit selection and search](WIN32-RICHEDIT.md): mixed-format masks, Unicode search, line lookup and undo/redo.
 - [Native grids, charts and tab pages](WIN32-GRIDS-CHARTS-TABS.md): storage, editing, GDI, ownership and execution gates.
+- [Native sequential file I/O](WIN32-SEQUENTIAL-IO.md): Open/Input/Output/Append, typed record parsing, handle ownership and Windows execution gates.
 - AOT language/ABI contracts: [numeric storage](WIN32-NUMERIC.md),
   [Currency](WIN32-CURRENCY.md), [Date](WIN32-DATES.md),
   [calendar intervals](WIN32-CALENDAR-INTERVALS.md), [arrays](WIN32-ARRAYS.md),
@@ -133,7 +137,6 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 - [Coding-agent setup and APIs](coding-agents.md), [permissions](CODING-AGENT-PERMISSIONS.md),
   [conversation/session budgets](CODING-AGENT-THREADS.md),
-  [pause, search and portable task context](CODING-AGENT-WORKFLOWS.md),
   [error recovery and compaction](CODING-AGENT-RECOVERY.md) and
   [change review/workbench](CODING-AGENT-WORKBENCH.md).
 - [ChatGPT account setup](CHATGPT-LOGIN.md) and [sign-in troubleshooting](CHATGPT-SIGNIN-TROUBLESHOOTING.md).
@@ -187,3 +190,15 @@ No proprietary fonts, icons or runtime binaries are redistributed.
 [INTELLIGENT-UI.md](INTELLIGENT-UI.md) documents the reusable streaming UI library,
 MCP tools and App resource, coding-agent conversation rendering, permission
 boundaries, standalone packaging, and integration validation.
+
+[Workbench editing and lifetimes](INTELLIGENT-UI-WORKBENCH.md) covers multi-document
+drafts, JSON data, undo/redo, imports/exports, gallery inspection, cancellation,
+keyboard commands and memory/deployment limits.
+
+## Shared infrastructure
+
+- [Core primitives](CORE-PRIMITIVES.md): event and timer lifetimes, transactional history, UI document ownership, DOM/download helpers and streaming artifact integrity.
+
+## Application graphics
+
+[Retained browser graphics](GRAPHICS.md): drawing API, VB semantics, resource budgets, backend behavior, validation and compatibility boundaries.

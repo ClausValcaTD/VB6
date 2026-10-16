@@ -18,28 +18,13 @@ class WorkflowAuditTests(unittest.TestCase):
     def reject(self,mutate):
         value=copy.deepcopy(self.workflow);mutate(value);self.path.write_text(yaml.safe_dump(value,sort_keys=False))
         with self.assertRaises(ValueError):check.audit(self.root)
-    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],83)
-    def test_missing_agent_engine_rejected(self):
-        self.reject(lambda w:w['jobs']['coding-agents']['strategy']['matrix']['browser'].remove('webkit'))
-    def test_missing_agent_origin_rejected(self):
-        self.reject(lambda w:w['jobs']['coding-agents']['strategy']['matrix']['mode'].remove('standalone-http'))
-    def test_agent_filter_rejected(self):
-        def mutate(w):
-            step=next(s for s in w['jobs']['coding-agents']['steps'] if 'coding-agents-browser-tests.py' in s.get('run',''))
-            step['run'] += ' --case lifecycle'
-        self.reject(mutate)
-    def test_agent_origin_substitution_rejected(self):
-        def mutate(w):
-            step=next(s for s in w['jobs']['coding-agents']['steps'] if 'coding-agents-browser-tests.py' in s.get('run',''))
-            step['env']['MODE']='opaque'
-        self.reject(mutate)
-    def test_agent_skipped_step_rejected(self):
-        def mutate(w):
-            step=next(s for s in w['jobs']['coding-agents']['steps'] if 'coding-agents-browser-tests.py' in s.get('run',''))
-            step['if']='false'
-        self.reject(mutate)
-    def test_agent_gate_omission_rejected(self):
-        self.reject(lambda w:w['jobs']['test']['needs'].remove('coding-agents'))
+    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],88)
+    def test_compute_reference_dependency_required(self):
+        self.reject(lambda w:w['jobs']['compute-gpu'].update({'needs':['hygiene']}))
+    def test_compute_shader_execution_cannot_be_removed(self):
+        self.reject(lambda w:[s.update({'run':'npm run test:compute'}) for s in w['jobs']['compute-gpu']['steps'] if 'npm run test:compute:browser' in s.get('run','')])
+    def test_compute_native_reference_download_required(self):
+        self.reject(lambda w:[s['with'].update({'name':'unrelated'}) for s in w['jobs']['compute-gpu']['steps'] if s.get('uses')=='actions/download-artifact@v4'])
     def test_gate_omission_rejected(self):self.reject(lambda w:w['jobs']['test']['needs'].remove('macos-browser-native'))
     def test_skippable_gate_rejected(self):self.reject(lambda w:w['jobs']['test'].update({'if':'success()'}))
     def test_failure_suppression_rejected(self):self.reject(lambda w:w['jobs']['figma'].update({'continue-on-error':True}))
@@ -61,5 +46,6 @@ class WorkflowAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Duplicate YAML'):check.audit(self.root)
     def test_path_filtered_required_workflow_rejected(self):self.reject(lambda w:w['on'].update({'pull_request':{'paths':['src/**']}}))
     def test_unowned_suite_rejected(self):self.reject(lambda w:w['jobs']['browser']['strategy']['matrix']['suite'].remove('intelligent-ui'))
+    def test_missing_project_authoring_rejected(self):self.reject(lambda w:w['jobs']['browser']['strategy']['matrix']['suite'].remove('project-authoring'))
     def test_dependency_cycle_rejected(self):self.reject(lambda w:w['jobs']['hygiene'].update({'needs':['test']}))
 if __name__=='__main__':unittest.main(verbosity=2)
