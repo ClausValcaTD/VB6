@@ -449,6 +449,15 @@ jobs:
           args=()
           if [ "$DISPLAY_MODE" = headed ]; then args+=(--headed); fi
           xvfb-run -a python tools/browser-disabled-graphics.py "${args[@]}"
+      - name: Ordered application graphics on required WebGPU at three display scales
+        if: '!cancelled() && matrix.backend == ''webgpu'''
+        env:
+          DISPLAY_MODE: ${{ matrix.display }}
+          VB6_REQUIRE_GPU: '1'
+          VB6_TEST_TRANSPORT: http
+        run: |
+          if [ "$DISPLAY_MODE" = headed ]; then export VB6_HEADED=1; fi
+          xvfb-run -a python tools/browser-graphics-tests.py
       - name: Require every case and reproducible outputs
         run: |
           python tools/verify-rendering-report.py reports/rendering/report.json --backend ${{ matrix.backend }}
@@ -476,6 +485,7 @@ jobs:
           name: rendering-${{ matrix.backend }}-${{ matrix.display }}
           path: |-
             reports/rendering
+            reports/graphics
             reports/figma-workspace
             reports/ci
           if-no-files-found: error
