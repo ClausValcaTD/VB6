@@ -75,6 +75,7 @@
     "export:application": "node tools/export-application.mjs",
     "test:exporter": "node --test tests/exporter-*.test.mjs",
     "test:exporter:browser": "python tools/browser-exporter-tests.py",
+    "test:exporter:offline": "python tools/browser-exporter-offline-tests.py",
     "test:layout:designer": "python tools/auto-layout-browser-tests.py",
     "package:com-ole": "node tools/pack-com-ole.mjs",
     "test:com-ole": "node --test tests/com-*.test.mjs tests/native-com-ole.test.mjs",
