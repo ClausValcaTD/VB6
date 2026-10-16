@@ -188,3 +188,7 @@ No proprietary fonts, icons or runtime binaries are redistributed.
 [INTELLIGENT-UI.md](INTELLIGENT-UI.md) documents the reusable streaming UI library,
 MCP tools and App resource, coding-agent conversation rendering, permission
 boundaries, standalone packaging, and integration validation.
+
+## Application graphics
+
+[Retained browser graphics](GRAPHICS.md): drawing API, VB semantics, resource budgets, backend behavior, validation and compatibility boundaries.
