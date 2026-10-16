@@ -139,7 +139,8 @@ These guides describe the implemented system, not complete native VB6 parity.
 
 - [Coding-agent setup and APIs](coding-agents.md), [permissions](CODING-AGENT-PERMISSIONS.md),
   [conversation/session budgets](CODING-AGENT-THREADS.md),
-  [error recovery and compaction](CODING-AGENT-RECOVERY.md) and
+  [error recovery and compaction](CODING-AGENT-RECOVERY.md),
+  [task workflows](CODING-AGENT-WORKFLOWS.md) and
   [change review/workbench](CODING-AGENT-WORKBENCH.md).
 - [ChatGPT account setup](CHATGPT-LOGIN.md) and [sign-in troubleshooting](CHATGPT-SIGNIN-TROUBLESHOOTING.md).
 - [MCP server setup and security](MCP.md) and [agent tool reference](MCP-AGENTS.md).
