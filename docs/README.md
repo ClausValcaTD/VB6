@@ -48,6 +48,8 @@ These guides describe the implemented system, not complete native VB6 parity.
   property accessors, exact optional defaults, binary layouts and dispatch boundaries.
 - [Native-first VB.NET output and support policies](VBNET-NATIVE-FIRST.md).
 - [Compiler/runtime](COMPILER-RUNTIME.md) and [scalar/Variant semantics](SCALAR-COMPATIBILITY.md).
+- [Portable runtime intrinsics and file I/O](RUNTIME-INTRINSICS.md): random state, formatting,
+  character conversion, project settings, file metadata and TextStream contracts.
 - [Source debugger](DEBUGGER.md), [extended debugger contracts](DEBUGGER-COMPATIBILITY.md),
   [native break lifecycle](NATIVE-DEBUGGER-BREAK-LIFECYCLE.md) and
   [preview lifecycle](NATIVE-PREVIEW-LIFECYCLE.md).
