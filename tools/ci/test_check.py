@@ -18,7 +18,7 @@ class WorkflowAuditTests(unittest.TestCase):
     def reject(self,mutate):
         value=copy.deepcopy(self.workflow);mutate(value);self.path.write_text(yaml.safe_dump(value,sort_keys=False))
         with self.assertRaises(ValueError):check.audit(self.root)
-    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],85)
+    def test_complete_graph_passes(self):self.assertEqual(check.audit(self.root)['preservedEntrypoints'],87)
     def test_compute_reference_dependency_required(self):
         self.reject(lambda w:w['jobs']['compute-gpu'].update({'needs':['hygiene']}))
     def test_compute_shader_execution_cannot_be_removed(self):
@@ -46,5 +46,6 @@ class WorkflowAuditTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Duplicate YAML'):check.audit(self.root)
     def test_path_filtered_required_workflow_rejected(self):self.reject(lambda w:w['on'].update({'pull_request':{'paths':['src/**']}}))
     def test_unowned_suite_rejected(self):self.reject(lambda w:w['jobs']['browser']['strategy']['matrix']['suite'].remove('intelligent-ui'))
+    def test_missing_project_authoring_rejected(self):self.reject(lambda w:w['jobs']['browser']['strategy']['matrix']['suite'].remove('project-authoring'))
     def test_dependency_cycle_rejected(self):self.reject(lambda w:w['jobs']['hygiene'].update({'needs':['test']}))
 if __name__=='__main__':unittest.main(verbosity=2)
