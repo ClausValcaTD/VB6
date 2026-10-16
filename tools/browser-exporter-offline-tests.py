@@ -192,19 +192,17 @@ try:
         keys = b.evaluate('caches.keys()')
         check(cache_key('a', 'one') not in keys and cache_key('a', 'two') in keys, 'Update did not retire only the old release')
         check(cache_key('b', 'one') in keys, 'Update deleted sibling cache')
-        a = new_pae(context); a.goto(base + '/apps/a/index.html'); ready(a); installed(a)
+        a = new_page(context); a.goto(base + '/apps/a/index.html'); ready(a); installed(a)
         check(a.evaluate('releaseMarker') == 'two', 'Updated code not loaded')
         a = open_offline_page(context, a, base + '/apps/a/index.html')
-        check(a.evaluate('releaseMarker') == 'two', 'Updated release unavaile offline')
+        check(a.evaluate('releaseMarker') == 'two', 'Updated release unavailable offline')
         context.set_offline(False)
         passed('natural-activation-and-offline-updated-release')
-        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./assets/raw.bin",location.href).href))',
-                   cache_key('a', 'two'))
+        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./assets/raw.bin",location.href).href))', cache_key('a', 'two'))
         check(binary(a) == [0,255,128], 'Evicted exact-version asset did not recover')
         passed('evicted-entry-recovers-verified-network-bytes')
         state['a'] = 'one'
-        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./adapter.js",location.href).href))',
-                   cache_key('a', 'two'))
+        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./adapter.js",location.href).href))', cache_key('a', 'two'))
         check(a.evaluate('fetch("./adapter.js").then(r=>r.status)') == 503, 'Eviction silently mixed a mismatched server code')
         passed('evicted-code-rejects-mismatched-server-release')
         broken = new_page(context); broken.goto(base + '/apps/broken/index.html'); ready(broken)
