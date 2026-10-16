@@ -1,1 +1,209 @@
-{"version":2,"files":{"dist/studio.js":{"bytes":11704485,"sha256":"7bb663479301b1ded8e110e488003fcf01662fdd47d2e6e4f026a04d00e19a84"},"dist/VB6-Studio-Web.html":{"bytes":12440877,"sha256":"582b869a4b397e4acc6cb28ba597cf0a927aff1910c4b5bf342ad10751f3b54c"},"dist/intelligent-ui-sandbox.html":{"bytes":36292,"sha256":"2a5e4695e948ab57bc105012cb2430a7ac5c365085d4465328e977e2b6bc7037"},"packages/intelligent-ui/dist/intelligent-ui-sandbox.html":{"bytes":36292,"sha256":"2a5e4695e948ab57bc105012cb2430a7ac5c365085d4465328e977e2b6bc7037"},"dist/intelligent-ui.js":{"bytes":166353,"sha256":"c6540ce92a0e493ef029e96355ea6c70d5dd3ef3faf3bf33856773deb39becc0"},"dist/intelligent-ui-worker.js":{"bytes":54670,"sha256":"d5283ea79c478d413d3cd806ee49d7ae73e3c0b298b67ce55faa55cb97a2a62c"},"dist/intelligent-ui.css":{"bytes":4480,"sha256":"2f62235a0a8080c626e64515397abd2dc9ef0f194cb0f75c8d77c4b790788d90"},"dist/intelligent-ui-mcp.html":{"bytes":171115,"sha256":"857062f6280cc4c7990cf973c8f5affb166f8d537400f63a1a0b897788379c31"},"src/intelligent-ui/payload.js":{"bytes":228537,"sha256":"943864ade549527e881576d90e42d9f07f524b4cf4e29bad843c566713aa292b"},"packages/intelligent-ui/dist/intelligent-ui.js":{"bytes":166353,"sha256":"c6540ce92a0e493ef029e96355ea6c70d5dd3ef3faf3bf33856773deb39becc0"},"packages/intelligent-ui/dist/intelligent-ui-worker.js":{"bytes":54670,"sha256":"d5283ea79c478d413d3cd806ee49d7ae73e3c0b298b67ce55faa55cb97a2a62c"},"packages/intelligent-ui/dist/intelligent-ui.css":{"bytes":4480,"sha256":"2f62235a0a8080c626e64515397abd2dc9ef0f194cb0f75c8d77c4b790788d90"},"packages/intelligent-ui/dist/intelligent-ui-mcp.html":{"bytes":171115,"sha256":"857062f6280cc4c7990cf973c8f5affb166f8d537400f63a1a0b897788379c31"},"dist/win32-browser.js":{"bytes":212919,"sha256":"4c3d915ed036a55c176d52afc483631bb1447a3bf44f5c5415aa06ab62cdc0dd"},"packages/win32-browser/dist/win32-browser.js":{"bytes":212919,"sha256":"4c3d915ed036a55c176d52afc483631bb1447a3bf44f5c5415aa06ab62cdc0dd"},"dist/vb6-rendering.js":{"bytes":127159,"sha256":"9683f02ea3d730123678634596b9f0120a5a83a80e2a25ae5cc23852ddf56965"},"dist/auto-layout.js":{"bytes":36922,"sha256":"32bb2c6755e6163393536bd7948961a93dfb314fcd4c6d4988272b2ca9ad07fc"},"packages/auto-layout/dist/auto-layout.js":{"bytes":36922,"sha256":"32bb2c6755e6163393536bd7948961a93dfb314fcd4c6d4988272b2ca9ad07fc"},"dist/vb6-native.js":{"bytes":1457529,"sha256":"c5217965aec53acde906428753f41cfc7f620718b8594c7f1ec2124eb60fa424"},"src/editor/diagnostics-payload.js":{"bytes":284398,"sha256":"39fd671dfca62d17bd06cee406bdf9a48682a54eba91cfca48b583993bbb830f"},"dist/vb6-diagnostics-worker.js":{"bytes":279686,"sha256":"d0698af80a2b810d42dac4ca7fbccd364c8e454a64655c5625d8bc12ca504304"},"dist/studio.css":{"bytes":735926,"sha256":"b512da9fd3fb24145f80a7dd8a832cefdb45339d659f7e0e864f9b8a49e5a9c3"},"dist/vb6-controls.css":{"bytes":371306,"sha256":"ad3d876209e170829db2d461328b2ec061bff42420cb2c892f825a17364cbb5c"},"dist/vb6-runtime.js":{"bytes":2678541,"sha256":"a76b7eca2d1b161f4cc27b9db2766523b4fa50bf9d203a1e7da71e13feadfbd5"},"src/exporter/runtime-payload.js":{"bytes":3081222,"sha256":"f3ffb064ca50229be50b354b3e168eaf4956dd2372639a1efb38b9d11866b757"},"dist/OCX-Source-Control-Lab.html":{"bytes":2690656,"sha256":"03e0860b49860314480708c386d912ca6ece049de4c4d135f2191331d5b72224"},"dist/examples/orders.html":{"bytes":3072108,"sha256":"99eea80e897a39b03421616509b54186d98b6b2a703498773238baef1ea5cc1d"},"dist/examples/calculator.html":{"bytes":3066282,"sha256":"6132d11b444b2bba37509ced53f305b74082c0b352c6ec99c7eb1fbc41e212b1"},"dist/examples/clock.html":{"bytes":3059930,"sha256":"0c4dd74706e9f8aad07ef670dd15db020a5345deae58ed8041ab5c1c0bfbc0b6"},"dist/examples/graphics.html":{"bytes":3059645,"sha256":"165ae72f328f310d606bd0bce2feb5fae4800d729db8a406edd4affa76ccfe81"},"dist/examples/data.html":{"bytes":3061794,"sha256":"95233e8469b398e220702b82c39ef8bc347d0e8555b8be6f9c9b78b5fc5cd3ad"},"dist/examples/controls.html":{"bytes":3062215,"sha256":"e2fbcc092f32b9bf802a62a0c3bc59b65fe97acb875ff55f2a5e6a4918e46a0a"},"dist/examples/language.html":{"bytes":3057896,"sha256":"8dfde33c3dcf1602e624a5893b688af3501cf24b238352a0b1a8d30e2c3f3b8e"},"dist/examples/events.html":{"bytes":3062674,"sha256":"cd141c30986e7de6b0e680aebe63b347603e7068a58c017d70774cf87be57643"},"dist/examples/richtext.html":{"bytes":3065552,"sha256":"0ec738db07d63375377fe7c02961c1803a452977e1509666facfb22b6ca9a048"},"dist/examples/compatibility.html":{"bytes":3067678,"sha256":"0f22d6b6bbccf82a100f2bdac2571cfecae46e756bfc888ed9e792287fcf2676"},"dist/examples/mdi.html":{"bytes":3062811,"sha256":"dbc01c8b46e99652dd06045b21a5137a2eabbe7bd1b44b37e77f9fb2cb82249b"},"dist/examples/sqlite-customers.html":{"bytes":3065027,"sha256":"3ba5a51178bea6d331905ec5f779da59713f3b68423ae8300bc99750a79cf9e0"},"dist/examples/rest-customers.html":{"bytes":3064867,"sha256":"e85b492a638c7217d3285d26f5a19b9e0341c04d99c2395c7120c62e26b57e3a"},"dist/examples/rest-public-users.html":{"bytes":3064648,"sha256":"cd51855ac1bfc318c8c9690261e35b5509b71456d1959e665b4c580cadbb0213"},"dist/examples/graphql-customers.html":{"bytes":3064775,"sha256":"e8c30122803f7a861a9e8542eff8a4867beb19df2d6ae57dd4454d8d46a5c517"},"dist/examples/win32.html":{"bytes":3073893,"sha256":"7aca0146db2fdd1b05a97e743153398c61cd8a2b3fe9799c6534b181ec254c1b"},"dist/examples/win32-files.html":{"bytes":3064248,"sha256":"5746a732c5f297d52cfcf6dab0267fe7db52e493794c97779ba288cb60742736"},"dist/examples/win32-text.html":{"bytes":3061730,"sha256":"c8296cdf3e8f7601532fb8dc1d771e13093472f4b6a131701bded9f23e36223e"},"dist/examples/win32-sync.html":{"bytes":3061939,"sha256":"0fd8d79498ae4555a1d7960cbdf6eb5bcfcb222ffc7157d475eaa8cb16295340"},"dist/examples/win32-registry.html":{"bytes":3062695,"sha256":"cc678996a1bf8d705c187fab2a7948edbc83dabc155c36e080d169c7c32bf9f7"},"dist/examples/win32-guid.html":{"bytes":3062092,"sha256":"f67a1c3defe4b5f88695f94ad1999aa0f7ae107f397a31fca381bf4818c4f37c"},"dist/examples/win32-properties.html":{"bytes":3061775,"sha256":"b88bf43bf2efa57cd8ffd23712c7c10b0c78e13b59b71bc91ff596c2c6620791"},"dist/examples/win32-calendar.html":{"bytes":3062854,"sha256":"85af229b4e06e23f1efecaf8ba273bbf9cf7c8ef232d8d27da01bfac34beb579"},"dist/examples/win32-settings.html":{"bytes":3062670,"sha256":"362a2b78e4b3314785ab13332d291ca1e31b5ca5482475852246b7696a30182b"},"dist/examples/webbrowser-html5.html":{"bytes":3065382,"sha256":"7c3ed1eeb6b7d9bac3a20fd231104392c0a6d10f6f5dfd9402a0406830bf7fc0"}}}
+{
+  "version": 2,
+  "files": {
+    "dist/studio.js": {
+      "bytes": 11765032,
+      "sha256": "88d4b79edf6794e74fa2f1326870d3eb100e53f73ba4700dcf3be8490d8c1722"
+    },
+    "dist/VB6-Studio-Web.html": {
+      "bytes": 12501424,
+      "sha256": "64e6a6ae5df3f71e2d01670ce3f1eb0f8671af67495efdcee239b11e90afd0a8"
+    },
+    "dist/intelligent-ui-sandbox.html": {
+      "bytes": 36292,
+      "sha256": "2a5e4695e948ab57bc105012cb2430a7ac5c365085d4465328e977e2b6bc7037"
+    },
+    "packages/intelligent-ui/dist/intelligent-ui-sandbox.html": {
+      "bytes": 36292,
+      "sha256": "2a5e4695e948ab57bc105012cb2430a7ac5c365085d4465328e977e2b6bc7037"
+    },
+    "dist/intelligent-ui.js": {
+      "bytes": 166353,
+      "sha256": "c6540ce92a0e493ef029e96355ea6c70d5dd3ef3faf3bf33856773deb39becc0"
+    },
+    "dist/intelligent-ui-worker.js": {
+      "bytes": 54670,
+      "sha256": "d5283ea79c478d413d3cd806ee49d7ae73e3c0b298b67ce55faa55cb97a2a62c"
+    },
+    "dist/intelligent-ui.css": {
+      "bytes": 4480,
+      "sha256": "2f62235a0a8080c626e64515397abd2dc9ef0f194cb0f75c8d77c4b790788d90"
+    },
+    "dist/intelligent-ui-mcp.html": {
+      "bytes": 171115,
+      "sha256": "857062f6280cc4c7990cf973c8f5affb166f8d537400f63a1a0b897788379c31"
+    },
+    "src/intelligent-ui/payload.js": {
+      "bytes": 228537,
+      "sha256": "943864ade549527e881576d90e42d9f07f524b4cf4e29bad843c566713aa292b"
+    },
+    "packages/intelligent-ui/dist/intelligent-ui.js": {
+      "bytes": 166353,
+      "sha256": "c6540ce92a0e493ef029e96355ea6c70d5dd3ef3faf3bf33856773deb39becc0"
+    },
+    "packages/intelligent-ui/dist/intelligent-ui-worker.js": {
+      "bytes": 54670,
+      "sha256": "d5283ea79c478d413d3cd806ee49d7ae73e3c0b298b67ce55faa55cb97a2a62c"
+    },
+    "packages/intelligent-ui/dist/intelligent-ui.css": {
+      "bytes": 4480,
+      "sha256": "2f62235a0a8080c626e64515397abd2dc9ef0f194cb0f75c8d77c4b790788d90"
+    },
+    "packages/intelligent-ui/dist/intelligent-ui-mcp.html": {
+      "bytes": 171115,
+      "sha256": "857062f6280cc4c7990cf973c8f5affb166f8d537400f63a1a0b897788379c31"
+    },
+    "dist/win32-browser.js": {
+      "bytes": 212919,
+      "sha256": "4c3d915ed036a55c176d52afc483631bb1447a3bf44f5c5415aa06ab62cdc0dd"
+    },
+    "packages/win32-browser/dist/win32-browser.js": {
+      "bytes": 212919,
+      "sha256": "4c3d915ed036a55c176d52afc483631bb1447a3bf44f5c5415aa06ab62cdc0dd"
+    },
+    "dist/vb6-rendering.js": {
+      "bytes": 127159,
+      "sha256": "9683f02ea3d730123678634596b9f0120a5a83a80e2a25ae5cc23852ddf56965"
+    },
+    "dist/auto-layout.js": {
+      "bytes": 36922,
+      "sha256": "32bb2c6755e6163393536bd7948961a93dfb314fcd4c6d4988272b2ca9ad07fc"
+    },
+    "packages/auto-layout/dist/auto-layout.js": {
+      "bytes": 36922,
+      "sha256": "32bb2c6755e6163393536bd7948961a93dfb314fcd4c6d4988272b2ca9ad07fc"
+    },
+    "dist/vb6-native.js": {
+      "bytes": 1459132,
+      "sha256": "ee97ce70833dd77c638c9cec2871e37f8e5933123b3f7e01df63f32a3ab00585"
+    },
+    "src/editor/diagnostics-payload.js": {
+      "bytes": 285669,
+      "sha256": "9e9e1d0ab523619dff28b8549eaab535b9376b3d52e26fb83bbe5a0c11312714"
+    },
+    "dist/vb6-diagnostics-worker.js": {
+      "bytes": 280936,
+      "sha256": "82eb4daaee4192ff2c3a5ae1f259b39cd9522b5659d8766156e4ffc7ce346490"
+    },
+    "dist/studio.css": {
+      "bytes": 735926,
+      "sha256": "b512da9fd3fb24145f80a7dd8a832cefdb45339d659f7e0e864f9b8a49e5a9c3"
+    },
+    "dist/vb6-controls.css": {
+      "bytes": 371306,
+      "sha256": "ad3d876209e170829db2d461328b2ec061bff42420cb2c892f825a17364cbb5c"
+    },
+    "dist/vb6-runtime.js": {
+      "bytes": 2706062,
+      "sha256": "1b5f8005b929fe7f9e4a1c264c11997b0984ba517b53ae74ae40827180047361"
+    },
+    "src/exporter/runtime-payload.js": {
+      "bytes": 3109238,
+      "sha256": "93a53b75efeee3bb8108fc08538418934a2d8d7f0bdfde49166f9189e1d5a451"
+    },
+    "dist/OCX-Source-Control-Lab.html": {
+      "bytes": 2718177,
+      "sha256": "bc25aac7599a6f3b1bdb74c81286dd9971251f6f364466bd623afc0165a20d54"
+    },
+    "dist/examples/orders.html": {
+      "bytes": 3099629,
+      "sha256": "3c98c30e41b488c889b11f00f267e71e497ad378bea1f9e838e244261ef04a7d"
+    },
+    "dist/examples/calculator.html": {
+      "bytes": 3093803,
+      "sha256": "034209ace7c33aae1cb0257e3dcde3f5b69be4610d445173f8cddc9f4abba8aa"
+    },
+    "dist/examples/clock.html": {
+      "bytes": 3087451,
+      "sha256": "d13c7514543d2ad47a7bd5664060434173d479c4dd694e7cea7898efb4972383"
+    },
+    "dist/examples/graphics.html": {
+      "bytes": 3087166,
+      "sha256": "d2e956f5ff399a7e4039cf6ae95eca501610493357ae92a3fe898558e0f54bea"
+    },
+    "dist/examples/data.html": {
+      "bytes": 3089315,
+      "sha256": "13cc64cf4b025c0db1658763e0c302a2e617bf6f2213fc50a646e732090ed9a2"
+    },
+    "dist/examples/controls.html": {
+      "bytes": 3089736,
+      "sha256": "2c2a3dc55c61760afab7f984b411804454a6799bd8d7f067d477de21ee1f5aff"
+    },
+    "dist/examples/language.html": {
+      "bytes": 3085417,
+      "sha256": "3ded58327c17537f0a2609ee2120809f8f6bbe16dd181305861c0236f093fe79"
+    },
+    "dist/examples/events.html": {
+      "bytes": 3090195,
+      "sha256": "907c215d5abb6ae82747c617630d944336f1dcab969c79107fb3fc73ead2620e"
+    },
+    "dist/examples/richtext.html": {
+      "bytes": 3093073,
+      "sha256": "acf63e795cd5f7f0a9285b94879a7dd8f6182036920536fe08dba8e32302aae5"
+    },
+    "dist/examples/compatibility.html": {
+      "bytes": 3095199,
+      "sha256": "4fdedd4b19e73e3807671f943738a08586a6ae5284da8e8210de3d827abb2ea5"
+    },
+    "dist/examples/mdi.html": {
+      "bytes": 3090332,
+      "sha256": "f08b2c26ab0fe3095396779ba2b4a7fd68703d5a84d060aa3b5b55488e92282d"
+    },
+    "dist/examples/sqlite-customers.html": {
+      "bytes": 3092548,
+      "sha256": "80b85f5463494ab50c487b9d6f7e9d65c5747dcf6fc82bedfa2e8bd9440dd4cc"
+    },
+    "dist/examples/rest-customers.html": {
+      "bytes": 3092388,
+      "sha256": "8b1240e3c3479ec855caa5b930641883117419bb92e17d1b269821a3712c2f87"
+    },
+    "dist/examples/rest-public-users.html": {
+      "bytes": 3092169,
+      "sha256": "4721b532ea81931492eee8f4c0d304c174a60e0225a35f58aa3b33d3ad34f02a"
+    },
+    "dist/examples/graphql-customers.html": {
+      "bytes": 3092296,
+      "sha256": "ab20e18cd6e01babeb408483945c61b0677b4a8b5c81d9142610a29b44862083"
+    },
+    "dist/examples/win32.html": {
+      "bytes": 3101414,
+      "sha256": "1f5ba2744704e2f086a8106fb3a469f0ac4b9296ea4c6911e31eabb8a73639cc"
+    },
+    "dist/examples/win32-files.html": {
+      "bytes": 3091769,
+      "sha256": "0003942819c5b4e3f989329bc8c638bff854e110f3276cf9c457f9b39edce387"
+    },
+    "dist/examples/win32-text.html": {
+      "bytes": 3089251,
+      "sha256": "5b04c878851cfc25505e85c68603d6bd5314d0d570ae5504b6ea3c3f2d05ccfa"
+    },
+    "dist/examples/win32-sync.html": {
+      "bytes": 3089460,
+      "sha256": "11f6f01264a685078623ff816b0dd42e398da5a1b6677618b338fba4fb431ac5"
+    },
+    "dist/examples/win32-registry.html": {
+      "bytes": 3090216,
+      "sha256": "7040df3a59e27dad8255533f48e0b31e0131ac898845962dba3c5b7b04634a61"
+    },
+    "dist/examples/win32-guid.html": {
+      "bytes": 3089613,
+      "sha256": "4979ee6349d724855120d5c7c2599f5675e1023d0603cf123b2ce9084195b2f6"
+    },
+    "dist/examples/win32-properties.html": {
+      "bytes": 3089296,
+      "sha256": "358e4fa9f3760597a9e5d20cc28a9b050fa8961ecfec48eadde898a0a6bdce1c"
+    },
+    "dist/examples/win32-calendar.html": {
+      "bytes": 3090375,
+      "sha256": "45da44fba32152da465b84a42f8101bbff8e15d94ae46326422a30228dbbfe02"
+    },
+    "dist/examples/win32-settings.html": {
+      "bytes": 3090191,
+      "sha256": "6385ff7e50dc4a5beaa6cbd0168fca63a4b70c7b957b0b6ef1fa62e667e13a91"
+    },
+    "dist/examples/webbrowser-html5.html": {
+      "bytes": 3092903,
+      "sha256": "b25a2aace44fe6e5caa8fcc3e86c22ce6a9b9b78ba7ba218b42847a00ad3763a"
+    }
+  }
+}
