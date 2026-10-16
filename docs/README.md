@@ -190,3 +190,7 @@ boundaries, standalone packaging, and integration validation.
 ## Shared infrastructure
 
 - [Core primitives](CORE-PRIMITIVES.md): event and timer lifetimes, transactional history, UI document ownership, DOM/download helpers and streaming artifact integrity.
+
+## Application graphics
+
+[Retained browser graphics](GRAPHICS.md): drawing API, VB semantics, resource budgets, backend behavior, validation and compatibility boundaries.
