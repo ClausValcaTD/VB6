@@ -2,12 +2,12 @@
   "version": 2,
   "files": {
     "dist/studio.js": {
-      "bytes": 11369724,
-      "sha256": "2007fb1ee7fc870e5e6aa7b939aab916dfb268f4fdcc19f4bec7aa8618120ea0"
+      "bytes": 11388706,
+      "sha256": "2628d0c69c059ebbd4a237e1206cf9ea45315d7ae84542c47592deb2db48c475"
     },
     "dist/VB6-Studio-Web.html": {
-      "bytes": 12103097,
-      "sha256": "76034b38a52b1c333289cd49102f7de76fb07a095608c2463465909ab91b0ccc"
+      "bytes": 12122079,
+      "sha256": "b79cf822e5e0f9eab59253aadea22af617fba1c8721699d097323bd63e9e5610"
     },
     "dist/intelligent-ui-sandbox.html": {
       "bytes": 36292,
@@ -115,7 +115,7 @@
     },
     "dist/examples/clock.html": {
       "bytes": 3011458,
-       "sha256": "55da31de9d99b7911714784061226f45e45ad2337cc09d6547f63bc39addca2d"
+      "sha256": "55da31de9d99b7911714784061226f45e45ad2337cc09d6547f63bc39addca2d"
     },
     "dist/examples/graphics.html": {
       "bytes": 3011173,
@@ -127,7 +127,7 @@
     },
     "dist/examples/controls.html": {
       "bytes": 3013743,
-       "sha256": "215dac2e4ca3cccab7der61ec7e7d0b4fb9d1e793b3ede110a079f739c08ba0"
+      "sha256": "215dac2e4ca3cccabb7deb61ec7e7d0b4fb9d1e793b3ede110a079f739c08ba0"
     },
     "dist/examples/language.html": {
       "bytes": 3009424,
@@ -135,7 +135,7 @@
     },
     "dist/examples/events.html": {
       "bytes": 3014202,
-       "sha256": "6a3b8b64d0603abc13b701399ecae611c6f5573d4bfc039a1dfce9ce7188018f"
+      "sha256": "6a3b8b64d0603abc13b701399ecae611c6f5573d4bfc039a1dfce9ce7188018f"
     },
     "dist/examples/richtext.html": {
       "bytes": 3017080,
@@ -159,7 +159,7 @@
     },
     "dist/examples/rest-public-users.html": {
       "bytes": 3016176,
-       "sha256": "3648d8c879ec35c8ac97f72b0eadf69a66383b65fcc369c51743fc95348b2750"
+      "sha256": "3648d8c879ec35c8ac97f72b0eadf69a66383b65fcc369c51743fc95348b2750"
     },
     "dist/examples/graphql-customers.html": {
       "bytes": 3016303,
@@ -167,7 +167,7 @@
     },
     "dist/examples/win32.html": {
       "bytes": 3025421,
-       "sha256": "a68341ef55082f8464c3e741fd6c99ef5b5cc56a3d2f061c3de8269b897ddc2e"
+      "sha256": "a68341ef55082f8464c3e741fd6c99ef5b5cc56a3d2f061c3de8269b897ddc2e"
     },
     "dist/examples/win32-files.html": {
       "bytes": 3015776,
@@ -183,7 +183,7 @@
     },
     "dist/examples/win32-registry.html": {
       "bytes": 3014223,
-       "sha256": "f3c5ff49014277bc94fdae36f2cc5aa7ad26dd2047cadc47490373e425601f8a"
+      "sha256": "f3c5ff49014277bc94fdae36f2cc5aa7ad26dd2047cadc47490373e425601f8a"
     },
     "dist/examples/win32-guid.html": {
       "bytes": 3013620,
@@ -203,7 +203,7 @@
     },
     "dist/examples/webbrowser-html5.html": {
       "bytes": 3016910,
-       "sha256": "f4614a2180143d4d2226f1d5188290f3ac86c7958a858ecbc8bbd0bf7d0e5a8f"
+      "sha256": "f4614a2180143d4d2226f1d5188290f3ac86c7958a858ecbc8bbd0bf7d0e5a8f"
     }
   }
 }
