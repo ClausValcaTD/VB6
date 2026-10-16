@@ -18,3 +18,21 @@ for (const name of ['browser-exporter-tests.py', 'browser-exporter-offline-tests
     assert.doesNotMatch(source, /unsafe-eval|bypass_csp\s*=\s*True|bypassCSP\s*:\s*true/);
   });
 }
+
+
+test('offline acceptance uses fresh clients and proves APIs remain network-only', () => {
+  const source = readFileSync(new URL('tools/browser-exporter-offline-tests.py', root), 'utf8');
+  assert.match(source, /def open_offline_page\(/);
+  assert.doesNotMatch(source, /set_offline\(True\)[^\n]*\n[^\n]*\.reload\(/);
+  assert.match(source, /caches\.match\(new URL\(\"\.\/api\/data\"/);
+  assert.match(source, /state\['api_available'\] = False/);
+  assert.match(source, /status == 503/);
+});
+
+test('update acceptance retains controlled clients until a waiting worker exists', () => {
+  const source = readFileSync(new URL('tools/browser-exporter-offline-tests.py', root), 'utf8');
+  assert.match(source, /updater = new_page\(context\)/);
+  assert.match(source, /Boolean\(navigator\.serviceWorker\.controller\)/);
+  assert.match(source, /waiting\?\.state === \"installed\"/);
+  assert.match(source, /a\.close\(\); updater\.close\(\)/);
+});

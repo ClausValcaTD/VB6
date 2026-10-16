@@ -25,7 +25,11 @@ if os.environ.get('VB6_OFFLINE') == '1':
 shutil.rmtree(REPORT, ignore_errors=True)
 subprocess.run(['node', 'tools/build-offline-export-fixtures.mjs'], cwd=ROOT, check=True)
 metadata = json.loads((REPORT / 'fixture-builds.json').read_text())
-state = {'a': 'one', 'b': 'one', 'broken': 'one', 'failed': 'failed', 'corrupt': True}
+state = {
+    'a': 'one', 'b': 'one', 'broken': 'one', 'failed': 'failed',
+    'corrupt': True, 'api_available': True, 'api_requests': 0,
+    'worker_requests': 0
+}
 results, errors = [], []
 
 class Handler(SimpleHTTPRequestHandler):
@@ -47,14 +51,18 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'")
         super().end_headers()
     def do_GET(self):
-        if self.path == '/apps/broken/assets/raw.bin' and state['corrupt']:
+        route = urlsplit(self.path).path
+        if route.endswith('/service-worker.js'):
+            state['worker_requests'] += 1
+        if route == '/apps/broken/assets/raw.bin' and state['corrupt']:
             body = b'corrupted-upload'
             self.send_response(200); self.send_header('Content-Type', 'application/octet-stream')
             self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
             return
-        if self.path.endswith('/api/data'):
-            body = b'{"networkOnly":true}'
-            self.send_response(200); self.send_header('Content-Type', 'application/json')
+        if route.endswith('/api/data'):
+            state['api_requests'] += 1
+            body = b'{"networkOnly":true}' if state['api_available'] else b'{"networkOnly":false}'
+            self.send_response(200 if state['api_available'] else 503); self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
             return
         super().do_GET()
@@ -96,6 +104,37 @@ def calculator(page):
     page.get_by_role('button', name='=', exact=True).click()
     wait_for_export(page, 'document.querySelector("[data-control=txtDisplay] input")?.value === "15"')
 
+def open_offline_page(context, previous, url):
+    # Playwright's WebKit reload command can fail internally while the browser is
+    # offline even though an active service worker can serve a fresh navigation.
+    # Open a real new client under the offline context and keep the previous
+    # controlled client alive until that navigation has completed.
+    context.set_offline(True)
+    page = new_page(context)
+    page.goto(url, wait_until='domcontentloaded')
+    ready(page)
+    previous.close()
+    return page
+
+def assert_network_only_api(page):
+    # Browser offline emulation is not specified to cut off fetches initiated by
+    # a service worker in every engine. First prove no API response exists in any
+    # cache while genuinely offline. Then restore transport, make the origin
+    # return 503, and require both that status and a new server request. A cached
+    # API response would return 200 without reaching the deliberately failed host.
+    check(not page.evaluate('caches.match(new URL("./api/data", location.href)).then(Boolean)'),
+          'Dynamic API unexpectedly exists in CacheStorage')
+    context = page.context
+    context.set_offline(False)
+    before = state['api_requests']
+    state['api_available'] = False
+    try:
+        status = page.evaluate('fetch("./api/data").then(r=>r.status,()=>0)')
+        check(status == 503, 'Dynamic API did not remain network-only during an origin outage')
+        check(state['api_requests'] == before + 1, 'Dynamic API did not reach the failed origin')
+    finally:
+        state['api_available'] = True
+
 try:
     with sync_playwright() as p:
         launch = {'headless': True}
@@ -115,12 +154,12 @@ try:
         check(binary(a) == [0,255,128], 'Cached binary bytes changed')
         check(a.evaluate('fetch("./api/data").then(r=>r.json()).then(v=>v.networkOnly)'), 'Network fixture did not run')
         passed('controlled-reload-and-binary-assets')
-        context.set_offline(True)
-        a.reload(); ready(a); calculator(a)
+        a = open_offline_page(context, a, base + '/apps/a/index.html')
+        calculator(a)
         check(binary(a) == [0,255,128], 'Binary asset unavailable offline')
-        check(a.evaluate('fetch("./api/data").then(()=>false,()=>true)'), 'Dynamic API was improperly cached')
-        passed('real-network-offline-reload-and-VB-control-input')
-        a.goto(base + '/apps/a/?launch=fixture'); ready(a)
+        assert_network_only_api(a)
+        passed('real-network-offline-open-and-VB-control-input')
+        a = open_offline_page(context, a, base + '/apps/a/?launch=fixture')
         check(a.evaluate('releaseMarker') == 'one', 'Launch query lost the entry fallback')
         passed('offline-entry-navigation-with-launch-query')
         context.set_offline(False)
@@ -128,30 +167,44 @@ try:
         check(cache_key('a', 'one') in b.evaluate('caches.keys()'), 'Sibling install deleted first application cache')
         check(cache_key('b', 'one') in b.evaluate('caches.keys()'), 'Sibling cache missing')
         passed('same-origin-sibling-cache-isolation')
+        # Keep two independently controlled old-release clients alive. This
+        # prevents immediate activation and makes the waiting-worker contract
+        # explicit rather than depending on how a prior offline navigation is
+        # classified by an individual engine.
+        updater = new_page(context); updater.goto(base + '/apps/a/index.html'); ready(updater)
+        check(a.evaluate('Boolean(navigator.serviceWorker.controller)'), 'Offline launch client lost service-worker control')
+        check(updater.evaluate('Boolean(navigator.serviceWorker.controller)'), 'Update guard is not controlled by the active release')
+        check(updater.evaluate('releaseMarker') == 'one', 'Update guard did not load the active release')
         state['a'] = 'two'
-        a.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
-        wait_for_export(a, 'navigator.serviceWorker.getRegistration().then(r=>r?.waiting?.state === "installed")')
-        check(a.evaluate('releaseMarker') == 'one', 'Update replaced live application code')
-        check(a.evaluate('fetch("./assets/version.txt").then(r=>r.text())') == 'one', 'Live release mixed new assets')
+        before_worker_requests = state['worker_requests']
+        updater.evaluate('navigator.serviceWorker.getRegistration().then(r=>r.update())')
+        check(state['worker_requests'] > before_worker_requests, 'Explicit update did not request the service-worker script')
+        wait_for_export(updater, 'navigator.serviceWorker.getRegistration().then(r=>r?.waiting?.state === "installed")')
+        check(updater.evaluate('globalThis.vb6OfflineStatus?.updateAvailable === true'), 'Waiting update was not surfaced to the application')
+        for client in (a, updater):
+            check(client.evaluate('releaseMarker') == 'one', 'Update replaced live application code')
+            check(client.evaluate('fetch("./assets/version.txt").then(r=>r.text())') == 'one', 'Live release mixed new assets')
         check(cache_key('a', 'one') in a.evaluate('caches.keys()'), 'Waiting update removed active cache')
         calculator(a)
         passed('update-waits-without-reloading-or-mixing-live-release')
-        a.close()
+        a.close(); updater.close()
         wait_for_export(b, '(url)=>navigator.serviceWorker.getRegistration(url).then(r=>r?.active?.state === "activated" && !r.waiting)', arg=base + '/apps/a/')
         keys = b.evaluate('caches.keys()')
         check(cache_key('a', 'one') not in keys and cache_key('a', 'two') in keys, 'Update did not retire only the old release')
         check(cache_key('b', 'one') in keys, 'Update deleted sibling cache')
-        a = new_page(context); a.goto(base + '/apps/a/index.html'); ready(a); installed(a)
+        a = new_pae(context); a.goto(base + '/apps/a/index.html'); ready(a); installed(a)
         check(a.evaluate('releaseMarker') == 'two', 'Updated code not loaded')
-        context.set_offline(True); a.reload(); ready(a)
-        check(a.evaluate('releaseMarker') == 'two', 'Updated release unavailable offline')
+        a = open_offline_page(context, a, base + '/apps/a/index.html')
+        check(a.evaluate('releaseMarker') == 'two', 'Updated release unavaile offline')
         context.set_offline(False)
         passed('natural-activation-and-offline-updated-release')
-        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./assets/raw.bin",location.href).href))', cache_key('a', 'two'))
+        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./assets/raw.bin",location.href).href))',
+                   cache_key('a', 'two'))
         check(binary(a) == [0,255,128], 'Evicted exact-version asset did not recover')
         passed('evicted-entry-recovers-verified-network-bytes')
         state['a'] = 'one'
-        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./adapter.js",location.href).href))', cache_key('a', 'two'))
+        a.evaluate('(key)=>caches.open(key).then(c=>c.delete(new URL("./adapter.js",location.href).href))',
+                   cache_key('a', 'two'))
         check(a.evaluate('fetch("./adapter.js").then(r=>r.status)') == 503, 'Eviction silently mixed a mismatched server code')
         passed('evicted-code-rejects-mismatched-server-release')
         broken = new_page(context); broken.goto(base + '/apps/broken/index.html'); ready(broken)
@@ -205,7 +258,7 @@ try:
         passed('actual-IDE-offline-download-byte-identical-to-Node', buildId=manifest['buildId'], zipSha256=hashlib.sha256(archive.read_bytes()).hexdigest())
         deployed = new_page(context); deployed.goto(base + '/download/index.html'); ready(deployed); installed(deployed)
         deployed.reload(); ready(deployed)
-        context.set_offline(True); deployed.reload(); ready(deployed); calculator(deployed)
+        deployed = open_offline_page(context, deployed, base + '/download/index.html'); calculator(deployed)
         deployed.screenshot(path=str(REPORT / 'offline-calculator.png'))
         passed('exact-IDE-download-reopened-and-used-offline')
         check(not errors, 'Uncaught browser errors: ' + repr(errors))
