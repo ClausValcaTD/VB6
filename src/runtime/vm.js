@@ -1,4 +1,3 @@
-import {nativeDataValue} from '../data/native-values.js';
 import {procedureLocalDeclarations} from './local-storage.js';
 import {bindReferenceParameter} from './parameter-binding.js';
 import {RecordTypeIndex} from '../language/record-resolution.js';
@@ -223,7 +222,6 @@ export class VirtualMachine extends Signal {
   /** Adapt one public JavaScript member back into a source value. Unknown
    * numeric adapters are Double; only documented built-ins receive a subtype. */
   nativeScalar(object,name,value){
-    value=nativeDataValue(object,value);
     if(value instanceof VBScalar||!scalarType(value))return value;
     const key=lower(name||''),raw=unbox(value);let type=scalarType(value),variant=false;
     if(hasDataDefault(object)&&['value','originalvalue'].includes(key)){const declared=lower(dataDefaultType(object)||'');return raw==null?storageScalar(raw,'Variant'):Object.hasOwn(SCALAR_TYPES,declared)?tagScalar(raw,declared,true):storageScalar(value,'Variant');}
@@ -439,7 +437,7 @@ export class VirtualMachine extends Signal {
     if(target instanceof VBCollection||target instanceof VBDictionary)return target.itemScalar(...actual);
     if(target?.__native)return await this.invokeScalar(target,actual,frame);
     if(typeof target==='function')return await this.invokeScalar(target,actual,frame);
-    if(target?.Item&&typeof target.Item==='function')return tagScalar(this.nativeScalar(target,'Item',await this.debugAwait(target.Item(...actual.map(unbox)))),undefined,true);
+    if(target?.Item&&typeof target.Item==='function')return tagScalar(await this.debugAwait(target.Item(...actual.map(unbox))),undefined,true);
     if(target?.__vbInstance){const getter=target.module.procedures.get('item:get');if(getter)return await this.callProcedure(target,getter,actual,frame,true);}
     throw new VBError('Expected array or callable procedure',13);
     }finally{leases.release();frame.activeArrayLeases=previousLeases;}
@@ -707,7 +705,14 @@ export class VirtualMachine extends Signal {
           case 'fileClose':if(!ins.handles.length)this.fs.close();else for(const h of ins.handles)this.fs.close(await this.evaluateScalar(h,frame));break;
           case 'filePrint':{const values=[];for(const e of ins.exprs)values.push(await this.defaultValue(await this.evaluateScalar(e,frame)));const text=values.map(v=>printScalar(v,ins.csv)).join(ins.csv?',':'');this.fs.print(await this.evaluateScalar(ins.handle,frame),text,ins.newline);break;}
           case 'fileInput':{const n=unbox(await this.evaluateScalar(ins.handle,frame));for(const target of ins.targets){const ref=await this.reference(target,frame,true);const value=ins.whole?this.fs.lineInput(n):this.fs.inputValue(n,ref.type);await ref.set(value);}break;}
-          case 'graphics':{const obj=await this.evaluateScalar(ins.object,frame,{raw:true}),control=obj?.__vbInstance?obj.formObject:obj;if(!control?.draw)throw new VBError('Object does not support graphics methods',438);const coords=[];for(const e of ins.coords)coords.push(numeric(await this.evaluateScalar(e,frame)));control.draw(ins.kind,coords,numeric(await this.evaluateScalar(ins.color,frame)),ins.fill);break;}
+          case 'graphicsExtended':case 'graphics':{
+            const obj=await this.evaluateScalar(ins.object,frame,{raw:true}),control=obj?.__vbInstance?obj.formObject:obj;
+            if(!control?.draw)throw new VBError('Object does not support graphics methods',438);
+            const coords=[];for(const e of ins.coords)coords.push(numeric(await this.evaluateScalar(e,frame)));
+            const color=ins.defaultColor?undefined:numeric(await this.evaluateScalar(ins.color,frame)),options={stepStart:ins.stepStart,stepEnd:ins.stepEnd,implicitStart:ins.implicitStart};
+            for(const key of ['start','end','aspect'])if(ins.arc?.[key])options[key]=numeric(await this.evaluateScalar(ins.arc[key],frame));
+            control.draw(ins.kind,coords,color,ins.fill,options);break;
+          }
           case 'raiseEvent':await this.raiseEvent(frame.instance,ins.expr.callee.name,ins.expr.args,frame);break;
           default:throw new VBError('Invalid bytecode instruction '+ins.op,1002);
         }
